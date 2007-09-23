@@ -1,0 +1,14 @@
+Changes
+MANIFEST
+META.yml # Will be created by "make dist"
+Makefile.PL
+README
+lib/Parse/Marpa.pm
+t/00-load.t
+t/ah.t
+t/boilerplate.t
+t/gj.t
+t/hu.t
+t/pod-coverage.t
+t/pod.t
+t/weaken.t
