@@ -78,8 +78,8 @@ is( $g->_show_SDFA(), <<'EOS', "Aycock/Horspool SDFA" );
 S0: 1,2
 S' ::= . S
 S' ::= S .
- <S> => S2 (2)
  empty => S1 (3,4,5,6,7,8,11,12)
+ <S> => S2 (2)
 S1: 3,4,5,6,7,8,11,12
 S ::= . A A A A
 S ::= A . A A A
@@ -98,8 +98,8 @@ S ::= A . A A A
 S ::= A A . A A
 S ::= A A A . A
 S ::= A A A A .
- <A> => S6 (5,6,7)
  empty => S4 (8,11,12)
+ <A> => S6 (5,6,7)
 S4: 8,11,12
 A ::= . a
 A ::= E .
@@ -111,13 +111,13 @@ S6: 5,6,7
 S ::= A A . A A
 S ::= A A A . A
 S ::= A A A A .
- <A> => S7 (6,7)
  empty => S4 (8,11,12)
+ <A> => S7 (6,7)
 S7: 6,7
 S ::= A A A . A
 S ::= A A A A .
- <A> => S8 (7)
  empty => S4 (8,11,12)
+ <A> => S8 (7)
 S8: 7
 S ::= A A A A .
 EOS

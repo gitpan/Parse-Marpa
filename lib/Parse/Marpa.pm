@@ -2,7 +2,7 @@ package Parse::Marpa;
 
 use warnings;
 use strict;
-use version; our $VERSION = qv('0.1_3');
+use version; our $VERSION = qv('0.1_4');
 
 use 5.006000;
 
@@ -266,11 +266,12 @@ sub _show_NFA_state {
     my $state = shift;
     my ( $name, $item, $transition ) = @{$state}[ NAME, ITEM, TRANSITION ];
     my $text .= $name . ": " . _show_item($item) . "\n";
-    while (my ($symbol_name, $transitions) = each %$transition ) {
+    for my $symbol_name (sort keys %$transition ) {
+        my $transition_states = $transition->{$symbol_name};
         $text .= " "
             . ( $symbol_name eq "" ? "empty" : "<" . $symbol_name . ">" )
             . " => "
-            . join( " ", map { $_->[NAME] } @$transitions )
+            . join( " ", map { $_->[NAME] } @$transition_states )
             . "\n";
     }
     $text;
@@ -298,7 +299,7 @@ sub _show_SDFA_state {
         my $item = $NFA_state->[ITEM];
         $text .= _show_item($item) . "\n";
     }
-    for my $symbol_name ( keys %$transition ) {
+    for my $symbol_name ( sort keys %$transition ) {
         my ($to_id, $to_name) = @{$transition->{$symbol_name}}[ID, NAME];
         $text .= " "
             . ( $symbol_name eq "" ? "empty" : "<" . $symbol_name . ">" )
