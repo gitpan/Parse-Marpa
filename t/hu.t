@@ -1,9 +1,9 @@
-#!perl -T
+#!perl
 
 use strict;
 use warnings;
 
-use Test::More tests => 8;
+use Test::More tests => 9;
 
 BEGIN {
 	use_ok( 'Parse::Marpa' );
@@ -22,7 +22,7 @@ my $g = new Parse::Marpa(
         [ qw/A a S b/ ],
         [ qw/A a b/ ],
     ],
-    augment => 0,
+    academic => 1,
 );
 
 is($g->_show_rules(), <<'EOS', "Hopcroft/Ullman Rules");
@@ -43,6 +43,7 @@ is($g->_show_symbols(), <<'EOS', "Hopcroft/Ullman Symbols");
 EOS
 
 is($g->_show_nullable_symbols(), "", "Hopcroft/Ullman Nullable Symbols");
+is($g->_show_nulling_symbols(), "", "Hopcroft/Ullman Nulling Symbols");
 is($g->_show_input_reachable_symbols(), 'A S S\' a b c', "Hopcroft/Ullman Input Reachable Symbols");
 is($g->_show_start_reachable_symbols(), 'A S S\' a b c', "Hopcroft/Ullman Start Reachable Symbols");
 is($g->_show_NFA(), <<'EOS', "Hopcroft/Ullman NFA");

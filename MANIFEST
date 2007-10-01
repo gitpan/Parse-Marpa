@@ -6,6 +6,7 @@ README
 lib/Parse/Marpa.pm
 t/00-load.t
 t/ah.t
+t/ah2.t
 t/boilerplate.t
 t/gj.t
 t/hu.t

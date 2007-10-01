@@ -1,9 +1,9 @@
-#!perl -T
+#!perl
 
 use strict;
 use warnings;
 
-use Test::More tests => 8;
+use Test::More tests => 9;
 
 BEGIN {
 	use_ok( 'Parse::Marpa' );
@@ -27,7 +27,7 @@ my $g = new Parse::Marpa(
         [ qw/T n/ ],
         [ qw/T ( E )/ ],
     ],
-    augment => 0,
+    academic => 1,
 );
 
 is($g->_show_rules(), <<'EOS', "Grune/Jacobs Rules");
@@ -52,6 +52,7 @@ is($g->_show_symbols(), <<'EOS', "Grune/Jacobs Symbols");
 EOS
 
 is($g->_show_nullable_symbols(), "", "Grune/Jacobs Nullable Symbols");
+is($g->_show_nulling_symbols(), "", "Grune/Jacobs Nulling Symbols");
 is($g->_show_input_reachable_symbols(), '$ ( ) - E S S\' T n', "Grune/Jacobs Input Reachable Symbols");
 is($g->_show_start_reachable_symbols(), '$ ( ) - E S S\' T n', "Grune/Jacobs Start Reachable Symbols");
 is($g->_show_NFA(), <<'EOS', "Grune/Jacobs NFA");

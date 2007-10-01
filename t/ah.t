@@ -1,4 +1,4 @@
-#!perl -T
+#!perl
 
 # the example grammar in Aycock/Horspool "Practical Earley Parsing",
 # _The Computer Journal_, Vol. 45, No. 6, pp. 620-630
@@ -6,7 +6,7 @@
 use strict;
 use warnings;
 
-use Test::More tests => 8;
+use Test::More tests => 9;
 
 BEGIN {
     use_ok('Parse::Marpa');
@@ -17,15 +17,15 @@ my $g = new Parse::Marpa(
     rules => [   [ "a" => qr/a/ ], [qw/S' S/], [qw/S A A A A/], [qw/A a/],
         [qw/A E/], [qw/E/],
     ],
-    augment => 0,
+    academic => 1,
 );
 
 is( $g->_show_rules(), <<'EOS', "Aycock/Horspool Rules" );
 0: S' -> S /* nullable */
 1: S -> A A A A /* nullable */
 2: A -> a
-3: A -> E /* nullable */
-4: E -> /* empty nullable */
+3: A -> E /* nullable nulling */
+4: E -> /* empty nullable nulling */
 EOS
 
 is( $g->_show_symbols(), <<'EOS', "Aycock/Horspool Symbols" );
@@ -33,11 +33,13 @@ is( $g->_show_symbols(), <<'EOS', "Aycock/Horspool Symbols" );
 1: S', lhs=[0], rhs=[] nullable
 2: S, lhs=[1], rhs=[0] nullable
 3: A, lhs=[2 3], rhs=[1] nullable
-4: E, lhs=[4], rhs=[3] nullable
+4: E, lhs=[4], rhs=[3] nullable nulling
 EOS
 
 is( $g->_show_nullable_symbols(),
     "A E S S'", "Aycock/Horspool Nullable Symbols" );
+is( $g->_show_nulling_symbols(),
+    "E", "Aycock/Horspool Nulling Symbols" );
 is( $g->_show_input_reachable_symbols(),
     "A E S S' a", "Aycock/Horspool Input Reachable Symbols" );
 is( $g->_show_start_reachable_symbols(),
@@ -77,20 +79,18 @@ S0: 1,2
 S' ::= . S
 S' ::= S .
  <S> => S2 (2)
- empty => S1 (3,4,5,6,7,8,10,11,12)
-S1: 3,4,5,6,7,8,10,11,12
+ empty => S1 (3,4,5,6,7,8,11,12)
+S1: 3,4,5,6,7,8,11,12
 S ::= . A A A A
 S ::= A . A A A
 S ::= A A . A A
 S ::= A A A . A
 S ::= A A A A .
 A ::= . a
-A ::= . E
 A ::= E .
 E ::= .
  <A> => S3 (4,5,6,7)
  <a> => S5 (9)
- <E> => S6 (11)
 S2: 2
 S' ::= S .
 S3: 4,5,6,7
@@ -98,31 +98,27 @@ S ::= A . A A A
 S ::= A A . A A
 S ::= A A A . A
 S ::= A A A A .
- <A> => S7 (5,6,7)
- empty => S4 (8,10,11,12)
-S4: 8,10,11,12
+ <A> => S6 (5,6,7)
+ empty => S4 (8,11,12)
+S4: 8,11,12
 A ::= . a
-A ::= . E
 A ::= E .
 E ::= .
  <a> => S5 (9)
- <E> => S6 (11)
 S5: 9
 A ::= a .
-S6: 11
-A ::= E .
-S7: 5,6,7
+S6: 5,6,7
 S ::= A A . A A
 S ::= A A A . A
 S ::= A A A A .
- <A> => S8 (6,7)
- empty => S4 (8,10,11,12)
-S8: 6,7
+ <A> => S7 (6,7)
+ empty => S4 (8,11,12)
+S7: 6,7
 S ::= A A A . A
 S ::= A A A A .
- <A> => S9 (7)
- empty => S4 (8,10,11,12)
-S9: 7
+ <A> => S8 (7)
+ empty => S4 (8,11,12)
+S8: 7
 S ::= A A A A .
 EOS
 

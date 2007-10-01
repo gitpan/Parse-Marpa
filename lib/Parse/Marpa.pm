@@ -2,19 +2,63 @@ package Parse::Marpa;
 
 use warnings;
 use strict;
-use version; our $VERSION = qv('0.1_2');
+use version; our $VERSION = qv('0.1_3');
 
-=for TODO:
-=cut
+use 5.006000;
 
 use Carp;
 use Scalar::Util qw(weaken);
 
-# common elements in for many of the arrays
+=begin Implementation:
+
+In style I try to follow Damian Conway's suggestions, but with many
+exceptions.  In particular, in this module, there's a very specific
+goal: it has to be easily translated into time-efficient C code.
+That means lots of things which are suboptimal for Perl readability
+-- avoidance of OO, heavy use of references, a strong preference
+for arrays over hashes, etc.  Sometimes, when my first goals force
+me into some really ugly style choice, I point that out in a comment.
+
+So don't conclude that I think the below is what Perl should look
+like -- it's not.
+
+The reason for targeting time-efficiency and a C reimplementation:
+the rap against Earley's has always been speed.  If this implementation
+isn't a means to that end, it will be of no interest, and nobody
+should care how beautifully it's written.  Don't get me wrong, I
+think readability and maintainability are important -- I'm the one
+most likely to be maintaining this code, and I'd like to be able
+to read it when I come back to it some months hence.  But readability
+is a lousy reason to write a uselessly slow module.
+
+C conversion is important because one of two things are going to
+happen: the module turns out to be so slow it's difficult to use,
+or not.  If it's slow, the next thing to try is conversion to C.
+If it's fast, that's an important discovery, and there will probably
+be demand for an even faster version -- in C.  My current guess is
+that Marpa is doomed to a C implementation, or failure.
+
+=end Implementation:
+
+=cut
+
+=begin Implementation:
+
+Structures and Objects: The design is to present an object-oriented
+interface, but internally to avoid overheads.  So internally, where
+objects might be used, I use array with constant indices to imitate
+what in C would be structures.
+
+=end Implementation:
+
+=cut
+
+# VERY COMMON STRUCTURE ELEMENTS
+# Common elements in for many of the arrays
 use constant ID   => 0;
 use constant NAME => 1;
 
-# common elements in rule and symbol arrays
+# ELEMENTS COMMON TO THE RULE and SYMBOL STRUCTURES
 use constant LHS => 2;    # for rule, ref of the left hand symbol
    # for symbol, rules with this as the lhs, as a ref to an array of rule refs
 use constant RHS => 3;    # array of symbol refs
@@ -22,30 +66,40 @@ use constant RHS => 3;    # array of symbol refs
 use constant NULLABLE        => 4;    # can match null
 use constant START_REACHABLE => 5;    # reachable from start symbol
 use constant INPUT_REACHABLE => 6;    # reachable from input symbol
+use constant NULLING         => 7;    # always matches null
 
-# additional elements of symbol array
-use constant REGEX => 7;              # regex, for terminals; undef otherwise
+# ADDITIONAL ELEMENTS OF THE SYMBOL STRUCTURE
+use constant REGEX => 8;      # regex, for terminals; undef otherwise
+use constant NULL_ALIAS => 9; # for a non-nulling symbol, ref of a its nulling alias, if there is one
+                              # otherwise undef
 
-# elements of NFA (SDFA) state
-# elements of SDFA state
-use constant ITEM       => 2;         # NFA: an LR(0) item
-use constant NFA_STATES => 2;         # SDFA: an array of NFA states
-use constant TRANSITION =>
-    3;    # the transitions, as a hash from symbol name to NFA (SDFA) states
+# ADDITIONAL ELEMENTS of THE RULE STRUCTURE
+use constant USEFUL          => 8; # boolean, true if rule is to be used in the NFA
 
-# elements of LR(0) item
+# ELEMENTS of the NFA and SDFA STATE STRUCTURES
+use constant ITEM       => 2; # in an NFA: an LR(0) item
+use constant NFA_STATES => 2; # in an SDFA: an array of NFA states
+use constant TRANSITION => 3; # the transitions, as a hash from symbol name to NFA (SDFA) states
+use constant COMPLETE   => 4; # in an SDFA state, an array of the NFA states with
+                              # complete LR(0) items
+
+# ELEMENTS of the LR(0) ITEM STRUCTURE
 use constant RULE     => 0;
 use constant POSITION => 1;
 
-# elements of grammar
+# ELEMENTS of the GRAMMAR STRUCTURE
 use constant RULES            => 0;    # array of rule refs
 use constant SYMBOLS          => 1;    # array of symbol refs
-use constant SYMBOL_HASH      => 2;    # hash by name of symbol refs
-use constant START            => 3;    # ref to start symbol
-use constant NFA              => 4;    # array of states
-use constant SDFA             => 5;    # array of states
-use constant SDFA_BY_NAME     => 6;    # hash from SDFA name to SDFA reference
-use constant NULLABLE_SYMBOLS => 7;    # array of refs of the nullable symbols
+use constant RULE_HASH        => 2;    # hash by name of symbol refs
+use constant SYMBOL_HASH      => 3;    # hash by name of symbol refs
+use constant START            => 4;    # ref to start symbol
+use constant NFA              => 5;    # array of states
+use constant SDFA             => 6;    # array of states
+use constant SDFA_BY_NAME     => 7;    # hash from SDFA name to SDFA reference
+use constant NULLABLE_SYMBOLS => 8;    # array of refs of the nullable symbols
+use constant ACADEMIC         => 9;    # true if this is a textbook grammar,
+                                       # for checking the NFA and SDFA, and NOT
+                                       # for actual Earley parsing
 
 ###############
 # Constructor #
@@ -55,43 +109,49 @@ sub new {
     my $class = shift;
     my %args = @_;
 
-    my $rules = $args{rules};
+    my $rules;
+    my $start;
+
+    # Academic grammar?  An "academic grammar" is one, usually from a textbook, which we are using
+    # to debug the NFA and SDFA logic.  We leave it unchanged.  Since we don't augment it, we can't
+    # parse with this grammar.  It's only useful to test the NFA and SDFA logic
+    my $academic = 0;
+
+    my %arg_logic = (
+       "rules" => sub { $rules = $_[0] },
+       "start" => sub { $start = $_[0] },
+       "academic" => sub { $academic = $_[0] },
+    );
+
+    while (my ($arg, $value) = each %args) {
+        my $closure = $arg_logic{$arg};
+        croak("Undefined argument to new $class: $arg") unless defined $closure;
+        $closure->($value);
+    }
+    
     croak("No rules specified") unless defined $rules;
-    my $start = $args{start};
     croak("No start symbol specified") unless defined $start;
 
-    # augmented grammar?
-    my $augment = $args{augment};
-    # default is yes
-    $augment = 1 unless defined $augment;
-
     my $self  = [];
-    @{$self}[ SYMBOLS, SYMBOL_HASH, RULES, SDFA_BY_NAME ] =
-        ( [], {}, [], {} );
+    @{$self}[ SYMBOLS, SYMBOL_HASH, RULES, RULE_HASH, SDFA_BY_NAME, ACADEMIC ] =
+        ( [], {}, [], {}, {}, $academic );
     bless( $self, $class );
 
-    $self->_add_rules($rules);
+    $self->_add_user_rules($rules);
     $self->_nullable();
+    $self->_nulling();
     $self->_input_reachable();
     $self->_set_start($start);
     $self->_start_reachable();
+    if ($academic) {
+        $self->_setup_academic_grammar()
+    } else {
+        $self->_rewrite_as_QNF();
+    }
     $self->_create_NFA;
     $self->_create_SDFA;
 
     $self;
-}
-
-# Utilities
-
-# push, but without duplication
-sub _no_dup_push {
-    my $array = shift;
-ELEMENT_TO_ADD: for my $element_to_add (@_) {
-        for my $current_element (@$array) {
-            next ELEMENT_TO_ADD if $current_element == $element_to_add;
-        }
-        push( @$array, $element_to_add );
-    }
 }
 
 #
@@ -107,17 +167,24 @@ sub _show_symbol {
     if ( not $symbol->[INPUT_REACHABLE] ) { $text .= " !upreach"; }
     if ( not $symbol->[START_REACHABLE] ) { $text .= " !downreach"; }
     if ( $symbol->[NULLABLE] )            { $text .= " nullable"; }
+    if ( $symbol->[NULLING] )            { $text .= " nulling"; }
     $text .= "\n";
 }
 
 sub _show_symbols {
-    my $self    = shift;
-    my $symbols = $self->[SYMBOLS];
+    my $grammar    = shift;
+    my $symbols = $grammar->[SYMBOLS];
     my $text    = "";
     for my $symbol_ref (@$symbols) {
         $text .= _show_symbol($symbol_ref);
     }
     $text;
+}
+
+sub _show_nulling_symbols {
+    my $self    = shift;
+    my $symbols = $self->[SYMBOLS];
+    join( " ", sort map { $_->[NAME] } grep { $_->[NULLING] } @$symbols );
 }
 
 sub _show_nullable_symbols {
@@ -143,21 +210,23 @@ sub _show_start_reachable_symbols {
 sub _show_rule {
     my $rule = shift;
 
-    my $lhs     = $rule->[LHS];
-    my $rhs     = $rule->[RHS];
+    my ($lhs, $rhs, $rule_id, $input_reachable, $start_reachable, $nullable, $nulling, $useful)    
+        = @{$rule}[LHS, RHS, ID, INPUT_REACHABLE, START_REACHABLE, NULLABLE, NULLING, USEFUL];
     my $text    = "";
     my @comment = ();
 
-    $text .= $rule->[ID] . ": " . $lhs->[NAME] . " ->";
+    $text .= $rule_id . ": " . $lhs->[NAME] . " ->";
     if (@$rhs) {
         $text .= " " . join( " ", map { $_->[NAME] } @$rhs );
     }
     else {
         push( @comment, "empty" );
     }
-    if ( not $rule->[INPUT_REACHABLE] ) { push( @comment, "!upreach" ); }
-    if ( not $rule->[START_REACHABLE] ) { push( @comment, "!downreach" ); }
-    if ( $rule->[NULLABLE] )            { push( @comment, "nullable" ); }
+    if ( not $input_reachable ) { push( @comment, "!upreach" ); }
+    if ( not $start_reachable ) { push( @comment, "!downreach" ); }
+    if ( $nullable )            { push( @comment, "nullable" ); }
+    if ( $nulling )             { push( @comment, "nulling" ); }
+    if ( not $useful )          { push( @comment, "!useful" ); }
     if (@comment) {
         $text .= " " . join( " ", "/*", @comment, "*/" );
     }
@@ -197,11 +266,11 @@ sub _show_NFA_state {
     my $state = shift;
     my ( $name, $item, $transition ) = @{$state}[ NAME, ITEM, TRANSITION ];
     my $text .= $name . ": " . _show_item($item) . "\n";
-    for my $symbol_name ( keys %$transition ) {
+    while (my ($symbol_name, $transitions) = each %$transition ) {
         $text .= " "
             . ( $symbol_name eq "" ? "empty" : "<" . $symbol_name . ">" )
             . " => "
-            . join( " ", map { $_->[NAME] } @{ $transition->{$symbol_name} } )
+            . join( " ", map { $_->[NAME] } @$transitions )
             . "\n";
     }
     $text;
@@ -246,7 +315,7 @@ sub _show_SDFA {
     $text;
 }
 
-=for Implementation:
+=begin Implementation
 
 Symbol keys are names, with internal symbols beginning with a
 underscore.  For the most part we use the raw names, but we need
@@ -254,13 +323,17 @@ to avoid conflict between internal names and user defined names.
 To do this, we prepend another underscore to the name of any user
 symbol which begins with an underscore.
 
+Therefore, all keys not ending in an underscore, or ending with "__"
+are available for user-defined symbols.  All those symbols ending with
+one underscore, but not two, are reserved for internal uses
+
+=end Implementation
+
 =cut
 
-# Thus all keys not starting with an underscore, or starting with "__"
-# are for user-defined symbols.  All others are internal.
 sub _canonical_name {
     my $name = shift;
-    $name =~ /^_/ ? "_" . $name : $name;
+    $name =~ /]$/ ? $name . "_" : $name;
 }
 
 sub _add_terminal {
@@ -283,8 +356,8 @@ sub _add_terminal {
         croak("attempt to redefine symbol $name as a terminal");
     }
     my $new_symbol = [];
-    @{$new_symbol}[ID, NAME, LHS, RHS, NULLABLE, START_REACHABLE, INPUT_REACHABLE, REGEX] = (
-        $symbol_count, $name, [], [], 0, undef, 1, $regex
+    @{$new_symbol}[ID, NAME, LHS, RHS, NULLABLE, START_REACHABLE, INPUT_REACHABLE, NULLING, REGEX] = (
+        $symbol_count, $name, [], [], 0, undef, 1, 0, $regex
     );
     push( @$symbols, $new_symbol );
     weaken( $symbol->{$name} = $new_symbol );
@@ -296,11 +369,10 @@ sub _assign_symbol {
     my ( $symbol, $symbols ) = @{$self}[ SYMBOL_HASH, SYMBOLS ];
 
     my $symbol_count = @$symbols;
-    $name = _canonical_name($name);
     my $ret = $symbol->{$name};
     if ( not defined $ret ) {
-        @{$ret}[ID, NAME, LHS, RHS, NULLABLE, START_REACHABLE, INPUT_REACHABLE, REGEX] = (
-            $symbol_count, $name, [], [], undef, undef, undef, undef
+        @{$ret}[ID, NAME, LHS, RHS] = (
+            $symbol_count, $name, [], []
         );
         push( @$symbols, $ret );
         weaken( $symbol->{$name} = $ret );
@@ -308,44 +380,63 @@ sub _assign_symbol {
     $ret;
 }
 
-sub _add_rule {
+sub _assign_user_symbol {
+    my $self = shift;
+    my $name = shift;
+    $self->_assign_symbol(_canonical_name($name));
+}
+
+sub _add_user_rule {
     my $self      = shift;
     my $lhs_name  = shift;
     my $rhs_names = shift;
 
-    my $rules      = $self->[RULES];
-    my $rule_count = @$rules;
-    my $lhs        = $self->_assign_symbol($lhs_name);
-    my @rhs        = ();
-    for my $name (@$rhs_names) {
-        push( @rhs, $self->_assign_symbol($name) );
-    }
-    my $new_rule = [];
-    @{$new_rule}[ID, NAME, LHS, RHS, NULLABLE, START_REACHABLE, INPUT_REACHABLE] = (
-        $rule_count, "rule $rule_count", $lhs, [@rhs],
-            ( ( 0 == scalar @rhs ) ? 1 : undef ), undef,  undef
+    $self->_add_rule(
+        $self->_assign_symbol(_canonical_name($lhs_name)),
+        [ map { $self->_assign_symbol(_canonical_name($_)); } @$rhs_names ]
     );
+}
+
+sub _add_rule {
+    my $self      = shift;
+    my $lhs       = shift;
+    my $rhs       = shift;
+
+    my ($rule, $rules) = @{$self}[RULE_HASH, RULES];
+    my $rule_count = @$rules;
+    my $new_rule = [];
+    my $nulling = !@$rhs ? 1 : undef;
+    @{$new_rule}[ID, NAME, LHS, RHS, NULLABLE, START_REACHABLE, INPUT_REACHABLE, NULLING] = (
+        $rule_count, "rule $rule_count", $lhs, $rhs,
+            $nulling, undef,  $nulling, $nulling
+    );
+
+    # Don't allow the same rule twice
+    my $rule_key = join(",", map { $_->[ID] } ($lhs, @$rhs));
+    croak("Duplicate rule:" . show_rule($new_rule)) if $rule->{$rule_key};
+    $rule->{$rule_key} = $new_rule;
+
     push( @$rules, $new_rule );
     {
         my $lhs_rules = $lhs->[LHS];
         weaken( $lhs_rules->[ scalar @$lhs_rules ] = $new_rule );
     }
-    if ( 0 == scalar @rhs ) {
+    if ( $nulling ) {
         @{$lhs}[NULLABLE, INPUT_REACHABLE] = (1, 1);
-        @{$new_rule}[NULLABLE, INPUT_REACHABLE] = (1, 1);
-    }
-    else {
-        my $rhs_symbols = [ $rhs[0] ];
-        _no_dup_push( $rhs_symbols, @rhs[ 1 .. $#rhs ] ) if $#rhs > 0;
-        for my $symbol_ref (@$rhs_symbols) {
+    } else {
+        my $last_ref = [];
+        SYMBOL: for my $symbol_ref (sort @$rhs) {
+            next SYMBOL if $symbol_ref == $last_ref;
             my $rhs_rules = $symbol_ref->[RHS];
             weaken( $rhs_rules->[ scalar @$rhs_rules ] = $new_rule );
+            $last_ref = $symbol_ref;
         }
     }
+    $new_rule;
 }
 
 # add one or more rules
-sub _add_rules {
+sub _add_user_rules {
     my $self  = shift;
     my $rules = shift;
 
@@ -363,7 +454,7 @@ rule: for my $rule (@$rules) {
             # fall through if not a terminal definition
         }
 
-        $self->_add_rule(
+        $self->_add_user_rule(
             $rule->[0],
             (   $#$rule > 0
                 ? [ @{$rule}[ 1 .. $#$rule ] ]
@@ -407,10 +498,10 @@ sub _start_reachable {
     my $symbol_work_set = [$start];
     my $rule_work_set   = [];
 
-    my $change = 1;
+    my $work_to_do = 1;
 
-    while ($change) {
-        $change = 0;
+    while ($work_to_do) {
+        $work_to_do = 0;
 
     SYMBOL_PASS: while ( my $work_symbol = shift @$symbol_work_set ) {
             my $rules_produced = $work_symbol->[LHS];
@@ -420,7 +511,7 @@ sub _start_reachable {
 
               # assume nullable until we hit an unmarked or unreachable symbol
                 $rule->[START_REACHABLE] = 1;
-                $change++;
+                $work_to_do++;
                 push( @$rule_work_set, $rule );
 
             }
@@ -433,24 +524,21 @@ sub _start_reachable {
 
                 next RHS if defined $symbol->[START_REACHABLE];
                 $symbol->[START_REACHABLE] = 1;
-                $change++;
+                $work_to_do++;
 
-   # warn "Rule pass: adding symbol to work set: " . _show_symbol($lhs_symbol);
                 push( @$symbol_work_set, $symbol );
             }
 
         }    # RULE
 
-    }    # change loop
+    }    # work_to_do loop
 
 }
 
-# needs to be run after nullable
 sub _input_reachable {
     my $self = shift;
 
-    my $rules   = $self->[RULES];
-    my $symbols = $self->[SYMBOLS];
+    my ($rules, $symbols) = @{$self}[RULES, SYMBOLS];
 
     # if a symbol's nullability could not be determined, it was unreachable
     # all nullable symbols are reachable
@@ -466,15 +554,25 @@ sub _input_reachable {
         if ( $_->[NULLABLE] )             { $_->[INPUT_REACHABLE] = 1; }
     }
 
-    my $symbol_work_set =
-        [ grep { defined $_->[INPUT_REACHABLE] } @$symbols ];
-    my $rule_work_set = [ grep { defined $_->[INPUT_REACHABLE] } @$rules ];
-    my $change = 1;
+    my $symbol_work_set = [];
+    $#$symbol_work_set = @$symbols;
+    my $rule_work_set = [];
+    $#$rule_work_set = @$rules;
 
-    while ($change) {
-        $change = 0;
+    for my $symbol_id (grep { defined $symbols ->  [ $_ ] -> [INPUT_REACHABLE] } ( 0 .. $#$symbols ) ) {
+        $symbol_work_set -> [ $symbol_id ] = 1;
+    }
+    for my $rule_id (grep { defined $rules ->  [ $_ ] -> [INPUT_REACHABLE] } ( 0 .. $#$rules ) ) {
+        $rule_work_set -> [ $rule_id ] = 1;
+    }
+    my $work_to_do = 1;
 
-    SYMBOL_PASS: while ( my $work_symbol = shift @$symbol_work_set ) {
+    while ($work_to_do) {
+        $work_to_do = 0;
+
+    SYMBOL_PASS: for my $symbol_id (grep { $symbol_work_set->[ $_ ] } (0 .. $#$symbol_work_set) ) {
+            my $work_symbol = $symbols->[ $symbol_id ];
+            $symbol_work_set->[ $symbol_id ] = 0;
 
             my $rules_producing = $work_symbol->[RHS];
         PRODUCING_RULE: for my $rule (@$rules_producing) {
@@ -506,14 +604,16 @@ sub _input_reachable {
          # if this pass found the rule reachable or unreachable, mark the rule
                 if ( defined $rule_reachable ) {
                     $rule->[INPUT_REACHABLE] = $rule_reachable;
-                    $change++;
-                    _no_dup_push( $rule_work_set, $rule );
+                    $work_to_do++;
+                    $rule_work_set -> [ $rule->[ ID ] ] = 1;
                 }
 
             }
         }    # SYMBOL_PASS
 
-    RULE: while ( my $work_rule = shift @$rule_work_set ) {
+    RULE: for my $rule_id (grep { $rule_work_set->[ $_ ] } (0 .. $#$rule_work_set) ) {
+            my $work_rule = $rules->[ $rule_id ];
+            $rule_work_set->[ $rule_id ] = 0;
             my $lhs_symbol = $work_rule->[LHS];
 
             # no work to do -- this symbol already has reachability marked
@@ -543,32 +643,150 @@ sub _input_reachable {
      # if this pass found the symbol reachable or unreachable, mark the symbol
             if ( defined $symbol_reachable ) {
                 $lhs_symbol->[INPUT_REACHABLE] = $symbol_reachable;
-                $change++;
-
-                _no_dup_push( $symbol_work_set, $lhs_symbol );
+                $work_to_do++;
+                $symbol_work_set->[ $lhs_symbol->[ ID ] ] = 1;
             }
 
         }    # RULE
 
-    }    # change loop
+    }    # work_to_do loop
+
+}
+
+sub _nulling {
+    my $self = shift;
+
+    my ($rules, $symbols) = @{$self}[RULES, SYMBOLS];
+
+    my $symbol_work_set = [];
+    $#$symbol_work_set = @$symbols;
+    my $rule_work_set = [];
+    $#$rule_work_set = @$rules;
+
+    for my $rule_id (map { $_->[ ID ] } grep { $_->[NULLING] } @$rules )
+    {
+        $rule_work_set->[$rule_id] = 1;
+    }
+    my $work_to_do = 1;
+
+    while ($work_to_do) {
+        $work_to_do = 0;
+
+    RULE: for my $rule_id (grep { $rule_work_set->[ $_ ] } (0 .. $#$rule_work_set) ) {
+            my $work_rule = $rules->[$rule_id];
+            $rule_work_set->[$rule_id] = 0;
+            my $lhs_symbol = $work_rule->[LHS];
+
+            # no work to do -- this symbol already is marked one way or the other
+            next RULE if defined $lhs_symbol->[NULLING];
+
+          # assume nulling until we hit an unmarked or non-nulling symbol
+            my $symbol_nulling = 1;
+
+        # make sure that all rules for this lhs are nulling
+        LHS_RULE: for my $rule ( @{ $lhs_symbol->[LHS] } ) {
+
+                my $nulling = $rule->[NULLING];
+
+                # unmarked rule, change the assumption for the symbol to undef,
+                # but keep scanning for rule marked non-nulling,
+                # which will override everything else
+                if ( not defined $nulling ) {
+                    $symbol_nulling = undef;
+                    next LHS_RULE;
+                }
+
+                # any non-nulling rule means the LHS is not nulling
+                if ( $nulling == 0 ) {
+                    $symbol_nulling = 0;
+                    last LHS_RULE;
+                }
+            }
+
+            # if this pass found the symbol nulling or non-nulling
+            #  mark the symbol
+            if ( defined $symbol_nulling ) {
+                $lhs_symbol->[NULLING] = $symbol_nulling;
+                $work_to_do++;
+
+                $symbol_work_set->[ $lhs_symbol->[ID] ] = 1;
+            }
+
+        }    # RULE
+
+    SYMBOL_PASS: for my $symbol_id (grep { $symbol_work_set->[ $_ ] } (0 .. $#$symbol_work_set) ) {
+            my $work_symbol = $symbols->[ $symbol_id ];
+            $symbol_work_set->[ $symbol_id ] = 0;
+            my $lhs_symbol = $work_symbol->[LHS];
+
+            my $rules_producing = $work_symbol->[RHS];
+        PRODUCING_RULE: for my $rule (@$rules_producing) {
+
+                # no work to do -- this rule already has nulling marked
+                next PRODUCING_RULE if defined $rule->[NULLING];
+
+              # assume nulling until we hit an unmarked or unreachable symbol
+                my $rule_nulling = 1;
+
+                # are all symbols on the RHS of this rule bottom marked?
+            RHS_SYMBOL: for my $rhs_symbol ( @{ $rule->[RHS] } ) {
+                    my $nulling = $rhs_symbol->[ NULLING ];
+
+                    # unmarked rule, change the assumption for rule to undef,
+                    # but keep scanning for non-nulling
+                    # rule, which will override everything else
+                    if ( not defined $nulling ) {
+                        $rule_nulling = undef;
+                        next RHS_SYMBOL;
+                    }
+
+                    # any non-nulling RHS symbol means the rule is non-nulling
+                    if ( $nulling == 0 ) {
+                        $rule_nulling = 0;
+                        last RHS_SYMBOL;
+                    }
+                }
+
+         # if this pass found the rule reachable or unreachable, mark the rule
+                if ( defined $rule_nulling ) {
+                    $rule->[ NULLING ] = $rule_nulling;
+                    $work_to_do++;
+                    $rule_work_set -> [ $rule -> [ ID ] ] = 1;
+                }
+
+            }
+        }    # SYMBOL_PASS
+
+    }    # work_to_do loop
 
 }
 
 sub _nullable {
     my $self    = shift;
-    my $rules   = $self->[RULES];
-    my $symbols = $self->[SYMBOLS];
+    my ($rules, $symbols)   = @{$self}[RULES, SYMBOLS];
 
-    my $change = 1;    # boolean to track if current pass has changed anything
-    my $symbol_work_set = [ grep { defined $_->[NULLABLE] } @$symbols ];
-    my $rule_work_set = [ grep { defined $_->[NULLABLE] } @{$rules} ];
+    my $work_to_do = 1;    # boolean to track if current pass has changed anything
 
-    while ($change) {
-        $change = 0;
+    my $symbol_work_set = [];
+    $#$symbol_work_set = @$symbols;
+    my $rule_work_set = [];
+    $#$rule_work_set = @$rules;
 
-    SYMBOL_PASS: while ( my $work_symbol = shift @$symbol_work_set ) {
+    for my $symbol_id (map { $_->[ ID ] }  grep { defined $_->[NULLABLE] } @$symbols ) {
+        $symbol_work_set->[ $symbol_id ] = 1;
+    }
+    for my $rule_id (map { $_->[ ID ] }  grep { defined $_->[NULLABLE] } @$rules ) {
+        $rule_work_set->[ $rule_id ] = 1;
+    }
 
-            my $rules_producing = $work_symbol->[RHS];
+    while ($work_to_do) {
+        $work_to_do = 0;
+
+    SYMBOL_PASS: for my $symbol_id (grep { $symbol_work_set->[ $_ ] } (0 .. $#$symbol_work_set) ) {
+        my $work_symbol = $symbols->[ $symbol_id ];
+        $symbol_work_set->[ $symbol_id ] = 0;
+        my $rules_producing = $work_symbol->[RHS];
+
         PRODUCING_RULE: for my $rule (@$rules_producing) {
 
              # assume nullable until we hit an unmarked or non-nullable symbol
@@ -598,14 +816,15 @@ sub _nullable {
                # if this pass found the rule nullable or not, so mark the rule
                 if ( defined $rule_nullable ) {
                     $rule->[NULLABLE] = $rule_nullable;
-                    $change++;
-                    _no_dup_push( $rule_work_set, $rule );
+                    $work_to_do++;
+                    $rule_work_set->[ $rule->[ ID ] ] = 1;
                 }
 
             }
         }    # SYMBOL_PASS
 
-    RULE: while ( my $work_rule = shift @$rule_work_set ) {
+    RULE: for my $rule_id (grep { $rule_work_set->[ $_ ] } (0 .. $#$rule_work_set) ) {
+            my $work_rule = $rules->[ $rule_id ];
             my $lhs_symbol = $work_rule->[LHS];
 
             # no work to do -- this symbol already has nullability marked
@@ -635,23 +854,22 @@ sub _nullable {
             # if this pass found the symbol nullable or not, mark the symbol
             if ( defined $symbol_nullable ) {
                 $lhs_symbol->[NULLABLE] = $symbol_nullable;
-                $change++;
-
-                _no_dup_push( $symbol_work_set, $lhs_symbol );
+                $work_to_do++;
+                $symbol_work_set->[ $lhs_symbol->[ID] ] = 1;
             }
 
         }    # RULE
 
-    }    # change loop
+    }    # work_to_do loop
 
-    $self->[NULLABLE_SYMBOLS] = [ grep { $_->[NULLABLE] } @$symbols ];
 }
 
 sub _create_NFA {
     my $self        = shift;
-    my $rules       = $self->[RULES];
-    my $symbol_hash = $self->[SYMBOL_HASH];
-    my $start       = $self->[START];
+    my ($rules, $symbols, $symbol_hash, $start, $academic)
+        = @{$self}[RULES, SYMBOLS, SYMBOL_HASH, START, ACADEMIC];
+
+    $self->[NULLABLE_SYMBOLS] = [ grep { $_->[NULLABLE] } @$symbols ];
 
     my $NFA = [];
     $self->[NFA] = $NFA;
@@ -660,19 +878,21 @@ sub _create_NFA {
     my @NFA_by_item;
 
     # create S0
-    push( @$NFA, [ $state_id++, "S0", undef, {} ] );
+    my $s0 = [];
+    @{$s0}[ID, NAME, TRANSITION] = ($state_id++, "S0", {});
+    push( @$NFA, $s0 );
 
     # create the other states
 RULE: for my $rule (@$rules) {
-        my ($start_reachable, $input_reachable) = @{$rule}[START_REACHABLE, INPUT_REACHABLE];
-        next RULE unless $start_reachable;
-        next RULE unless $input_reachable;
-        for my $position ( 0 .. scalar @{ $rule->[RHS] } ) {
-            my $new_state =
-                [ $state_id, "S" . $state_id, [ $rule, $position ], {} ];
+        my ($rule_id, $rhs, $useful) = @{$rule}[ID, RHS, USEFUL];
+        next RULE unless $academic or $useful;
+        for my $position ( 0 .. scalar @{ $rhs } ) {
+            my $new_state = [];
+            @{$new_state}[ID, NAME, ITEM, TRANSITION]
+                = ( $state_id, "S" . $state_id, [ $rule, $position ], {} );
             $state_id++;
             push( @$NFA, $new_state );
-            $NFA_by_item[ $rule->[ID] ][$position] = $new_state;
+            $NFA_by_item[ $rule_id ][$position] = $new_state;
         }    # position
     }    # rule
 
@@ -683,10 +903,12 @@ STATE: for my $state (@$NFA) {
        # transitions from state 0:
        # for every rule with the start symbol on its LHS, the item [ rule, 0 ]
         if ( not defined $item ) {
-            my $rules = $start->[LHS];
-            RULE: for my $start_rule (@$rules) {
-                my ($start_rule_id, $input_reachable) = @{$start_rule}[ID, INPUT_REACHABLE];
-                next RULE unless $input_reachable;
+            my @start_rules = @{$start->[LHS]};
+            my $start_alias = $start->[NULL_ALIAS];
+            push(@start_rules, @{$start_alias->[LHS]}) if defined $start_alias;
+            RULE: for my $start_rule (@start_rules) {
+                my ($start_rule_id, $useful) = @{$start_rule}[ID, USEFUL];
+                next RULE unless $useful;
                 push(
                     @{ $transition->{""} },
                     $NFA_by_item[$start_rule_id][0]
@@ -717,8 +939,8 @@ STATE: for my $state (@$NFA) {
       # in the RHS, via the empty symbol, to all states with X on the LHS and
       # position 0
         RULE: for my $predicted_rule ( @{ $next_symbol->[LHS] } ) {
-            my ($predicted_rule_id, $input_reachable) = @{$predicted_rule}[ID, INPUT_REACHABLE];
-            next RULE unless $input_reachable;
+            my ($predicted_rule_id, $useful) = @{$predicted_rule}[ID, USEFUL];
+            next RULE unless $useful;
             push(
                 @{ $transition->{""} },
                 $NFA_by_item[$predicted_rule_id][0]
@@ -736,9 +958,7 @@ STATE: for my $state (@$NFA) {
 sub _assign_SDFA_kernel_state {
     my $self          = shift;
     my $kernel_states = shift;
-    my $NFA_states    = $self->[NFA];
-    my $SDFA_by_name  = $self->[SDFA_BY_NAME];
-    my $SDFA          = $self->[SDFA];
+    my ($NFA_states, $SDFA_by_name, $SDFA) = @{$self}[NFA, SDFA_BY_NAME, SDFA];
 
     my $kernel_NFA_state_seen     = [];
     my $prediction_NFA_state_seen = [];
@@ -766,8 +986,9 @@ WORK_LIST: while (@$kernel_work_list) {
 
             my $to_states = $NFA_state->[TRANSITION]->{""};
 
-# First the empty transitions.  These will all be predictions, and need to go into the
-# work list for the prediction SDFA state
+            # First the empty transitions.  These will all be predictions,
+            # and need to go into the
+            # work list for the prediction SDFA state
             if ( defined $to_states ) {
                 push( @$prediction_work_list,
                     grep { not $prediction_NFA_state_seen->[ $_->[ID] ]++ }
@@ -789,8 +1010,19 @@ WORK_LIST: while (@$kernel_work_list) {
         $kernel_work_list = $next_work_list;
     }    # kernel WORK_LIST
 
-    my $NFA_ids =
-        [ grep { $kernel_NFA_state_seen->[$_] } ( 0 .. $#$NFA_states ) ];
+    my $NFA_ids = [];
+    NFA_ID: for (my $NFA_id = 0; $NFA_id <= $#$NFA_states; $NFA_id++) {
+        next NFA_ID unless $kernel_NFA_state_seen->[$NFA_id];
+        my $LR0_item = $NFA_states->[$NFA_id]->[ITEM];
+        my ($rule, $position) = @{$LR0_item}[RULE, POSITION];
+        my $rhs = $rule->[RHS];
+        if ($position < @$rhs) 
+        {
+            my $next_symbol = $rhs->[$position];
+            next NFA_ID if $next_symbol->[NULLING];
+        }
+        push(@$NFA_ids, $NFA_id);
+    }
     my $kernel_SDFA_name = join( ",", @$NFA_ids );
 
     $kernel_SDFA_state = $SDFA_by_name->{$kernel_SDFA_name};
@@ -829,9 +1061,19 @@ WORK_LIST: while (@$prediction_work_list) {
         $prediction_work_list = $next_work_list;
     }    # kernel WORK_LIST
 
-    $NFA_ids =
-        [ grep { $prediction_NFA_state_seen->[$_] }
-            ( 0 .. $#$NFA_states ) ];
+    $NFA_ids = [];
+    NFA_ID: for (my $NFA_id = 0; $NFA_id <= $#$NFA_states; $NFA_id++) {
+        next NFA_ID unless $prediction_NFA_state_seen->[$NFA_id];
+        my $LR0_item = $NFA_states->[$NFA_id]->[ITEM];
+        my ($rule, $position) = @{$LR0_item}[RULE, POSITION];
+        my $rhs = $rule->[RHS];
+        if ($position < @$rhs) 
+        {
+            my $next_symbol = $rhs->[$position];
+            next NFA_ID if $next_symbol->[NULLING];
+        }
+        push(@$NFA_ids, $NFA_id);
+    }
     my $prediction_SDFA_name = join( ",", @$NFA_ids );
 
     $prediction_SDFA_state = $SDFA_by_name->{$prediction_SDFA_name};
@@ -865,7 +1107,12 @@ sub _create_SDFA {
     # next SDFA state to compute transitions for
     my $next_state_id = 0;
 
-    $self->_assign_SDFA_kernel_state( $NFA_s0->[TRANSITION]->{""} );
+    my $initial_NFA_states = $NFA_s0->[TRANSITION]->{""};
+    if (not defined $initial_NFA_states) {
+        carp("Empty NFA, cannot create SDFA");
+        return;
+    }
+    $self->_assign_SDFA_kernel_state( $initial_NFA_states );
 
     while ( $next_state_id < scalar @$SDFA ) {
 
@@ -895,6 +1142,343 @@ sub _create_SDFA {
                 $self->_assign_SDFA_kernel_state($to_states);
         }
     }
+
+    # For the parse phase, pre-compute the list of NFA states with complete
+    # items
+    STATE: for my $state (@$SDFA) {
+        my $complete = [];
+        my $NFA_states = $state->[NFA_STATES];
+        for my $NFA_state (@$NFA_states) {
+            my $item = $NFA_state->[ITEM];
+            my ($rule, $position) = @{$item}[RULE, POSITION];
+            push(@$complete, $item) if $position >= @{$rule->[RHS]};
+        } # NFA_state
+        $state->[COMPLETE] = $complete;
+    } # STATE
+}
+
+sub _setup_academic_grammar {
+     my $self = shift;
+     my $rules = $self->[RULES];
+     # in an academic grammar, consider all rules useful
+     for my $rule (@$rules) {
+         $rule->[USEFUL] = 1;
+     }
+}
+
+# given a nullable symbol, create a nulling alias and make the first symbol non-nullable
+sub _alias_symbol {
+    my $self = shift;
+    my $nullable_symbol = shift;
+    my ( $symbol, $symbols ) = @{$self}[ SYMBOL_HASH, SYMBOLS ];
+    my ($start_reachable, $input_reachable, $name)
+        = @{$nullable_symbol}[START_REACHABLE, INPUT_REACHABLE, NAME];
+
+    # create the new, nulling symbol
+    my $symbol_count = @$symbols;
+    my $alias_name = $nullable_symbol->[NAME] . "[]";
+    my $alias = [];
+    @{$alias}[ID, NAME, LHS, RHS, START_REACHABLE, INPUT_REACHABLE, NULLABLE, NULLING]
+        = ($symbol_count, $alias_name, [], [], $start_reachable, $input_reachable, 1, 1);
+    push( @$symbols, $alias );
+    weaken( $symbol->{$alias_name} = $alias );
+
+    # turn the original symbol into a non-nullable with a reference to the new alias
+    @{$nullable_symbol}[NULLABLE, NULL_ALIAS] = (0, $alias);
+    $alias;
+}
+
+=begin Innovation:
+
+Factored Nihilist Normal Form is one of my innovations.   Aycock & Horspool's NNF,
+in the worst case, is exponential in the size of the base grammar, and not
+exactly pretty in the example they give.  I think realistic grammars are likely
+to have productions with many nullables on the right side -- for example, the
+right hand side of a production might have several uses of optional whitespace.
+Grammars with a lot of these production might seriously bloat in size in NNF.
+
+QNF breaks up productions with a more than a small number nullables on the RHS into
+"subproductions".  These are "reassembled" invisibly in evaluating the parse, so
+that the semantics of the original grammar are not affected.
+
+=end Innovation:
+
+=cut
+
+# rewrite as Factored Nihilist Normal Form
+sub _rewrite_as_QNF {
+    my $self = shift;
+    my ($rules, $symbols, $start) = @{$self}[RULES, SYMBOLS, START];
+
+    # add null aliases to symbols which need them
+    my $symbol_count = @$symbols;
+    SYMBOL: for (my $ix=0; $ix < $symbol_count; $ix++) {
+        my $symbol = $symbols->[$ix];
+        my ($input_reachable, $start_reachable, $nulling, $nullable, $null_alias)
+            = @{$symbol}[INPUT_REACHABLE, START_REACHABLE, NULLING, NULLABLE, NULL_ALIAS];
+
+        # aliases are added at the end -- stop the iteration once we reach them
+        last SYMBOL if $null_alias;
+
+        #  we don't both with unreachable symbols
+        next SYMBOL unless $input_reachable;
+        next SYMBOL unless $start_reachable;
+
+        # look for proper nullable symbols
+        next SYMBOL if $nulling;
+        next SYMBOL unless $nullable;
+
+        $self->_alias_symbol($symbol);
+    }
+
+    # mark, or create as needed, the useful rules
+
+    # get the initial rule count -- new rules will be added and we don't iterate
+    # over them
+    my $rule_count = @$rules;
+    RULE: for (my $rule_id = 0; $rule_id < $rule_count; $rule_id++) {
+        my $rule = $rules->[$rule_id];
+        my ($lhs, $rhs, $input_reachable, $start_reachable, $nulling, $nullable)
+            = @{$rule}[LHS, RHS, INPUT_REACHABLE, START_REACHABLE, NULLING, NULLABLE];
+
+        # unreachable and nulling rules are useless
+        next RULE unless $input_reachable;
+        next RULE unless $start_reachable;
+        next RULE if $nulling;
+
+        # Keep track of whether the lhs side of any new rules we create should
+        # be nullable.  If any symbol is a production is not nullable, the lhs
+        # is not nullable.  If the original production is nullable, all symbols
+        # are nullable, all subproductions will be, and all new lhs's should be.
+        # But even if the original production is not nullable, some of the
+        # subproductions may be.  These will always be in a series starting from
+        # the far right.  Once the first non-nullable symbol is encountered,
+        # that subproduction is non-nullable, that lhs will be, and since that
+        # new lhs is on the far rhs of subsequent (going left) subproductions,
+        # all subsequent subproductions and their lhs's will be non-nullable.
+        #
+        # Finally, in one more complication, remember that the nullable flag
+        # was unset if a nullable was aliased.  So we need to check both the
+        # NULL_ALIAS (for proper nullables) and the NULLING flags to see if 
+
+        my $last_nonnullable = -1;
+        my $proper_nullables = [];
+        RHS_SYMBOL: for (my $ix = 0; $ix <= $#$rhs; $ix++) {
+            my $symbol = $rhs->[$ix];
+            my ($null_alias, $nulling) = @{$symbol}[NULL_ALIAS, NULLING];
+            next RHS_SYMBOL if $nulling;
+            if ($null_alias) {
+                push(@$proper_nullables, $ix);
+                next RHS_SYMBOL;
+            }
+            $last_nonnullable = $ix;
+        }
+
+        # we found no properly nullable symbols in the RHS, so this rule is useful without
+        # any changes
+        if (@$proper_nullables == 0) {
+            $rule->[USEFUL] = 1;
+            next RULE;
+        }
+
+        # The left hand side of the first subproduction is the lhs of the original rule
+        my $subp_lhs = $lhs;
+        my $subp_start = 0;
+
+        # break this production into subproductions with a fixed number of proper nullables,
+        # then factor out the proper nullables into a set of productions
+        # with only non-nullable and nulling symbols.
+        SUBPRODUCTION: for (;;) {
+
+            my $subp_end;
+            my $proper_nullable0 = $proper_nullables->[0];
+            my $subp_proper_nullable0 = $proper_nullable0 - $subp_start;
+            my $proper_nullable1;
+            my $subp_proper_nullable1;
+            my $subp_factor0_rhs;
+            my $next_subp_lhs;
+
+            SETUP_SUBPRODUCTION: {
+
+                if (@$proper_nullables == 1) {
+                    $subp_end = $#$rhs;
+                    $subp_factor0_rhs = [ @{$rhs}[$subp_start .. $subp_end] ];
+                    $proper_nullables = [];
+                    last SETUP_SUBPRODUCTION;
+                }
+
+                $proper_nullable1 = $proper_nullables->[1];
+                $subp_proper_nullable1 = $proper_nullable1 - $subp_start;
+
+                if (@$proper_nullables == 2) {
+                    $subp_end = $#$rhs;
+                    $subp_factor0_rhs = [ @{$rhs}[$subp_start .. $subp_end] ];
+                    $proper_nullables = [];
+                    last SETUP_SUBPRODUCTION;
+                }
+
+                # the following subproduction is non-nullable
+                if ($proper_nullable1 < $last_nonnullable) {
+                    $subp_end = $proper_nullable1;
+                    spice(@$proper_nullables, 0, 2);
+                    $next_subp_lhs = $self->_assign_symbol(
+                        $lhs->[NAME] .  "[" . $rule_id . ":" . ($subp_end + 1) . "]");
+                    @{$next_subp_lhs}[NULLABLE, START_REACHABLE, INPUT_REACHABLE, NULLING] =
+                        (0, 1, 1, 0);
+                    $subp_factor0_rhs = [ @{$rhs}[$subp_start .. $subp_end], $next_subp_lhs ];
+                }
+
+                # if we got this far we have 3 or more proper nullables, and the next
+                # subproduction is nullable
+                $subp_end = $proper_nullable1 - 1;
+                shift @$proper_nullables;
+                $next_subp_lhs = $self->_assign_symbol(
+                    $lhs->[NAME] .  "[" . $rule_id . ":" . ($subp_end + 1) . "]");
+                @{$next_subp_lhs}[NULLABLE, START_REACHABLE, INPUT_REACHABLE, NULLING] =
+                    (1, 1, 1, 0);
+                $self->_alias_symbol($next_subp_lhs);
+                $subp_factor0_rhs = [ @{$rhs}[$subp_start .. $subp_end], $next_subp_lhs ];
+
+            } # SETUP_SUBPRODUCTION
+
+            my $factored_rhs = [ $subp_factor0_rhs ];
+
+            FACTOR: {
+                
+                # We have additional factored productions if
+                # 1) there is more than one proper nullable;
+                # 2) there's only one, but replacing it with a nulling symbol will
+                #    not make the entire production nulling
+                #
+                # Here and below we use the nullable flag to establish whether a
+                # factored subproduction rhs would be nulling, on this principle:
+                #
+                # If substituting nulling symbols for all proper nullables does not
+                # make a production nulling, then it is not nullable, and vice versa.
+
+                last FACTOR if $nullable and not defined $proper_nullable1;
+
+                # The second factored production, with a nulling symbol substituted for
+                # the first proper nullable.
+                # and nulling it would make this factored subproduction nulling, don't
+                # bother.
+                $factored_rhs->[1] = [ @$subp_factor0_rhs ];
+                $factored_rhs->[1]->[ $subp_proper_nullable0 ]
+                    = $subp_factor0_rhs->[ $subp_proper_nullable0 ]->[NULL_ALIAS];
+                
+                # The third factored production, with a nulling symbol replacing the
+                # second proper nullable.  Make sure there ARE two proper nullables.
+                last FACTOR unless defined $proper_nullable1;
+                $factored_rhs->[2] = [ @$subp_factor0_rhs ];
+                $factored_rhs->[2]->[ $subp_proper_nullable1 ]
+                    = $subp_factor0_rhs->[ $subp_proper_nullable1 ]->[NULL_ALIAS];
+
+                # The fourth and last factored production, with a nulling symbol replacing
+                # both proper nullables.  We don't include it if it results in a nulling
+                # production.
+                last FACTOR if $nullable;
+                $factored_rhs->[3] = [ @{$factored_rhs->[2]} ];
+                $factored_rhs->[3]->[ $subp_proper_nullable0 ]
+                    = $subp_factor0_rhs->[ $subp_proper_nullable0 ]->[NULL_ALIAS];
+
+            } # FACTOR
+
+            for my $factor_rhs (@$factored_rhs)
+            {
+                my $new_rule = $self->_add_rule($subp_lhs, $factor_rhs);
+                @{$new_rule}[USEFUL, START_REACHABLE, INPUT_REACHABLE, NULLABLE, NULLING]
+                    = (1, 1, 1, 0, 0);
+            }
+
+            # no more 
+            last SUBPRODUCTION unless $next_subp_lhs;
+            $subp_lhs = $next_subp_lhs;
+            $subp_start = $subp_end + 1;
+            $nullable = $subp_start > $last_nonnullable;
+
+        } # SUBPRODUCTION
+
+    } # RULE
+
+    my $old_start = $start;
+    my $input_reachable = $old_start->[INPUT_REACHABLE];
+    $start = $self->_assign_symbol($start->[NAME] . "[']");
+    my $new_start_rule = $self->_add_rule($start, [ $old_start ]);
+    @{$new_start_rule}[INPUT_REACHABLE, START_REACHABLE, USEFUL] = ($input_reachable, 1, 1);
+    @{$start}[INPUT_REACHABLE, START_REACHABLE] = ($input_reachable, 1);
+    if ($old_start->[NULL_ALIAS]) {
+        $self->_alias_symbol($start);
+        my $new_start_rule = $self->_add_rule($start->[NULL_ALIAS], [ ]);
+        # Nulling rules are not considered useful, but the top-level one is an exception
+        @{$new_start_rule}[INPUT_REACHABLE, START_REACHABLE, USEFUL] = ($input_reachable, 1, 1);
+    }
+    $self->[START] = $start;
+}
+
+package Parse::Marpa::Parse;
+
+# ELEMENTS of the PARSE STRUCTURE
+use constant CURRENT_EARLEME  => 0;    # number of the last completed earleme
+use constant EARLEY_SET       => 1;    # the array of the Earley sets
+
+# ELEMENTS of the EARLEY ITEM STRUCTURE
+# Note that these are Earley items as modified by Aycock & Horspool, with SDFA states instead of 
+# LR(0) items.
+use constant STATE            => 0;    # the SDFA state
+use constant PARENT           => 1;    # the number of the Earley set with the parent item
+
+sub new {
+    my $class = shift;
+    my $grammar = shift;
+    my $self = [];
+    croak("No grammar supplied for new $class") unless defined $grammar;
+
+    my $SDFA = $grammar->[Parse::Marpa::SDFA];
+    my $set0 = {};
+    # A bit of a cheat here: I rely on an assumption about the numbering
+    # of the SDFA states -- specifically, that state 0 contains the
+    # start productions.
+    my $SDFA0 = $SDFA->[0];
+    @{$set0->{"0,0"}}[STATE, PARENT] = ($SDFA0, 0);
+    my $resetting_state = $SDFA0->[Parse::Marpa::TRANSITION]->{""};
+    if (defined $resetting_state) {
+        @{$set0->{$resetting_state->[ Parse::Marpa::ID ] . ",0"}}[STATE, PARENT]
+            = ($resetting_state, 0);
+    }
+    @{$self}[CURRENT_EARLEME, EARLEY_SET] = (0, [$set0]);
+
+    bless $self, $class;
+}
+
+sub _show_earley_item {
+    my $earley_item = shift;
+    my $text = $earley_item->[STATE]->[ Parse::Marpa::ID ] . ", " . $earley_item->[PARENT] . ":";
+    for (my $ix = 2; $ix <= $#$earley_item; $ix++) {
+        $text .= " [ " . join(", ", $earley_item->[$ix]) . " ]"
+    }
+    $text .= "\n";
+}
+
+sub _show_earley_set {
+    my $earley_set = shift;
+    my $text = "";
+    for my $earley_item (sort {
+            $a->[STATE] <=> $b->[STATE] or $a->[PARENT] <=> $b->[PARENT]
+        } values %$earley_set) {
+        $text .= _show_earley_item($earley_item);
+    }
+    $text;
+}
+
+sub _show_earley_sets {
+    my $parse = shift;
+    my $earley_set = $parse->[EARLEY_SET];
+    my $text;
+    for (my $earley_set_ix = 0; $earley_set_ix <= $#$earley_set; $earley_set_ix++) {
+        $text .= "Earley Set " . $earley_set_ix . "\n";
+        $text .= _show_earley_set($earley_set->[$earley_set_ix]);
+    }
+    $text;
 }
 
 =head1 NAME
@@ -903,7 +1487,7 @@ Parse::Marpa - Earley's Algorithm, with improvements
 
 =head1 VERSION
 
-Version 0.1.1
+Version 0.1_2
 
 =cut
 
@@ -916,16 +1500,16 @@ Earley's general parsing algorithm, with LR(0) precomputation
     my $foo = Parse::Marpa->new();
     ...
 
-=head1 EXPORT
-
-A list of functions that can be exported.  You can delete this section
-if you don't export anything, such as for a purely object-oriented module.
-
-=head1 FUNCTIONS
+=head1 METHODS
 
 =head1 AUTHOR
 
 Jeffrey Kegler
+
+=head1 DEPENDENCIES
+
+According to C<perlvar>, Marpa is compatible with Perl 5.6.0.
+As of this writing, it's only been tested on Perl 5.8.8.
 
 =head1 BUGS
 
@@ -941,7 +1525,104 @@ You can find documentation for this module with the perldoc command.
 
     perldoc Parse::Marpa
 
-=head1 ACKNOWLEDGEMENTS
+=head1 THE ALGORITHM
+
+Marpa is essentially the parser described in John Aycock and R. Nigel Horspool's "Practical
+Earley Parsing", I<The Computer Journal>, Vol. 45, No. 6, 2002, pp. 620-630.  This combined
+LR(0) with Jay Earley's parsing algorithm.  I've made some improvements.
+
+First, Aycock and Horspool's algorithm rewrites the original grammar into NNF (Nihilist Normal Form).
+Earley's original algorithms had serious issues with nullable symbols and productions,
+and NNF fixes most of them.
+(A nullable symbol or production is one which could eventually parse out to the
+empty string.)
+Importantly, NNF also allows complete and easy mapping of the semantics
+of the original grammar to its NNF rewrite,
+so that NNF and the whole rewrite process can be made invisible to the user.
+
+My problem with NNF grammar is that the rewritten grammar is exponentially larger
+than the original in the theoretical worst case,
+and I just don't like exponential explosion,
+even as a theoretical possibility in pre-processing.
+Furthermore, I think that in some cases likely to arise in practice
+(Perl 6 "rules" with significant whitespace, for example),
+the size explosion, while not exponential,
+is linear with a very large multiplier.
+
+My solution was is Quantum Nihilist Form (QNF).
+This is NNF,
+but with the further restriction that no more than two nullable symbols may appear
+in any production.
+The shortened QNF production maps back to the original grammar,
+so that like NNF, the QNF rewrite can be made invisible to the user.
+With QNF, the theoretical worst behavior is linear,
+and in those difficult cases likely to arise in practice the multiplier is smaller.
+
+Second, I've extended the scanning step of Earley's algorithm,
+and introduced the "earleme" (named after Jay Earley).
+Previous implementations
+required the Earley grammar's input to be broken up into tokens, presumably by lexical analysis of
+the input using DFA's (deterministic finite automata, which are the equivalent of regular expressions).
+Requiring that the first level of analysis
+be performed by a DFA hobbles a general parser like Earley's.
+
+Marpa loosens the restriction, by allowing
+the scanning phase of Earley's algorithm to add items not just
+to the current Earley set and the next one, but to any later Earley set.
+Since items can be scanned onto several different Earley sets,
+so that the input to the Earley scanning step no longer has to be deterministic.
+Several alternative scans of the input can be put into the Earley sets, and the power of
+Earley's algorithm harnessed to deal with the indeterminism.
+
+In the new Marpa scanner,
+each scanned item has a length in "earlemes", call it C<l>.
+If the current Earley set is C<i>, a newly scanned Earley item is added to Earley set C<l+i>.
+The B<earleme> is the distance measured in Earley sets, and an implementation can sync earlemes up
+with any measure that's convenient.
+For example, the distance in earlemes may be the length of a string,
+as measured either in ASCII characters,
+or UNICODE graphemes.
+Another implementation may define the earleme length as the distance in a token stream, measured in tokens.
+
+=head1 WHY CALL IT MARPA? or BLATANT PLUG
+
+This translator is named after the great Tibetan translator, Marpa.
+At Marpa's time (the 11th century A.D.),
+Indian Buddhism was at its height,
+and a generation of Tibetans translators were devoting themselves to
+obtaining its texts and translating them from Sanskrit.
+Marpa was their major figure,
+so much so that today he is known as Marpa Lotsawa,
+or "Marpa the Translator".
+
+In those days, the job of translator was not for the indoors type.
+"Translation" required studying with the Buddhist teachers who had the
+texts and could explain them.
+That meant travel from Tibet to India.
+From Marpa's home in the Lhotrak Valley, the easiest way to reach India was
+15,000 foot Khala Chela Pass.
+Even to reach Khala Chela's relatively easy, three-mile high summit,
+Marpa had to cross two hundred
+miles of Tibet, most of them difficult and all of them lawless.
+From Khala Chela downhill to the great Buddhist
+center of Nalanda University was four hundred miles, but Tibetans would stop
+for years or months in Nepal, getting used to the low altitudes.
+
+Tibetans had learned the hard way
+not to go straight to Nalanda.
+Almost no germs live in the cold, thin air of Tibet,
+and Tibetans arriving directly in the lowlands had no immunities.
+Whole expeditions had died from disease within weeks of arrival on the hot
+plains.
+
+Marpa plays a significant role in my novel,
+B<The God Proof>, which centers around
+Kurt GE<ouml>del's
+proof of God's existence.
+Yes, I<that> Kurt GE<ouml>del, and yes, he really did worked out a God Proof
+(it's in his I<Collected Works>, Vol. 3, pp. 403-404).
+B<The God Proof> is available at Amazon:
+L<http://www.amazon.com/God-Proof-Jeffrey-Kegler/dp/1434807355>.
 
 =head1 COPYRIGHT & LICENSE
 

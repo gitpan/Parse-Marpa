@@ -1,4 +1,4 @@
-#!perl -T
+#!perl
 
 # the example grammar in Aycock/Horspool paper
 
@@ -22,7 +22,6 @@ my $g = new Parse::Marpa(
         [ qw/A E/ ],
         [ qw/E/ ],
     ],
-    augment => 0,
 );
 
 # assume g is a strong reference
