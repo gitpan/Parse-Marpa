@@ -1,5 +1,7 @@
 package Parse::Marpa::Test;
 
+use warnings;
+use strict;;
 use base qw( Exporter );
 
 our @EXPORT_OK = qw( normalize_SDFA );
@@ -11,18 +13,25 @@ our @EXPORT_OK = qw( normalize_SDFA );
 # the same state numbering, are equivalent.
 sub normalize_SDFA {
     my $SDFA_description = shift;
+    my %by_state;
+    my $state_key;
     my $ret;
+
     SDFA_LINE: for my $SDFA_line (split(/\n/, $SDFA_description)) {
         if ($SDFA_line =~ s/( => S)\d+ \(([\d,]+)\)$/$1$2/) {
-            $ret .= $SDFA_line . "\n";
+	    $by_state{$state_key} .= $SDFA_line . "\n";
 	    next SDFA_LINE;
         }
         if ($SDFA_line =~ / ::= /) {
-            $ret .= $SDFA_line . "\n";
+	    $by_state{$state_key} .= $SDFA_line . "\n";
 	    next SDFA_LINE;
         }
 	$SDFA_line =~ s/^(S)\d+: ([\d,]+)$/$1$2/;
-	$ret .= $SDFA_line . "\n";
+	$state_key = $SDFA_line;
+	$by_state{$state_key} = $SDFA_line . "\n";
+    }
+    for $state_key (sort keys %by_state) {
+        $ret .= join("\n", $by_state{$state_key});
     }
     $ret;
 }
