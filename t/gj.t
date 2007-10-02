@@ -2,6 +2,7 @@
 
 use strict;
 use warnings;
+use Parse::Marpa::Test qw( normalize_SDFA );
 
 use Test::More tests => 9;
 
@@ -94,7 +95,8 @@ S16: T ::= ( E . )
 S17: T ::= ( E ) .
 EOS
 
-is($g->_show_SDFA(), <<'EOS', "Grune/Jacobs SDFA");
+is(normalize_SDFA($g->_show_SDFA()),
+    normalize_SDFA(<<'EOS'), "Grune/Jacobs SDFA");
 S0: 1
 S' ::= . S $
  empty => S1 (4,6,10,12,14)

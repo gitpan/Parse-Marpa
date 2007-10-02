@@ -2,7 +2,7 @@ package Parse::Marpa;
 
 use warnings;
 use strict;
-use version; our $VERSION = qv('0.1_4');
+use version; our $VERSION = qv('0.1_5');
 
 use 5.006000;
 

@@ -5,6 +5,7 @@
 
 use strict;
 use warnings;
+use Parse::Marpa::Test qw( normalize_SDFA );
 
 use Test::More tests => 9;
 
@@ -74,7 +75,8 @@ S11: A ::= E .
 S12: E ::= .
 EOS
 
-is( $g->_show_SDFA(), <<'EOS', "Aycock/Horspool SDFA" );
+is( normalize_SDFA($g->_show_SDFA()),
+    normalize_SDFA(<<'EOS'), "Aycock/Horspool SDFA" );
 S0: 1,2
 S' ::= . S
 S' ::= S .
