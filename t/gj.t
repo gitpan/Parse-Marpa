@@ -31,7 +31,7 @@ my $g = new Parse::Marpa(
     academic => 1,
 );
 
-is($g->_show_rules(), <<'EOS', "Grune/Jacobs Rules");
+is($g->show_rules(), <<'EOS', "Grune/Jacobs Rules");
 0: S' -> S $
 1: S -> E
 2: E -> E - T
@@ -40,7 +40,7 @@ is($g->_show_rules(), <<'EOS', "Grune/Jacobs Rules");
 5: T -> ( E )
 EOS
 
-is($g->_show_symbols(), <<'EOS', "Grune/Jacobs Symbols");
+is($g->show_symbols(), <<'EOS', "Grune/Jacobs Symbols");
 0: n, lhs=[], rhs=[4]
 1: $, lhs=[], rhs=[0]
 2: ), lhs=[], rhs=[5]
@@ -52,11 +52,11 @@ is($g->_show_symbols(), <<'EOS', "Grune/Jacobs Symbols");
 8: T, lhs=[4 5], rhs=[2 3]
 EOS
 
-is($g->_show_nullable_symbols(), "", "Grune/Jacobs Nullable Symbols");
-is($g->_show_nulling_symbols(), "", "Grune/Jacobs Nulling Symbols");
-is($g->_show_input_reachable_symbols(), '$ ( ) - E S S\' T n', "Grune/Jacobs Input Reachable Symbols");
-is($g->_show_start_reachable_symbols(), '$ ( ) - E S S\' T n', "Grune/Jacobs Start Reachable Symbols");
-is($g->_show_NFA(), <<'EOS', "Grune/Jacobs NFA");
+is($g->show_nullable_symbols(), "", "Grune/Jacobs Nullable Symbols");
+is($g->show_nulling_symbols(), "", "Grune/Jacobs Nulling Symbols");
+is($g->show_input_reachable_symbols(), '$ ( ) - E S S\' T n', "Grune/Jacobs Input Reachable Symbols");
+is($g->show_start_reachable_symbols(), '$ ( ) - E S S\' T n', "Grune/Jacobs Start Reachable Symbols");
+is($g->show_NFA(), <<'EOS', "Grune/Jacobs NFA");
 S0: /* empty */
  empty => S1
 S1: S' ::= . S $
@@ -95,7 +95,7 @@ S16: T ::= ( E . )
 S17: T ::= ( E ) .
 EOS
 
-is(normalize_SDFA($g->_show_SDFA()),
+is(normalize_SDFA($g->show_SDFA()),
     normalize_SDFA(<<'EOS'), "Grune/Jacobs SDFA");
 S0: 1
 S' ::= . S $

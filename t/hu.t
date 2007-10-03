@@ -26,7 +26,7 @@ my $g = new Parse::Marpa(
     academic => 1,
 );
 
-is($g->_show_rules(), <<'EOS', "Hopcroft/Ullman Rules");
+is($g->show_rules(), <<'EOS', "Hopcroft/Ullman Rules");
 0: S' -> S c
 1: S -> S A
 2: S -> A
@@ -34,7 +34,7 @@ is($g->_show_rules(), <<'EOS', "Hopcroft/Ullman Rules");
 4: A -> a b
 EOS
 
-is($g->_show_symbols(), <<'EOS', "Hopcroft/Ullman Symbols");
+is($g->show_symbols(), <<'EOS', "Hopcroft/Ullman Symbols");
 0: a, lhs=[], rhs=[3 4]
 1: b, lhs=[], rhs=[3 4]
 2: c, lhs=[], rhs=[0]
@@ -43,11 +43,11 @@ is($g->_show_symbols(), <<'EOS', "Hopcroft/Ullman Symbols");
 5: A, lhs=[3 4], rhs=[1 2]
 EOS
 
-is($g->_show_nullable_symbols(), "", "Hopcroft/Ullman Nullable Symbols");
-is($g->_show_nulling_symbols(), "", "Hopcroft/Ullman Nulling Symbols");
-is($g->_show_input_reachable_symbols(), 'A S S\' a b c', "Hopcroft/Ullman Input Reachable Symbols");
-is($g->_show_start_reachable_symbols(), 'A S S\' a b c', "Hopcroft/Ullman Start Reachable Symbols");
-is($g->_show_NFA(), <<'EOS', "Hopcroft/Ullman NFA");
+is($g->show_nullable_symbols(), "", "Hopcroft/Ullman Nullable Symbols");
+is($g->show_nulling_symbols(), "", "Hopcroft/Ullman Nulling Symbols");
+is($g->show_input_reachable_symbols(), 'A S S\' a b c', "Hopcroft/Ullman Input Reachable Symbols");
+is($g->show_start_reachable_symbols(), 'A S S\' a b c', "Hopcroft/Ullman Start Reachable Symbols");
+is($g->show_NFA(), <<'EOS', "Hopcroft/Ullman NFA");
 S0: /* empty */
  empty => S1
 S1: S' ::= . S c
@@ -82,7 +82,7 @@ S14: A ::= a . b
 S15: A ::= a b .
 EOS
 
-is(normalize_SDFA($g->_show_SDFA()),
+is(normalize_SDFA($g->show_SDFA()),
     normalize_SDFA(<<'EOS'), "Hopcroft/Ullman SDFA");
 S0: 1
 S' ::= . S c

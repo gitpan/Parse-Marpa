@@ -21,7 +21,7 @@ my $g = new Parse::Marpa(
     academic => 1,
 );
 
-is( $g->_show_rules(), <<'EOS', "Aycock/Horspool Rules" );
+is( $g->show_rules(), <<'EOS', "Aycock/Horspool Rules" );
 0: S' -> S /* nullable */
 1: S -> A A A A /* nullable */
 2: A -> a
@@ -29,7 +29,7 @@ is( $g->_show_rules(), <<'EOS', "Aycock/Horspool Rules" );
 4: E -> /* empty nullable nulling */
 EOS
 
-is( $g->_show_symbols(), <<'EOS', "Aycock/Horspool Symbols" );
+is( $g->show_symbols(), <<'EOS', "Aycock/Horspool Symbols" );
 0: a, lhs=[], rhs=[2]
 1: S', lhs=[0], rhs=[] nullable
 2: S, lhs=[1], rhs=[0] nullable
@@ -37,15 +37,15 @@ is( $g->_show_symbols(), <<'EOS', "Aycock/Horspool Symbols" );
 4: E, lhs=[4], rhs=[3] nullable nulling
 EOS
 
-is( $g->_show_nullable_symbols(),
+is( $g->show_nullable_symbols(),
     "A E S S'", "Aycock/Horspool Nullable Symbols" );
-is( $g->_show_nulling_symbols(),
+is( $g->show_nulling_symbols(),
     "E", "Aycock/Horspool Nulling Symbols" );
-is( $g->_show_input_reachable_symbols(),
+is( $g->show_input_reachable_symbols(),
     "A E S S' a", "Aycock/Horspool Input Reachable Symbols" );
-is( $g->_show_start_reachable_symbols(),
+is( $g->show_start_reachable_symbols(),
     "A E S S' a", "Aycock/Horspool Start Reachable Symbols" );
-is( $g->_show_NFA(), <<'EOS', "Aycock/Horspool NFA" );
+is( $g->show_NFA(), <<'EOS', "Aycock/Horspool NFA" );
 S0: /* empty */
  empty => S1
 S1: S' ::= . S
@@ -75,7 +75,7 @@ S11: A ::= E .
 S12: E ::= .
 EOS
 
-is( normalize_SDFA($g->_show_SDFA()),
+is( normalize_SDFA($g->show_SDFA()),
     normalize_SDFA(<<'EOS'), "Aycock/Horspool SDFA" );
 S0: 1,2
 S' ::= . S

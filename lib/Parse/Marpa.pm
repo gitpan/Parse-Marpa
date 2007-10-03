@@ -2,7 +2,7 @@ package Parse::Marpa;
 
 use warnings;
 use strict;
-use version; our $VERSION = qv('0.1_6');
+use version; our $VERSION = qv('0.1_7');
 
 use 5.006000;
 
@@ -158,7 +158,7 @@ sub new {
 # Viewing Methods
 #
 
-sub _show_symbol {
+sub show_symbol {
     my $symbol = shift;
     my $text   = "";
     $text .= sprintf "%d: %s, lhs=[%s], rhs=[%s]", $symbol->[ID],
@@ -171,43 +171,43 @@ sub _show_symbol {
     $text .= "\n";
 }
 
-sub _show_symbols {
+sub show_symbols {
     my $grammar    = shift;
     my $symbols = $grammar->[SYMBOLS];
     my $text    = "";
     for my $symbol_ref (@$symbols) {
-        $text .= _show_symbol($symbol_ref);
+        $text .= show_symbol($symbol_ref);
     }
     $text;
 }
 
-sub _show_nulling_symbols {
+sub show_nulling_symbols {
     my $self    = shift;
     my $symbols = $self->[SYMBOLS];
     join( " ", sort map { $_->[NAME] } grep { $_->[NULLING] } @$symbols );
 }
 
-sub _show_nullable_symbols {
+sub show_nullable_symbols {
     my $self    = shift;
     my $symbols = $self->[NULLABLE_SYMBOLS];
     join( " ", sort map { $_->[NAME] } @$symbols );
 }
 
-sub _show_input_reachable_symbols {
+sub show_input_reachable_symbols {
     my $self    = shift;
     my $symbols = $self->[SYMBOLS];
     join( " ",
         sort map { $_->[NAME] } grep { $_->[INPUT_REACHABLE] } @$symbols );
 }
 
-sub _show_start_reachable_symbols {
+sub show_start_reachable_symbols {
     my $self    = shift;
     my $symbols = $self->[SYMBOLS];
     join( " ",
         sort map { $_->[NAME] } grep { $_->[START_REACHABLE] } @$symbols );
 }
 
-sub _show_rule {
+sub show_rule {
     my $rule = shift;
 
     my ($lhs, $rhs, $rule_id, $input_reachable, $start_reachable, $nullable, $nulling, $useful)    
@@ -233,19 +233,19 @@ sub _show_rule {
     $text .= "\n";
 }
 
-sub _show_rules {
+sub show_rules {
     my $self   = shift;
     my $rules  = $self->[RULES];
     my $ruleno = -1;
     my $text;
 
     for my $rule (@$rules) {
-        $text .= _show_rule($rule);
+        $text .= show_rule($rule);
     }
     $text;
 }
 
-sub _show_item {
+sub show_item {
     my $item = shift;
     my $text = "";
     if ( not defined $item ) {
@@ -262,10 +262,10 @@ sub _show_item {
     $text;
 }
 
-sub _show_NFA_state {
+sub show_NFA_state {
     my $state = shift;
     my ( $name, $item, $transition ) = @{$state}[ NAME, ITEM, TRANSITION ];
-    my $text .= $name . ": " . _show_item($item) . "\n";
+    my $text .= $name . ": " . show_item($item) . "\n";
     for my $symbol_name (sort keys %$transition ) {
         my $transition_states = $transition->{$symbol_name};
         $text .= " "
@@ -277,17 +277,17 @@ sub _show_NFA_state {
     $text;
 }
 
-sub _show_NFA {
+sub show_NFA {
     my $self = shift;
     my $text = "";
     my $NFA  = $self->[NFA];
     for my $state (@$NFA) {
-        $text .= _show_NFA_state($state);
+        $text .= show_NFA_state($state);
     }
     $text;
 }
 
-sub _show_SDFA_state {
+sub show_SDFA_state {
     my $state = shift;
 
     my $text = "";
@@ -297,7 +297,7 @@ sub _show_SDFA_state {
     $text .= "S" . $id . ": " . $name . "\n";
     for my $NFA_state (@$NFA_states) {
         my $item = $NFA_state->[ITEM];
-        $text .= _show_item($item) . "\n";
+        $text .= show_item($item) . "\n";
     }
     for my $symbol_name ( sort keys %$transition ) {
         my ($to_id, $to_name) = @{$transition->{$symbol_name}}[ID, NAME];
@@ -308,11 +308,11 @@ sub _show_SDFA_state {
     $text;
 }
 
-sub _show_SDFA {
+sub show_SDFA {
     my $self = shift;
     my $text = "";
     my $SDFA = $self->[SDFA];
-    for my $state (@$SDFA) { $text .= _show_SDFA_state($state); }
+    for my $state (@$SDFA) { $text .= show_SDFA_state($state); }
     $text;
 }
 
@@ -1418,68 +1418,163 @@ sub _rewrite_as_QNF {
 
 package Parse::Marpa::Parse;
 
-# ELEMENTS of the PARSE STRUCTURE
-use constant CURRENT_EARLEME  => 0;    # number of the last completed earleme
-use constant EARLEY_SET       => 1;    # the array of the Earley sets
+# Elements of the PARSE structure
+use constant GRAMMAR          => 0;    # the grammar used
+use constant CURRENT_IX       => 1;    # index of the first incomplete Earley set
+use constant EARLEY_SET       => 2;    # the array of the Earley sets
+use constant WORK_LIST        => 3;    # the array of the Earley work lists
 
-# ELEMENTS of the EARLEY ITEM STRUCTURE
+# Elements of the EARLEY ITEM structure
 # Note that these are Earley items as modified by Aycock & Horspool, with SDFA states instead of 
 # LR(0) items.
 use constant STATE            => 0;    # the SDFA state
 use constant PARENT           => 1;    # the number of the Earley set with the parent item
+use constant TOKEN            => 2;    # a list of the links from token scanning
+use constant LINK             => 3;    # a list of the links from the completer step
+
+# Elements of the EARLEY WORK ENTRY structure
+#
+# first two same as for EARLEY ITEM
+# use constant STATE            => 0;    # the SDFA state
+# use constant PARENT           => 1;    # the number of the Earley set with the parent item
+use constant PREDECESSOR        => 2;    # reference to predecessor Earley item
+use constant CAUSE              => 3;    # reference to causal Earley item
+use constant VALUE              => 4;    # token value
+use constant DESTINATION        => 5;    # Earley item that is the destination for the data
+                                         # in this work entry
 
 sub new {
     my $class = shift;
     my $grammar = shift;
     my $self = [];
     croak("No grammar supplied for new $class") unless defined $grammar;
+    my $grammar_class = ref $grammar;
+    croak("Don't recognize parse() grammar arg has wrong class: $grammar_class")
+        unless $grammar_class  eq "Parse::Marpa";
 
     my $SDFA = $grammar->[Parse::Marpa::SDFA];
-    my $set0 = {};
+    croak("Attempt to parse grammar with empty SDFA")
+        if not defined $SDFA or not scalar @$SDFA;
+
+    my $work_list = [];
     # A bit of a cheat here: I rely on an assumption about the numbering
     # of the SDFA states -- specifically, that state 0 contains the
     # start productions.
     my $SDFA0 = $SDFA->[0];
-    @{$set0->{"0,0"}}[STATE, PARENT] = ($SDFA0, 0);
+    @{$work_list->[0]}[STATE, PARENT] = ($SDFA0, 0);
     my $resetting_state = $SDFA0->[Parse::Marpa::TRANSITION]->{""};
     if (defined $resetting_state) {
-        @{$set0->{$resetting_state->[ Parse::Marpa::ID ] . ",0"}}[STATE, PARENT]
-            = ($resetting_state, 0);
+        @{$work_list->[1]}[STATE, PARENT] = ($resetting_state, 0);
     }
-    @{$self}[CURRENT_EARLEME, EARLEY_SET] = (0, [$set0]);
+    @{$self}[CURRENT_IX, WORK_LIST, GRAMMAR] = (0, $work_list, $grammar);
 
     bless $self, $class;
 }
 
-sub _show_earley_item {
-    my $earley_item = shift;
-    my $text = $earley_item->[STATE]->[ Parse::Marpa::ID ] . ", " . $earley_item->[PARENT] . ":";
-    for (my $ix = 2; $ix <= $#$earley_item; $ix++) {
-        $text .= " [ " . join(", ", $earley_item->[$ix]) . " ]"
+sub show_work_entry {
+    my $entry = shift;
+    my ($state, $parent, $predecessor, $cause, $value, $destination) = @{$entry}
+        [STATE,  PARENT,  PREDECESSOR,   CAUSE,  VALUE,  DESTINATION];
+    my $text = $state->[ Parse::Marpa::ID ] . ", " . $parent . "; ";
+    if (defined $cause) {
+        $text .= brief_earley_item($predecessor) . ", " . brief_earley_item($cause);
+    } else {
+        $text .= brief_earley_item($predecessor);
     }
+    $text .= "; v=" . $value if defined $value;
+    $text .= "; dest=" . $destination if defined $destination;
     $text .= "\n";
+} # show_work_entry
+
+sub show_work_list {
+    my $work_list = shift;
+    my $text = "";
+    for my $entry (@$work_list) {
+        $text .= show_work_entry($entry);
+    }
+    $text;
 }
 
-sub _show_earley_set {
+sub brief_earley_item {
+    my $item = shift;
+    my ($state, $parent) = @{$item}[STATE, PARENT];
+    my $text = $state . ", " . $parent . "\n";
+}
+
+sub show_earley_item {
+    my $item = shift;
+    my $text = brief_earley_item($item);
+    my ($token, $link) = @{$item}[TOKEN, LINK];
+    for my $value_entry (@$token) {
+        $text .= " [p=" . $value_entry->[0]->[ Parse::Marpa::ID ]
+            . "v=" . $value_entry->[1] . "]";
+    }
+    for my $link_entry (@$link) {
+        $text .= " [p=" . $link_entry->[0]->[ Parse::Marpa::ID ]
+            .  "c=" .  $link_entry->[1]->[ Parse::Marpa::ID ] . "]";
+    }
+    $text;
+}
+
+sub show_earley_set {
     my $earley_set = shift;
     my $text = "";
-    for my $earley_item (sort {
-            $a->[STATE] <=> $b->[STATE] or $a->[PARENT] <=> $b->[PARENT]
-        } values %$earley_set) {
-        $text .= _show_earley_item($earley_item);
+    for my $earley_item (@$earley_set) {
+        $text .= show_earley_item($earley_item);
     }
     $text;
 }
 
-sub _show_earley_sets {
+# Given a parse object and a list of alternative tokens starting at the current earleme, computer
+# the Earley set for that earleme
+sub token {
     my $parse = shift;
-    my $earley_set = $parse->[EARLEY_SET];
-    my $text;
-    for (my $earley_set_ix = 0; $earley_set_ix <= $#$earley_set; $earley_set_ix++) {
-        $text .= "Earley Set " . $earley_set_ix . "\n";
-        $text .= _show_earley_set($earley_set->[$earley_set_ix]);
-    }
-    $text;
+    # It's bad style, but this routine is in a tight loop and for efficiency I pull the other arguments
+    # out of @_ one by one as I go in the code below.
+    # 
+    # The remaining arguments should be a list of token alternatives, as array references.  The array
+    # for each alternative is (token, value, length), where token is a symbol reference, value can
+    # anything meaningful to the user, and length is the length of this token in earlemes.
+
+    my ($earley_set, $grammar, $current_ix)
+        = @{$parse}[EARLEY_SET, GRAMMAR, CURRENT_IX];
+    my $SDFA = $grammar->[ Parse::Marpa::SDFA ];
+
+    # We add items to the Earley set in this loop, so it's necessary to capture its
+    # size at this point, and use an index to traverse it.
+    my $earley_item_count = @$earley_set;
+    EARLEY_ITEM: for (my $ix = 0; $ix < $earley_item_count; $ix++) {
+        my $earley_item = $earley_set->[$ix];
+        my ($state, $parent) = @{$earley_item}[STATE, PARENT];
+
+        # I allow ambigious tokenization.
+        # Loop through the alternative tokens.
+        ALTERNATIVE: while (my $alternative = shift @_) {
+            my ($token, $value, $length) = @$alternative;
+
+            if ($length <= 0) {
+                carp("Token alternative with length $length ignored");
+                next ALTERNATIVE unless $length > 0;
+            }
+
+            # compute goto(kernel_state, token_name)
+            my $kernel_state = $SDFA->[$state]->{$token->[ Parse::Marpa::NAME ]};
+            next ALTERNATIVE unless $kernel_state;
+
+            # Create the kernel item and its link.
+            my $target_ix = $current_ix  + $length;
+            my $target_earley_set = $earley_set->[ $target_ix ];
+            my $key = $kernel_state->[ Parse::Marpa::ID] . "," . $parent;
+            push( @{$target_earley_set->{$key}->{TOKENS}}, [ $earley_item, $value ] );
+
+            my $resetting_state = $SDFA->[$state]->{""};
+            next ALTERNATIVE unless defined $resetting_state;
+            $key = $resetting_state->[ Parse::Marpa::ID ] . "," . $parent;
+            $target_earley_set->{$key}->{NO_LINK} = 1;
+        } # ALTERNATIVE
+    } # EARLEY_ITEM
+
+    # Need to go back over the earley set, and remove all duplicate links
 }
 
 =head1 NAME
