@@ -225,16 +225,15 @@ EOS
 
 my $parse = new Parse::Marpa::Parse($g);
 
-SKIP: {
-    skip("because not debugged yet", 1);
-    is( $parse->show_work_list(), <<'EOS', "Aycock/Horspool Earley Sets" );
-Earley Set 0
-0, 0:
-1, 0:
+is( $parse->show_work_list_list(), <<'EOS', "Aycock/Horspool Earley Working Lists" );
+Earley Working List 0
+0, 0
+1, 0
 EOS
 
-}
+my $a = $g->get_symbol("a");
 
+$parse->token([$a, "a", 1]);
 
 # Local Variables:
 #   mode: cperl

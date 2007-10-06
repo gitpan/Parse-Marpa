@@ -1,44 +1,65 @@
 package Parse::Marpa;
 
+# PLEASE DO NOT READ THIS CODE
+
+# This is a developer-only version of the code.  It's preliminary,
+# and not useful except for my own testing.  What applies to the
+# code applies also to the documentation -- it's a an early draft.
+# For example, the acknowledgments might be incomplete or
+# just plain inaccurate.
+
+# thanks, Jeffrey Kegler
+
 use warnings;
 use strict;
-use version; our $VERSION = qv('0.1_7');
+use version; our $VERSION = qv('0.1_8');
 
 use 5.006000;
 
 use Carp;
 use Scalar::Util qw(weaken);
 
-=begin Implementation:
+=begin Apology:
 
-In style I try to follow Damian Conway's suggestions, but with many
-exceptions.  In particular, in this module, there's a very specific
-goal: it has to be easily translated into time-efficient C code.
-That means lots of things which are suboptimal for Perl readability
--- avoidance of OO, heavy use of references, a strong preference
-for arrays over hashes, etc.  Sometimes, when my first goals force
-me into some really ugly style choice, I point that out in a comment.
+An APOLOGY to the READER:
 
-So don't conclude that I think the below is what Perl should look
-like -- it's not.
+Please don't conclude that the below is my idea of what Perl code
+in general should look like.  It's not.  The aim of this module is
+nonstandard, and those aims have forced on this module a style that
+I don't use or recommend as general practice.
 
-The reason for targeting time-efficiency and a C reimplementation:
-the rap against Earley's has always been speed.  If this implementation
-isn't a means to that end, it will be of no interest, and nobody
-should care how beautifully it's written.  Don't get me wrong, I
-think readability and maintainability are important -- I'm the one
-most likely to be maintaining this code, and I'd like to be able
-to read it when I come back to it some months hence.  But readability
-is a lousy reason to write a uselessly slow module.
+The aim of this code is easy translation into time-efficient C.
+This because parsers run inside tight loops.  In particular the rap
+against Earley's has always been speed.  Readability is not a good
+reason to writing a uselessly slow module.  In a sense, if you hate
+the style, I've done my job -- you probably wouldn't be reading the
+code unless the module proved to be of use.
+
+I've written very C-ish Perl -- lots of references, avoidances of
+hashes, no internal OO, etc.  To repeat, I don't think that trying
+to make Perl look like C is in general, or even every often, a good
+idea.  But as the lawyers say, circumstances make cases.
 
 C conversion is important because one of two things are going to
-happen: the module turns out to be so slow it's difficult to use,
-or not.  If it's slow, the next thing to try is conversion to C.
-If it's fast, that's an important discovery, and there will probably
-be demand for an even faster version -- in C.  My current guess is
-that Marpa is doomed to a C implementation, or failure.
+happen: Marpa turns out to be so slow it's difficult to use, or it
+does not.  If it's slow, the next thing to try is conversion to C.
+If it's fast, Marpa will be highly useful, and there will almost
+certainly be demand for a yet faster version -- in C.  As of this
+writing, my guess is that Marpa is doomed to a C re-implementation,
+or oblivion.
 
-=end Implementation:
+I recommend Damian Conway's book about Perl style.  Damian is the
+starting point for thought about Perl style, whether you agree with
+him or not.  I've made a host of exceptions to his rules.  Many are
+due to the reasons above.  Others stem from ignorance on my part.
+A few are because I can't agree with Damian.
+
+Especially noticeable will be that I don't
+appending "_ref" to the name references -- almost every variable
+in the below is a reference and I can't believe having 90% of the variable
+names end in "_ref" will make the code any easier to read.
+
+=end Apology:
 
 =cut
 
@@ -101,9 +122,7 @@ use constant ACADEMIC         => 9;    # true if this is a textbook grammar,
                                        # for checking the NFA and SDFA, and NOT
                                        # for actual Earley parsing
 
-###############
-# Constructor #
-###############
+# Constructor
 
 sub new {
     my $class = shift;
@@ -154,9 +173,7 @@ sub new {
     $self;
 }
 
-#
-# Viewing Methods
-#
+# Viewing Methods (for debugging)
 
 sub show_symbol {
     my $symbol = shift;
@@ -315,6 +332,17 @@ sub show_SDFA {
     for my $state (@$SDFA) { $text .= show_SDFA_state($state); }
     $text;
 }
+
+# Accessor Methods
+
+sub get_symbol {
+    my $grammar = shift;
+    my $name = shift;
+    my $symbol_hash = $grammar->[SYMBOL_HASH];
+    defined $symbol_hash ? $symbol_hash->{$name} : undef;
+}
+
+# Mutator Methods
 
 =begin Implementation
 
@@ -1443,6 +1471,11 @@ use constant VALUE              => 4;    # token value
 use constant DESTINATION        => 5;    # Earley item that is the destination for the data
                                          # in this work entry
 
+# implementation dependent constant, used below in unpack
+use constant J_LENGTH     => (length pack("J", 0, 0));
+
+# Constructor method
+
 sub new {
     my $class = shift;
     my $grammar = shift;
@@ -1456,35 +1489,49 @@ sub new {
     croak("Attempt to parse grammar with empty SDFA")
         if not defined $SDFA or not scalar @$SDFA;
 
-    my $work_list = [];
+    my $work_list0 = [];
     # A bit of a cheat here: I rely on an assumption about the numbering
     # of the SDFA states -- specifically, that state 0 contains the
     # start productions.
     my $SDFA0 = $SDFA->[0];
-    @{$work_list->[0]}[STATE, PARENT] = ($SDFA0, 0);
+    @{$work_list0->[0]}[STATE, PARENT] = ($SDFA0, 0);
     my $resetting_state = $SDFA0->[Parse::Marpa::TRANSITION]->{""};
     if (defined $resetting_state) {
-        @{$work_list->[1]}[STATE, PARENT] = ($resetting_state, 0);
+        @{$work_list0->[1]}[STATE, PARENT] = ($resetting_state, 0);
     }
-    @{$self}[CURRENT_IX, WORK_LIST, GRAMMAR] = (0, $work_list, $grammar);
+    @{$self}[CURRENT_IX, WORK_LIST, GRAMMAR] = (0, [ $work_list0 ], $grammar);
 
     bless $self, $class;
 }
+
+# Viewing methods, for debugging
 
 sub show_work_entry {
     my $entry = shift;
     my ($state, $parent, $predecessor, $cause, $value, $destination) = @{$entry}
         [STATE,  PARENT,  PREDECESSOR,   CAUSE,  VALUE,  DESTINATION];
-    my $text = $state->[ Parse::Marpa::ID ] . ", " . $parent . "; ";
+    my $text = $state->[ Parse::Marpa::ID ] . ", " . $parent;
     if (defined $cause) {
-        $text .= brief_earley_item($predecessor) . ", " . brief_earley_item($cause);
-    } else {
-        $text .= brief_earley_item($predecessor);
+        $text .= "; " . brief_earley_item($predecessor) . ", " . brief_earley_item($cause);
+    } elsif (defined $predecessor) {
+        $text .= "; " . brief_earley_item($predecessor);
     }
     $text .= "; v=" . $value if defined $value;
     $text .= "; dest=" . $destination if defined $destination;
     $text .= "\n";
 } # show_work_entry
+
+sub show_work_list_list {
+    my $parse = shift;
+    my $work_lists = $parse->[WORK_LIST];
+    my $text = "";
+    my $work_list_count = @$work_lists;
+    for (my $ix = 0; $ix < $work_list_count; $ix++) {
+        my $list = $work_lists->[$ix];
+        $text .= "Earley Working List $ix\n" . show_work_list($list);
+    }
+    $text;
+}
 
 sub show_work_list {
     my $work_list = shift;
@@ -1498,7 +1545,7 @@ sub show_work_list {
 sub brief_earley_item {
     my $item = shift;
     my ($state, $parent) = @{$item}[STATE, PARENT];
-    my $text = $state . ", " . $parent . "\n";
+    my $text = $state->[ Parse::Marpa::ID ] . ", " . $parent . "\n";
 }
 
 sub show_earley_item {
@@ -1525,56 +1572,111 @@ sub show_earley_set {
     $text;
 }
 
-# Given a parse object and a list of alternative tokens starting at the current earleme, computer
-# the Earley set for that earleme
+# Mutator methods
+
+=begin Apolegetic:
+
+It's bad style, but this routine is in a tight loop and for efficiency
+I pull the token alternatives out of @_ one by one as I go in the code,
+rather than at the beginning of the subroutine.
+
+The remaining arguments should be a list of token alternatives, as
+array references.  The array for each alternative is (token, value,
+length), where token is a symbol reference, value can anything
+meaningful to the user, and length is the length of this token in
+earlemes.
+
+=end Apolegetic:
+
+=cut
+
+# Given a parse object and a list of alternative tokens starting at
+# the current earleme, compute the Earley set for that earleme
+
 sub token {
     my $parse = shift;
-    # It's bad style, but this routine is in a tight loop and for efficiency I pull the other arguments
-    # out of @_ one by one as I go in the code below.
-    # 
-    # The remaining arguments should be a list of token alternatives, as array references.  The array
-    # for each alternative is (token, value, length), where token is a symbol reference, value can
-    # anything meaningful to the user, and length is the length of this token in earlemes.
 
-    my ($earley_set, $grammar, $current_ix)
-        = @{$parse}[EARLEY_SET, GRAMMAR, CURRENT_IX];
+    my ($work_list_list, $grammar, $current_ix)
+        = @{$parse}[WORK_LIST, GRAMMAR, CURRENT_IX];
     my $SDFA = $grammar->[ Parse::Marpa::SDFA ];
 
-    # We add items to the Earley set in this loop, so it's necessary to capture its
-    # size at this point, and use an index to traverse it.
-    my $earley_item_count = @$earley_set;
-    EARLEY_ITEM: for (my $ix = 0; $ix < $earley_item_count; $ix++) {
-        my $earley_item = $earley_set->[$ix];
-        my ($state, $parent) = @{$earley_item}[STATE, PARENT];
+    my $work_list = $work_list_list->[$current_ix];
+    my $record_number = 0;
+    $work_list = [ @{$work_list}[
+        # Perl complains unless the constant is sigiled as a subroutine
+        map unpack("J", substr($_, -&J_LENGTH)),
+        sort map pack("JJJ",
+                $_->[ STATE ]->[ Parse::Marpa::ID ],
+                $_->[ PARENT ],
+                $record_number++
+            ),
+            @$work_list
+        ]
+    ];
+
+    my $earley_item;
+    my @earley_item_list;
+    my $current_state = [];
+    my $current_parent = 1;
+    # TO HERE
+
+    WORK_ITEM: for my $work (@$work_list) {
+
+        my ($state, $parent) = @{$work}[STATE, PARENT];
+
+        # Once for each state, parent pair:
+        #   Create the earley item
+        if ($state == $current_state and $parent == $current_parent) {
+            $earley_item = [];
+            @{$earley_item}[STATE, PARENT] = ($state, $parent);
+            push(@earley_item_list, $earley_item);
+            $current_state = $state;
+            $current_parent = $parent;
+        }
+
+        $work->[DESTINATION] = $earley_item;
 
         # I allow ambigious tokenization.
         # Loop through the alternative tokens.
-        ALTERNATIVE: while (my $alternative = shift @_) {
+        ALTERNATIVE: for my $alternative (@_) {
             my ($token, $value, $length) = @$alternative;
 
             if ($length <= 0) {
-                carp("Token alternative with length $length ignored");
-                next ALTERNATIVE unless $length > 0;
+                croack("Token " . $token->[ Parse::Marpa::NAME ]
+                    . " with bad length " . $length);
             }
 
             # compute goto(kernel_state, token_name)
-            my $kernel_state = $SDFA->[$state]->{$token->[ Parse::Marpa::NAME ]};
+            my $kernel_state
+                = $SDFA
+                    -> [ $state -> [ Parse::Marpa::ID ] ]
+                    -> [ Parse::Marpa::TRANSITION ]
+                    -> { $token -> [ Parse::Marpa::NAME ] };
             next ALTERNATIVE unless $kernel_state;
 
             # Create the kernel item and its link.
             my $target_ix = $current_ix  + $length;
-            my $target_earley_set = $earley_set->[ $target_ix ];
-            my $key = $kernel_state->[ Parse::Marpa::ID] . "," . $parent;
-            push( @{$target_earley_set->{$key}->{TOKENS}}, [ $earley_item, $value ] );
+            my $target_work_list = $work_list_list->[ $target_ix ];
+            my @new_work_entry;
+            @new_work_entry[STATE, PARENT, PREDECESSOR, VALUE]
+                = ($kernel_state, $parent, $earley_item, $value);
+            push(@$target_work_list, \@new_work_entry);
 
-            my $resetting_state = $SDFA->[$state]->{""};
+            my $resetting_state
+                = $kernel_state
+                    -> [ Parse::Marpa::TRANSITION ]
+                    -> { "" };
             next ALTERNATIVE unless defined $resetting_state;
-            $key = $resetting_state->[ Parse::Marpa::ID ] . "," . $parent;
-            $target_earley_set->{$key}->{NO_LINK} = 1;
+            @new_work_entry[STATE, PARENT, PREDECESSOR, VALUE]
+                = ($resetting_state, $parent);
+            push(@$target_work_list, \@new_work_entry);
+
         } # ALTERNATIVE
     } # EARLEY_ITEM
 
-    # Need to go back over the earley set, and remove all duplicate links
+    # Go back over the earley set, and set up the links
+
+    # Increment CURRENT_IX
 }
 
 =head1 NAME
