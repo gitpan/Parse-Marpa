@@ -1,20 +1,27 @@
 package Parse::Marpa;
 
-# PLEASE DO NOT READ THIS CODE
+use 5.006000;
 
-# This is a developer-only version of the code.  It's preliminary,
-# and not useful except for my own testing.  What applies to the
-# code applies also to the documentation -- it's a an early draft.
-# For example, the acknowledgments might be incomplete or
-# just plain inaccurate.
+# TO THE (POTENTIAL) READER:
+
+# At this point it's my suggestion that
+# reading the code and documentation below will serve no purpose.
+# This is a developer-only version,
+# not useful except for my own testing.
+# What applies to the code applies also to the documentation
+# -- it's an early draft.  In particular, the draft
+# acknowledgments might be incomplete or just plain inaccurate.
+
+# The above is simply a humble and non-binding personal request.
+# Where there seems to be a conflict between the above suggestion
+# and the standard Perl license, the standard Perl license
+# prevails.
 
 # thanks, Jeffrey Kegler
 
 use warnings;
 use strict;
-use version; our $VERSION = qv('0.1_8');
-
-use 5.006000;
+use version; our $VERSION = qv('0.1_9');
 
 use Carp;
 use Scalar::Util qw(weaken);
@@ -23,10 +30,10 @@ use Scalar::Util qw(weaken);
 
 An APOLOGY to the READER:
 
-Please don't conclude that the below is my idea of what Perl code
-in general should look like.  It's not.  The aim of this module is
+Please don't conclude that this is my idea of what Perl code
+should usually look like.  It's not.  The aim of this module is
 nonstandard, and those aims have forced on this module a style that
-I don't use or recommend as general practice.
+I don't in general use or recommend.
 
 The aim of this code is easy translation into time-efficient C.
 This because parsers run inside tight loops.  In particular the rap
@@ -37,27 +44,31 @@ code unless the module proved to be of use.
 
 I've written very C-ish Perl -- lots of references, avoidances of
 hashes, no internal OO, etc.  To repeat, I don't think that trying
-to make Perl look like C is in general, or even every often, a good
-idea.  But as the lawyers say, circumstances make cases.
+to make Perl look like C is, in general, a good idea.  But as the
+lawyers say, circumstances make cases.
 
 C conversion is important because one of two things are going to
-happen: Marpa turns out to be so slow it's difficult to use, or it
-does not.  If it's slow, the next thing to try is conversion to C.
-If it's fast, Marpa will be highly useful, and there will almost
-certainly be demand for a yet faster version -- in C.  As of this
-writing, my guess is that Marpa is doomed to a C re-implementation,
-or oblivion.
+happen to Marpa: it turns out to be so slow it's difficult to use,
+or it does not.  If Marpa is slow, the next thing to try is conversion
+to C.  If it's fast, Marpa will be highly useful, and there will
+almost certainly be demand for a yet faster version -- in C.  As
+of this writing, my guess is that Marpa is doomed to a C
+re-implementation, or oblivion.
 
-I recommend Damian Conway's book about Perl style.  Damian is the
-starting point for thought about Perl style, whether you agree with
-him or not.  I've made a host of exceptions to his rules.  Many are
-due to the reasons above.  Others stem from ignorance on my part.
-A few are because I can't agree with Damian.
+The candid reader, having read the above and perused the below,
+might not be interested in my recommendations on books about Perl
+style, but for what it's worth, I recommend Damian Conway's _Perl
+Best Practices_.  Damian is the best starting point for thinking
+about Perl style, whether you agree with him or not.  I've made
+many exceptions due to necessity, as described above.   Many more
+I've no doubt made out of ignorance.  A few other exceptions are
+because I can't agree with Damian.
 
-Especially noticeable will be that I don't
-appending "_ref" to the name references -- almost every variable
-in the below is a reference and I can't believe having 90% of the variable
-names end in "_ref" will make the code any easier to read.
+Especially noticeable will be that I don't append "_ref" to the
+name references -- almost every variable name in the below is a
+reference.  I don't for a moment imagine it's easy code to read,
+but I can't believe having 90% of the variable names end in "_ref"
+will make it any easier.
 
 =end Apology:
 
@@ -110,14 +121,14 @@ use constant POSITION => 1;
 
 # ELEMENTS of the GRAMMAR STRUCTURE
 use constant RULES            => 0;    # array of rule refs
-use constant SYMBOLS          => 1;    # array of symbol refs
+use constant SYMBOL          => 1;    # array of symbol refs
 use constant RULE_HASH        => 2;    # hash by name of symbol refs
 use constant SYMBOL_HASH      => 3;    # hash by name of symbol refs
 use constant START            => 4;    # ref to start symbol
 use constant NFA              => 5;    # array of states
 use constant SDFA             => 6;    # array of states
 use constant SDFA_BY_NAME     => 7;    # hash from SDFA name to SDFA reference
-use constant NULLABLE_SYMBOLS => 8;    # array of refs of the nullable symbols
+use constant NULLABLE_SYMBOL => 8;    # array of refs of the nullable symbols
 use constant ACADEMIC         => 9;    # true if this is a textbook grammar,
                                        # for checking the NFA and SDFA, and NOT
                                        # for actual Earley parsing
@@ -152,23 +163,23 @@ sub new {
     croak("No start symbol specified") unless defined $start;
 
     my $self  = [];
-    @{$self}[ SYMBOLS, SYMBOL_HASH, RULES, RULE_HASH, SDFA_BY_NAME, ACADEMIC ] =
+    @{$self}[ SYMBOL, SYMBOL_HASH, RULES, RULE_HASH, SDFA_BY_NAME, ACADEMIC ] =
         ( [], {}, [], {}, {}, $academic );
     bless( $self, $class );
 
-    $self->_add_user_rules($rules);
-    $self->_nullable();
-    $self->_nulling();
-    $self->_input_reachable();
-    $self->_set_start($start);
-    $self->_start_reachable();
+    _add_user_rules($self, $rules);
+    _nullable($self);
+    _nulling($self);
+    _input_reachable($self);
+    _set_start($self, $start);
+    _start_reachable($self);
     if ($academic) {
-        $self->_setup_academic_grammar()
+        _setup_academic_grammar($self)
     } else {
-        $self->_rewrite_as_QNF();
+        _rewrite_as_QNF($self);
     }
-    $self->_create_NFA;
-    $self->_create_SDFA;
+    _create_NFA($self);
+    _create_SDFA($self);
 
     $self;
 }
@@ -190,7 +201,7 @@ sub show_symbol {
 
 sub show_symbols {
     my $grammar    = shift;
-    my $symbols = $grammar->[SYMBOLS];
+    my $symbols = $grammar->[SYMBOL];
     my $text    = "";
     for my $symbol_ref (@$symbols) {
         $text .= show_symbol($symbol_ref);
@@ -200,26 +211,26 @@ sub show_symbols {
 
 sub show_nulling_symbols {
     my $self    = shift;
-    my $symbols = $self->[SYMBOLS];
+    my $symbols = $self->[SYMBOL];
     join( " ", sort map { $_->[NAME] } grep { $_->[NULLING] } @$symbols );
 }
 
 sub show_nullable_symbols {
     my $self    = shift;
-    my $symbols = $self->[NULLABLE_SYMBOLS];
+    my $symbols = $self->[NULLABLE_SYMBOL];
     join( " ", sort map { $_->[NAME] } @$symbols );
 }
 
 sub show_input_reachable_symbols {
     my $self    = shift;
-    my $symbols = $self->[SYMBOLS];
+    my $symbols = $self->[SYMBOL];
     join( " ",
         sort map { $_->[NAME] } grep { $_->[INPUT_REACHABLE] } @$symbols );
 }
 
 sub show_start_reachable_symbols {
     my $self    = shift;
-    my $symbols = $self->[SYMBOLS];
+    my $symbols = $self->[SYMBOL];
     join( " ",
         sort map { $_->[NAME] } grep { $_->[START_REACHABLE] } @$symbols );
 }
@@ -369,7 +380,7 @@ sub _add_terminal {
     my $self  = shift;
     my $name  = shift;
     my $regex = shift;
-    my ( $symbol, $symbols ) = @$self[ SYMBOL_HASH, SYMBOLS ];
+    my ( $symbol, $symbols ) = @$self[ SYMBOL_HASH, SYMBOL ];
 
     if ( $symbol->{$name} ) {
         croak("Attempt to add duplicate terminal: $name");
@@ -395,7 +406,7 @@ sub _add_terminal {
 sub _assign_symbol {
     my $self = shift;
     my $name = shift;
-    my ( $symbol, $symbols ) = @{$self}[ SYMBOL_HASH, SYMBOLS ];
+    my ( $symbol, $symbols ) = @{$self}[ SYMBOL_HASH, SYMBOL ];
 
     my $symbol_count = @$symbols;
     my $ret = $symbol->{$name};
@@ -412,7 +423,7 @@ sub _assign_symbol {
 sub _assign_user_symbol {
     my $self = shift;
     my $name = shift;
-    $self->_assign_symbol(_canonical_name($name));
+    _assign_symbol($self, _canonical_name($name));
 }
 
 sub _add_user_rule {
@@ -420,9 +431,9 @@ sub _add_user_rule {
     my $lhs_name  = shift;
     my $rhs_names = shift;
 
-    $self->_add_rule(
-        $self->_assign_symbol(_canonical_name($lhs_name)),
-        [ map { $self->_assign_symbol(_canonical_name($_)); } @$rhs_names ]
+    _add_rule($self,
+        _assign_symbol($self, _canonical_name($lhs_name)),
+        [ map { _assign_symbol($self, _canonical_name($_)); } @$rhs_names ]
     );
 }
 
@@ -476,14 +487,14 @@ rule: for my $rule (@$rules) {
         elsif ( 2 == @$rule ) {
             my ( $term, $regex ) = @$rule;
             if ( ref $regex eq "Regexp" ) {
-                $self->_add_terminal( $term, $regex );
+                _add_terminal( $self, $term, $regex );
                 next rule;
             }
 
             # fall through if not a terminal definition
         }
 
-        $self->_add_user_rule(
+        _add_user_rule($self,
             $rule->[0],
             (   $#$rule > 0
                 ? [ @{$rule}[ 1 .. $#$rule ] ]
@@ -513,10 +524,6 @@ sub _set_start {
     }
     $self->[START] = $start;
 }
-
-#################
-# Private Stuff #
-#################
 
 # return list of rules reachable from the start symbol;
 sub _start_reachable {
@@ -567,7 +574,7 @@ sub _start_reachable {
 sub _input_reachable {
     my $self = shift;
 
-    my ($rules, $symbols) = @{$self}[RULES, SYMBOLS];
+    my ($rules, $symbols) = @{$self}[RULES, SYMBOL];
 
     # if a symbol's nullability could not be determined, it was unreachable
     # all nullable symbols are reachable
@@ -685,7 +692,7 @@ sub _input_reachable {
 sub _nulling {
     my $self = shift;
 
-    my ($rules, $symbols) = @{$self}[RULES, SYMBOLS];
+    my ($rules, $symbols) = @{$self}[RULES, SYMBOL];
 
     my $symbol_work_set = [];
     $#$symbol_work_set = @$symbols;
@@ -792,7 +799,7 @@ sub _nulling {
 
 sub _nullable {
     my $self    = shift;
-    my ($rules, $symbols)   = @{$self}[RULES, SYMBOLS];
+    my ($rules, $symbols)   = @{$self}[RULES, SYMBOL];
 
     my $work_to_do = 1;    # boolean to track if current pass has changed anything
 
@@ -896,9 +903,9 @@ sub _nullable {
 sub _create_NFA {
     my $self        = shift;
     my ($rules, $symbols, $symbol_hash, $start, $academic)
-        = @{$self}[RULES, SYMBOLS, SYMBOL_HASH, START, ACADEMIC];
+        = @{$self}[RULES, SYMBOL, SYMBOL_HASH, START, ACADEMIC];
 
-    $self->[NULLABLE_SYMBOLS] = [ grep { $_->[NULLABLE] } @$symbols ];
+    $self->[NULLABLE_SYMBOL] = [ grep { $_->[NULLABLE] } @$symbols ];
 
     my $NFA = [];
     $self->[NFA] = $NFA;
@@ -1025,7 +1032,7 @@ WORK_LIST: while (@$kernel_work_list) {
             }
 
         SYMBOL:
-            for my $nullable_symbol ( @{ $self->[NULLABLE_SYMBOLS] } )
+            for my $nullable_symbol ( @{ $self->[NULLABLE_SYMBOL] } )
             {
                 $to_states =
                     $NFA_state->[TRANSITION]->{ $nullable_symbol->[NAME] };
@@ -1077,7 +1084,7 @@ WORK_LIST: while (@$prediction_work_list) {
 
         SYMBOL:
             for my $symbol_name ( "",
-                map { $_->[NAME] } @{ $self->[NULLABLE_SYMBOLS] } )
+                map { $_->[NAME] } @{ $self->[NULLABLE_SYMBOL] } )
             {
                 my $to_states = $NFA_state->[TRANSITION]->{$symbol_name};
                 next SYMBOL unless defined $to_states;
@@ -1129,7 +1136,7 @@ WORK_LIST: while (@$prediction_work_list) {
 
 sub _create_SDFA {
     my $self   = shift;
-    my $NFA    = $self->[NFA];
+    my ($symbol, $NFA)    = @{$self}[SYMBOL, NFA];
     my $SDFA   = $self->[SDFA] = [];
     my $NFA_s0 = $NFA->[0];
 
@@ -1141,7 +1148,7 @@ sub _create_SDFA {
         carp("Empty NFA, cannot create SDFA");
         return;
     }
-    $self->_assign_SDFA_kernel_state( $initial_NFA_states );
+    _assign_SDFA_kernel_state( $self, $initial_NFA_states );
 
     while ( $next_state_id < scalar @$SDFA ) {
 
@@ -1168,21 +1175,26 @@ sub _create_SDFA {
             each(%$NFA_to_states_by_symbol) )
         {
             $SDFA_state->[TRANSITION]->{$symbol} =
-                $self->_assign_SDFA_kernel_state($to_states);
+                _assign_SDFA_kernel_state( $self, $to_states );
         }
     }
 
-    # For the parse phase, pre-compute the list of NFA states with complete
-    # items
+    # For the parse phase, pre-compute the list of names of the lhs's of
+    # complete items
     STATE: for my $state (@$SDFA) {
-        my $complete = [];
+        my $lhs_list = [];
+        $#$lhs_list = @$symbol;
         my $NFA_states = $state->[NFA_STATES];
         for my $NFA_state (@$NFA_states) {
             my $item = $NFA_state->[ITEM];
             my ($rule, $position) = @{$item}[RULE, POSITION];
-            push(@$complete, $item) if $position >= @{$rule->[RHS]};
+            $lhs_list->[ $rule->[LHS]->[ID] ] = 1 if $position >= @{$rule->[RHS]};
         } # NFA_state
-        $state->[COMPLETE] = $complete;
+        $state->[COMPLETE]
+            = map { $_->[NAME] }
+                @{$symbol}[
+                    grep { $lhs_list->[ $_ ] } (0 .. $#$lhs_list)
+                ];
     } # STATE
 }
 
@@ -1199,7 +1211,7 @@ sub _setup_academic_grammar {
 sub _alias_symbol {
     my $self = shift;
     my $nullable_symbol = shift;
-    my ( $symbol, $symbols ) = @{$self}[ SYMBOL_HASH, SYMBOLS ];
+    my ( $symbol, $symbols ) = @{$self}[ SYMBOL_HASH, SYMBOL ];
     my ($start_reachable, $input_reachable, $name)
         = @{$nullable_symbol}[START_REACHABLE, INPUT_REACHABLE, NAME];
 
@@ -1237,7 +1249,7 @@ that the semantics of the original grammar are not affected.
 # rewrite as Factored Nihilist Normal Form
 sub _rewrite_as_QNF {
     my $self = shift;
-    my ($rules, $symbols, $start) = @{$self}[RULES, SYMBOLS, START];
+    my ($rules, $symbols, $start) = @{$self}[RULES, SYMBOL, START];
 
     # add null aliases to symbols which need them
     my $symbol_count = @$symbols;
@@ -1257,7 +1269,7 @@ sub _rewrite_as_QNF {
         next SYMBOL if $nulling;
         next SYMBOL unless $nullable;
 
-        $self->_alias_symbol($symbol);
+        _alias_symbol( $self, $symbol );
     }
 
     # mark, or create as needed, the useful rules
@@ -1350,7 +1362,7 @@ sub _rewrite_as_QNF {
                 if ($proper_nullable1 < $last_nonnullable) {
                     $subp_end = $proper_nullable1;
                     spice(@$proper_nullables, 0, 2);
-                    $next_subp_lhs = $self->_assign_symbol(
+                    $next_subp_lhs = _assign_symbol($self,
                         $lhs->[NAME] .  "[" . $rule_id . ":" . ($subp_end + 1) . "]");
                     @{$next_subp_lhs}[NULLABLE, START_REACHABLE, INPUT_REACHABLE, NULLING] =
                         (0, 1, 1, 0);
@@ -1361,11 +1373,11 @@ sub _rewrite_as_QNF {
                 # subproduction is nullable
                 $subp_end = $proper_nullable1 - 1;
                 shift @$proper_nullables;
-                $next_subp_lhs = $self->_assign_symbol(
+                $next_subp_lhs = _assign_symbol($self,
                     $lhs->[NAME] .  "[" . $rule_id . ":" . ($subp_end + 1) . "]");
                 @{$next_subp_lhs}[NULLABLE, START_REACHABLE, INPUT_REACHABLE, NULLING] =
                     (1, 1, 1, 0);
-                $self->_alias_symbol($next_subp_lhs);
+                _alias_symbol( $self, $next_subp_lhs );
                 $subp_factor0_rhs = [ @{$rhs}[$subp_start .. $subp_end], $next_subp_lhs ];
 
             } # SETUP_SUBPRODUCTION
@@ -1414,7 +1426,7 @@ sub _rewrite_as_QNF {
 
             for my $factor_rhs (@$factored_rhs)
             {
-                my $new_rule = $self->_add_rule($subp_lhs, $factor_rhs);
+                my $new_rule = _add_rule( $self, $subp_lhs, $factor_rhs);
                 @{$new_rule}[USEFUL, START_REACHABLE, INPUT_REACHABLE, NULLABLE, NULLING]
                     = (1, 1, 1, 0, 0);
             }
@@ -1431,13 +1443,13 @@ sub _rewrite_as_QNF {
 
     my $old_start = $start;
     my $input_reachable = $old_start->[INPUT_REACHABLE];
-    $start = $self->_assign_symbol($start->[NAME] . "[']");
-    my $new_start_rule = $self->_add_rule($start, [ $old_start ]);
+    $start = _assign_symbol( $self, $start->[NAME] . "[']");
+    my $new_start_rule = _add_rule( $self, $start, [ $old_start ]);
     @{$new_start_rule}[INPUT_REACHABLE, START_REACHABLE, USEFUL] = ($input_reachable, 1, 1);
     @{$start}[INPUT_REACHABLE, START_REACHABLE] = ($input_reachable, 1);
     if ($old_start->[NULL_ALIAS]) {
-        $self->_alias_symbol($start);
-        my $new_start_rule = $self->_add_rule($start->[NULL_ALIAS], [ ]);
+        _alias_symbol($self, $start);
+        my $new_start_rule = _add_rule( $self, $start->[NULL_ALIAS], [ ]);
         # Nulling rules are not considered useful, but the top-level one is an exception
         @{$new_start_rule}[INPUT_REACHABLE, START_REACHABLE, USEFUL] = ($input_reachable, 1, 1);
     }
@@ -1447,28 +1459,34 @@ sub _rewrite_as_QNF {
 package Parse::Marpa::Parse;
 
 # Elements of the PARSE structure
-use constant GRAMMAR          => 0;    # the grammar used
-use constant CURRENT_IX       => 1;    # index of the first incomplete Earley set
-use constant EARLEY_SET       => 2;    # the array of the Earley sets
-use constant WORK_LIST        => 3;    # the array of the Earley work lists
+use constant GRAMMAR          => 0; # the grammar used
+use constant CURRENT_SET      => 1; # index of the first incomplete Earley set
+use constant EARLEY_SET       => 2; # the array of the Earley sets
+use constant WORK_LIST        => 3; # the array of the Earley work lists
+use constant NEXT_ITEM        => 4; # index of next Earley item
 
 # Elements of the EARLEY ITEM structure
 # Note that these are Earley items as modified by Aycock & Horspool, with SDFA states instead of 
 # LR(0) items.
-use constant STATE            => 0;    # the SDFA state
-use constant PARENT           => 1;    # the number of the Earley set with the parent item
-use constant TOKEN            => 2;    # a list of the links from token scanning
-use constant LINK             => 3;    # a list of the links from the completer step
+#
+# the value of ID should be coordinated with the other constants of the same name in the namespace
+# Parse::Marpa
+#
+use constant ID               => 0;
+use constant STATE            => 1;    # the SDFA state
+use constant PARENT           => 2;    # the number of the Earley set with the parent item
+use constant TOKEN            => 3;    # a list of the links from token scanning
+use constant LINK             => 4;    # a list of the links from the completer step
 
 # Elements of the EARLEY WORK ENTRY structure
 #
-# first two same as for EARLEY ITEM
-# use constant STATE            => 0;    # the SDFA state
-# use constant PARENT           => 1;    # the number of the Earley set with the parent item
-use constant PREDECESSOR        => 2;    # reference to predecessor Earley item
-use constant CAUSE              => 3;    # reference to causal Earley item
-use constant VALUE              => 4;    # token value
-use constant DESTINATION        => 5;    # Earley item that is the destination for the data
+# STATE AND PARENT two same as for EARLEY ITEM
+use constant DESTINATION        => 0;    # Earley item that is the destination for the data
+# use constant STATE            => 1;    # the SDFA state
+# use constant PARENT           => 2;    # the number of the Earley set with the parent item
+use constant PREDECESSOR        => 3;    # reference to predecessor Earley item
+use constant CAUSE              => 4;    # reference to causal Earley item
+use constant VALUE              => 5;    # token value
                                          # in this work entry
 
 # implementation dependent constant, used below in unpack
@@ -1494,12 +1512,15 @@ sub new {
     # of the SDFA states -- specifically, that state 0 contains the
     # start productions.
     my $SDFA0 = $SDFA->[0];
-    @{$work_list0->[0]}[STATE, PARENT] = ($SDFA0, 0);
+    @{$work_list0->[0]}[STATE, PARENT, PREDECESSOR, CAUSE]
+        = ($SDFA0, 0, 0, 0);
     my $resetting_state = $SDFA0->[Parse::Marpa::TRANSITION]->{""};
     if (defined $resetting_state) {
-        @{$work_list0->[1]}[STATE, PARENT] = ($resetting_state, 0);
+        @{$work_list0->[1]}[STATE, PARENT, PREDECESSOR, CAUSE]
+            = ($resetting_state, 0, 0, 0);
     }
-    @{$self}[CURRENT_IX, WORK_LIST, GRAMMAR] = (0, [ $work_list0 ], $grammar);
+    @{$self}[CURRENT_SET, WORK_LIST, GRAMMAR, NEXT_ITEM]
+        = (0, [ $work_list0 ], $grammar, 1);
 
     bless $self, $class;
 }
@@ -1511,9 +1532,9 @@ sub show_work_entry {
     my ($state, $parent, $predecessor, $cause, $value, $destination) = @{$entry}
         [STATE,  PARENT,  PREDECESSOR,   CAUSE,  VALUE,  DESTINATION];
     my $text = $state->[ Parse::Marpa::ID ] . ", " . $parent;
-    if (defined $cause) {
+    if ($cause) {
         $text .= "; " . brief_earley_item($predecessor) . ", " . brief_earley_item($cause);
-    } elsif (defined $predecessor) {
+    } elsif ($predecessor) {
         $text .= "; " . brief_earley_item($predecessor);
     }
     $text .= "; v=" . $value if defined $value;
@@ -1526,8 +1547,9 @@ sub show_work_list_list {
     my $work_lists = $parse->[WORK_LIST];
     my $text = "";
     my $work_list_count = @$work_lists;
-    for (my $ix = 0; $ix < $work_list_count; $ix++) {
+    LIST: for (my $ix = 0; $ix < $work_list_count; $ix++) {
         my $list = $work_lists->[$ix];
+        next LIST unless defined $list;
         $text .= "Earley Working List $ix\n" . show_work_list($list);
     }
     $text;
@@ -1596,11 +1618,11 @@ earlemes.
 sub token {
     my $parse = shift;
 
-    my ($work_list_list, $grammar, $current_ix)
-        = @{$parse}[WORK_LIST, GRAMMAR, CURRENT_IX];
+    my ($earley_set_list, $work_list_list, $grammar, $current_set, $next_item)
+        = @{$parse}[EARLEY_SET, WORK_LIST, GRAMMAR, CURRENT_SET, NEXT_ITEM];
     my $SDFA = $grammar->[ Parse::Marpa::SDFA ];
 
-    my $work_list = $work_list_list->[$current_ix];
+    my $work_list = $work_list_list->[$current_set];
     my $record_number = 0;
     $work_list = [ @{$work_list}[
         # Perl complains unless the constant is sigiled as a subroutine
@@ -1616,11 +1638,11 @@ sub token {
 
     my $earley_item;
     my @earley_item_list;
-    my $current_state = [];
-    my $current_parent = 1;
-    # TO HERE
+    my $current_state = []; # dummy pointer so the first match fails
+    my $current_parent = -1; # dummy Earley set so the first match fails
+    my $completer_work_list = [];
 
-    WORK_ITEM: for my $work (@$work_list) {
+    WORK_ENTRY: for my $work (@$work_list) {
 
         my ($state, $parent) = @{$work}[STATE, PARENT];
 
@@ -1628,7 +1650,7 @@ sub token {
         #   Create the earley item
         if ($state == $current_state and $parent == $current_parent) {
             $earley_item = [];
-            @{$earley_item}[STATE, PARENT] = ($state, $parent);
+            @{$earley_item}[ID, STATE, PARENT] = ($next_item++, $state, $parent);
             push(@earley_item_list, $earley_item);
             $current_state = $state;
             $current_parent = $parent;
@@ -1655,11 +1677,11 @@ sub token {
             next ALTERNATIVE unless $kernel_state;
 
             # Create the kernel item and its link.
-            my $target_ix = $current_ix  + $length;
-            my $target_work_list = $work_list_list->[ $target_ix ];
+            my $target_ix = $current_set  + $length;
+            my $target_work_list = ($work_list_list->[ $target_ix ] ||= []);
             my @new_work_entry;
-            @new_work_entry[STATE, PARENT, PREDECESSOR, VALUE]
-                = ($kernel_state, $parent, $earley_item, $value);
+            @new_work_entry[STATE, PARENT, PREDECESSOR, CAUSE, VALUE]
+                = ($kernel_state, $parent, $earley_item, 0, $value);
             push(@$target_work_list, \@new_work_entry);
 
             my $resetting_state
@@ -1667,16 +1689,63 @@ sub token {
                     -> [ Parse::Marpa::TRANSITION ]
                     -> { "" };
             next ALTERNATIVE unless defined $resetting_state;
-            @new_work_entry[STATE, PARENT, PREDECESSOR, VALUE]
-                = ($resetting_state, $parent);
+            @new_work_entry[STATE, PARENT, PREDECESSOR, CAUSE, VALUE]
+                = ($resetting_state, $parent, 0, 0, undef);
             push(@$target_work_list, \@new_work_entry);
 
         } # ALTERNATIVE
+
+        next WORK_ENTRY if $current_set == $parent;
+
+        COMPLETE_RULE: for my $complete_symbol_name (@{$state->[ Parse::Marpa::COMPLETE ] }) {
+            PARENT_ITEM: for my $parent_item (@{$earley_set_list->[$parent]}) {
+                my ($parent_state, $grandparent) = @{$parent_item}[STATE, PARENT];
+                my $kernel_state
+                    = $SDFA
+                        -> [ $parent_state -> [ Parse::Marpa::ID ] ]
+                        -> [ Parse::Marpa::TRANSITION ]
+                        -> { $complete_symbol_name };
+                next EARLEY_ITEM unless defined $kernel_state;
+                my $new_work_entry;
+                @{$new_work_entry}[STATE, PARENT, PREDECESSOR, CAUSE]
+                    = ($kernel_state, $grandparent, $parent_item, $earley_item);
+                push(@$completer_work_list, $new_work_entry);
+
+                my $resetting_state
+                    = $kernel_state
+                        -> [ Parse::Marpa::TRANSITION ]
+                        -> { "" };
+                next PARENT_ITEM unless defined $resetting_state;
+                @{$new_work_entry}[STATE, PARENT, PREDECESSOR, CAUSE]
+                    = ($resetting_state, $current_set, 0, 0);
+                push(@$completer_work_list, $new_work_entry);
+
+            } # PARENT_ITEM
+        } # COMPLETE_RULE
     } # EARLEY_ITEM
 
     # Go back over the earley set, and set up the links
+    $record_number = 0;
+    # TO HERE
+    $work_list = [ @{$work_list}[
+        # Perl complains unless the constant is sigiled as a subroutine
+        map unpack("J", substr($_, -&J_LENGTH)),
+        sort map {
+                pack("JJBJJJ",
+                    $_->[ STATE ]->[ Parse::Marpa::ID ],
+                    $_->[ PARENT ],
+                    (not defined $_->[DESTINATION]),
+                    $_->[PREDECESSOR]+0,
+                    $_->[CAUSE]+0,
+                    $record_number++
+                );
+            }
+            @$work_list, @$completer_work_list
+        ]
+    ];
 
-    # Increment CURRENT_IX
+    # Increment CURRENT_SET
+    $parse->[CURRENT_SET]++;
 }
 
 =head1 NAME

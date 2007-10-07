@@ -8,7 +8,7 @@ use strict;
 use warnings;
 use Parse::Marpa::Test qw( normalize_SDFA );
 
-use Test::More tests => 10;
+use Test::More tests => 11;
 
 BEGIN {
 	use_ok( 'Parse::Marpa' );
@@ -234,6 +234,14 @@ EOS
 my $a = $g->get_symbol("a");
 
 $parse->token([$a, "a", 1]);
+
+is( $parse->show_work_list_list(), <<'EOS', "Aycock/Horspool Earley Working Lists" );
+Earley Working List 0
+0, 0
+1, 0
+Earley Working List 1
+5, 0; v=a
+EOS
 
 # Local Variables:
 #   mode: cperl
