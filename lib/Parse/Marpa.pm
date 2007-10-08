@@ -1,6 +1,6 @@
 package Parse::Marpa;
 
-use 5.006000;
+require 5.008000;
 
 # TO THE (POTENTIAL) READER:
 
@@ -21,10 +21,11 @@ use 5.006000;
 
 use warnings;
 use strict;
-use version; our $VERSION = qv('0.1_9');
 
 use Carp;
 use Scalar::Util qw(weaken);
+
+our $VERSION = 0.001_010;
 
 =begin Apology:
 
@@ -1191,10 +1192,11 @@ sub _create_SDFA {
             $lhs_list->[ $rule->[LHS]->[ID] ] = 1 if $position >= @{$rule->[RHS]};
         } # NFA_state
         $state->[COMPLETE]
-            = map { $_->[NAME] }
+            = [ map { $_->[NAME] }
                 @{$symbol}[
                     grep { $lhs_list->[ $_ ] } (0 .. $#$lhs_list)
-                ];
+                ]
+            ];
     } # STATE
 }
 
@@ -1463,30 +1465,25 @@ use constant GRAMMAR          => 0; # the grammar used
 use constant CURRENT_SET      => 1; # index of the first incomplete Earley set
 use constant EARLEY_SET       => 2; # the array of the Earley sets
 use constant WORK_LIST        => 3; # the array of the Earley work lists
-use constant NEXT_ITEM        => 4; # index of next Earley item
 
 # Elements of the EARLEY ITEM structure
 # Note that these are Earley items as modified by Aycock & Horspool, with SDFA states instead of 
 # LR(0) items.
 #
-# the value of ID should be coordinated with the other constants of the same name in the namespace
-# Parse::Marpa
-#
-use constant ID               => 0;
-use constant STATE            => 1;    # the SDFA state
-use constant PARENT           => 2;    # the number of the Earley set with the parent item
-use constant TOKEN            => 3;    # a list of the links from token scanning
-use constant LINK             => 4;    # a list of the links from the completer step
+use constant STATE             => 0;    # the SDFA state
+use constant PARENT            => 1;    # the number of the Earley set with the parent item
+use constant TOKEN             => 2;    # a list of the links from token scanning
+use constant LINK              => 3;    # a list of the links from the completer step
 
 # Elements of the EARLEY WORK ENTRY structure
 #
 # STATE AND PARENT two same as for EARLEY ITEM
-use constant DESTINATION        => 0;    # Earley item that is the destination for the data
-# use constant STATE            => 1;    # the SDFA state
-# use constant PARENT           => 2;    # the number of the Earley set with the parent item
-use constant PREDECESSOR        => 3;    # reference to predecessor Earley item
-use constant CAUSE              => 4;    # reference to causal Earley item
-use constant VALUE              => 5;    # token value
+# use constant STATE            => 0;    # the SDFA state
+# use constant PARENT           => 1;    # the number of the Earley set with the parent item
+use constant PREDECESSOR        => 2;    # reference to predecessor Earley item
+use constant CAUSE              => 3;    # reference to causal Earley item
+use constant VALUE              => 4;    # token value
+use constant DESTINATION        => 5;    # Earley item that is the destination for the data
                                          # in this work entry
 
 # implementation dependent constant, used below in unpack
@@ -1519,8 +1516,8 @@ sub new {
         @{$work_list0->[1]}[STATE, PARENT, PREDECESSOR, CAUSE]
             = ($resetting_state, 0, 0, 0);
     }
-    @{$self}[CURRENT_SET, WORK_LIST, GRAMMAR, NEXT_ITEM]
-        = (0, [ $work_list0 ], $grammar, 1);
+    @{$self}[CURRENT_SET, WORK_LIST, GRAMMAR, EARLEY_SET ]
+        = (0, [ $work_list0 ], $grammar, []);
 
     bless $self, $class;
 }
@@ -1532,19 +1529,15 @@ sub show_work_entry {
     my ($state, $parent, $predecessor, $cause, $value, $destination) = @{$entry}
         [STATE,  PARENT,  PREDECESSOR,   CAUSE,  VALUE,  DESTINATION];
     my $text = $state->[ Parse::Marpa::ID ] . ", " . $parent;
-    if ($cause) {
-        $text .= "; " . brief_earley_item($predecessor) . ", " . brief_earley_item($cause);
-    } elsif ($predecessor) {
-        $text .= "; " . brief_earley_item($predecessor);
-    }
+    $text .= "; p=[" . brief_earley_item($predecessor) . "]" if $predecessor;
+    $text .= "; c=[" . brief_earley_item($cause) . "]" if $cause;
     $text .= "; v=" . $value if defined $value;
     $text .= "; dest=" . $destination if defined $destination;
     $text .= "\n";
 } # show_work_entry
 
 sub show_work_list_list {
-    my $parse = shift;
-    my $work_lists = $parse->[WORK_LIST];
+    my $work_lists = shift;
     my $text = "";
     my $work_list_count = @$work_lists;
     LIST: for (my $ix = 0; $ix < $work_list_count; $ix++) {
@@ -1567,7 +1560,7 @@ sub show_work_list {
 sub brief_earley_item {
     my $item = shift;
     my ($state, $parent) = @{$item}[STATE, PARENT];
-    my $text = $state->[ Parse::Marpa::ID ] . ", " . $parent . "\n";
+    my $text = $state->[ Parse::Marpa::ID ] . ", " . $parent;
 }
 
 sub show_earley_item {
@@ -1575,12 +1568,12 @@ sub show_earley_item {
     my $text = brief_earley_item($item);
     my ($token, $link) = @{$item}[TOKEN, LINK];
     for my $value_entry (@$token) {
-        $text .= " [p=" . $value_entry->[0]->[ Parse::Marpa::ID ]
-            . "v=" . $value_entry->[1] . "]";
+        $text .= " [p=" . brief_earley_item($value_entry->[0])
+            . "; v=" . $value_entry->[1] . "]";
     }
     for my $link_entry (@$link) {
-        $text .= " [p=" . $link_entry->[0]->[ Parse::Marpa::ID ]
-            .  "c=" .  $link_entry->[1]->[ Parse::Marpa::ID ] . "]";
+        $text .= " [p=" . brief_earley_item($link_entry->[0]->[ Parse::Marpa::ID ])
+            .  "; c=" .  brief_earley_item($link_entry->[1]->[ Parse::Marpa::ID ]) . "]";
     }
     $text;
 }
@@ -1589,9 +1582,30 @@ sub show_earley_set {
     my $earley_set = shift;
     my $text = "";
     for my $earley_item (@$earley_set) {
-        $text .= show_earley_item($earley_item);
+        $text .= show_earley_item($earley_item) . "\n";
     }
     $text;
+}
+
+sub show_earley_set_list {
+    my $earley_set_list = shift;
+    my $text = "";
+    my $earley_set_count = @$earley_set_list;
+    LIST: for (my $ix = 0; $ix < $earley_set_count; $ix++) {
+        my $set = $earley_set_list->[$ix];
+        next LIST unless defined $set;
+        $text .= "Earley Set $ix\n" . show_earley_set($set);
+    }
+    $text;
+}
+
+sub show_status {
+    my $parse = shift;
+    my ($current_set, $earley_set_list, $work_list_list)
+        = @{$parse}[CURRENT_SET, EARLEY_SET, WORK_LIST];
+    my $text = "Current Earley Set: " . $current_set . "\n";
+    $text .= show_earley_set_list($earley_set_list);
+    $text .= show_work_list_list($work_list_list);
 }
 
 # Mutator methods
@@ -1618,11 +1632,24 @@ earlemes.
 sub token {
     my $parse = shift;
 
-    my ($earley_set_list, $work_list_list, $grammar, $current_set, $next_item)
-        = @{$parse}[EARLEY_SET, WORK_LIST, GRAMMAR, CURRENT_SET, NEXT_ITEM];
+    my ($earley_set_list, $work_list_list, $grammar, $current_set)
+        = @{$parse}[EARLEY_SET, WORK_LIST, GRAMMAR, CURRENT_SET];
     my $SDFA = $grammar->[ Parse::Marpa::SDFA ];
 
     my $work_list = $work_list_list->[$current_set];
+
+    # It's helpful below to assume there's at least one item in the work list,
+    # so for sanity's sake, I treat the empty work list
+    # as a special case:
+    #
+    # If there's nothing in the work list, we're done.
+    unless (@$work_list) {
+        $earley_set_list->[$current_set] = [];
+        $work_list_list->[$current_set] = undef;
+        $parse->[CURRENT_SET]++;
+        return;
+    }
+
     my $record_number = 0;
     $work_list = [ @{$work_list}[
         # Perl complains unless the constant is sigiled as a subroutine
@@ -1637,23 +1664,24 @@ sub token {
     ];
 
     my $earley_item;
-    my @earley_item_list;
-    my $current_state = []; # dummy pointer so the first match fails
-    my $current_parent = -1; # dummy Earley set so the first match fails
+    my $earley_set = [];
+    my $state = []; # dummy pointer so the first match fails
+    my $parent = -1; # dummy Earley set so the first match fails
     my $completer_work_list = [];
 
     WORK_ENTRY: for my $work (@$work_list) {
 
-        my ($state, $parent) = @{$work}[STATE, PARENT];
+        my ($new_state, $new_parent) = @{$work}[STATE, PARENT];
 
         # Once for each state, parent pair:
         #   Create the earley item
-        if ($state == $current_state and $parent == $current_parent) {
+        unless ($new_state == $state and $new_parent == $parent) {
+            $state = $new_state;
+            $parent = $new_parent;
             $earley_item = [];
-            @{$earley_item}[ID, STATE, PARENT] = ($next_item++, $state, $parent);
-            push(@earley_item_list, $earley_item);
-            $current_state = $state;
-            $current_parent = $parent;
+            @{$earley_item}[STATE, PARENT, TOKEN, LINK]
+                = ($state, $parent, [], []);
+            push(@$earley_set, $earley_item);
         }
 
         $work->[DESTINATION] = $earley_item;
@@ -1705,7 +1733,7 @@ sub token {
                         -> [ $parent_state -> [ Parse::Marpa::ID ] ]
                         -> [ Parse::Marpa::TRANSITION ]
                         -> { $complete_symbol_name };
-                next EARLEY_ITEM unless defined $kernel_state;
+                next WORK_ENTRY unless defined $kernel_state;
                 my $new_work_entry;
                 @{$new_work_entry}[STATE, PARENT, PREDECESSOR, CAUSE]
                     = ($kernel_state, $grandparent, $parent_item, $earley_item);
@@ -1722,21 +1750,19 @@ sub token {
 
             } # PARENT_ITEM
         } # COMPLETE_RULE
-    } # EARLEY_ITEM
+    } # WORK_ENTRY
 
     # Go back over the earley set, and set up the links
     $record_number = 0;
-    # TO HERE
     $work_list = [ @{$work_list}[
         # Perl complains unless the constant is sigiled as a subroutine
         map unpack("J", substr($_, -&J_LENGTH)),
         sort map {
-                pack("JJBJJJ",
+                pack("JJJJJ",
                     $_->[ STATE ]->[ Parse::Marpa::ID ],
                     $_->[ PARENT ],
-                    (not defined $_->[DESTINATION]),
-                    $_->[PREDECESSOR]+0,
                     $_->[CAUSE]+0,
+                    $_->[PREDECESSOR]+0,
                     $record_number++
                 );
             }
@@ -1744,8 +1770,79 @@ sub token {
         ]
     ];
 
+    # Loop through the sorted work entries to create the Earley set.
+    # We can assume there is at least one work entry.
+    my $item;
+    ($state, $parent, $item)
+        = @{$work_list->[0]}[STATE, PARENT, DESTINATION];
+    my $ix = 0;
+    my $first_item_ix = 0;
+
+    my $work_list_count = @$work_list;
+    EARLEY_ITEM: while ($ix < $work_list_count) {
+
+       my ($new_state, $new_parent, $new_item);
+
+       # Loop through entries until we find the last one for the current Earley item
+       ITEM_ENTRY: for (;;) {
+           $ix++;
+           last ITEM_ENTRY if $ix >= $work_list_count;
+           ($new_state, $new_parent, $new_item)
+               = @{$work_list->[$ix]}[STATE, PARENT, DESTINATION];
+           last ITEM_ENTRY unless
+               $new_state == $state and $new_parent == $parent;
+           $item ||= $new_item;
+       } # ITEM_ENTRY
+
+       my $next_item_ix = $ix;
+
+       # Set up the destination item, if we don't already have one
+       unless ($item) {
+           $item = [];
+           @{$item}[STATE, PARENT] = ($state, $parent, [], []);
+           push(@$earley_set, $item);
+       }
+
+       # Set up the completion links and token links for this Earley item
+       # This loop assumes the work entries were sorted (as above) so that
+       # all the completion entries are the end, with duplicates next to
+       # each other
+       my $token_list = $item->[TOKEN];
+       my $link_list = $item->[LINK];
+       my ($predecessor, $cause) = (0, 0);
+       ITEM_ENTRY: for ($ix = $first_item_ix; $ix < $next_item_ix; $ix++) {
+            my $entry = $work_list->[$ix];
+            my ($new_predecessor, $new_cause, $value)
+                = @{$entry}[PREDECESSOR, CAUSE, VALUE];
+            next ITEM_ENTRY unless $new_predecessor;
+            if ($new_cause) { # completion entry
+
+                # We don't duplicate completion entries
+                next ITEM_ENTRY if
+                    $new_cause == $cause
+                    and $new_predecessor == $predecessor;
+                $cause = $new_cause;
+                $predecessor = $new_predecessor;
+                push(@$link_list, [ $predecessor, $cause ] );
+            } else { # scan (token) entry
+                push(@$token_list, [ $new_predecessor, $value ] );
+            }
+       } # ENTRY
+
+       $first_item_ix = $ix = $next_item_ix;
+       $state = $new_state;
+       $parent = $new_parent;
+       $item = $new_item;
+
+    } # EARLEY_ITEM
+
+    $earley_set_list -> [ $current_set ] = $earley_set;
+
+    # Free the working list memory
+    $work_list_list -> [ $current_set ] = undef;
+
     # Increment CURRENT_SET
-    $parse->[CURRENT_SET]++;
+    @{$parse}[ CURRENT_SET ]++;
 }
 
 =head1 NAME
@@ -1754,7 +1851,7 @@ Parse::Marpa - Earley's Algorithm, with improvements
 
 =head1 VERSION
 
-Version 0.1_2
+Pre-alpha Version
 
 =cut
 

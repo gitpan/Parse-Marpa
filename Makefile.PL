@@ -1,3 +1,4 @@
+require 5.008;
 use strict;
 use warnings;
 use ExtUtils::MakeMaker;
@@ -5,7 +6,7 @@ use ExtUtils::MakeMaker;
 WriteMakefile(
     NAME                => 'Parse::Marpa',
     AUTHOR              => 'Jeffrey Kegler',
-    VERSION_FROM        => 'lib/Parse/Marpa.pm',
+    VERSION_FROM        => 'VERSION',
     ABSTRACT_FROM       => 'lib/Parse/Marpa.pm',
     PL_FILES            => {},
     PREREQ_PM => {

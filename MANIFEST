@@ -3,6 +3,7 @@ MANIFEST
 META.yml # Will be created by "make dist"
 Makefile.PL
 README
+VERSION
 lib/Parse/Marpa.pm
 lib/Parse/Marpa/Test.pm
 t/00-load.t

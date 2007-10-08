@@ -8,7 +8,7 @@ use strict;
 use warnings;
 use Parse::Marpa::Test qw( normalize_SDFA );
 
-use Test::More tests => 11;
+use Test::More tests => 12;
 
 BEGIN {
 	use_ok( 'Parse::Marpa' );
@@ -225,23 +225,45 @@ EOS
 
 my $parse = new Parse::Marpa::Parse($g);
 
-is( $parse->show_work_list_list(), <<'EOS', "Aycock/Horspool Earley Working Lists" );
+is( $parse->show_status(), <<'EOS', "Aycock/Horspool Parse Status" );
+Current Earley Set: 0
 Earley Working List 0
 0, 0
 1, 0
 EOS
 
 my $a = $g->get_symbol("a");
-
 $parse->token([$a, "a", 1]);
 
-is( $parse->show_work_list_list(), <<'EOS', "Aycock/Horspool Earley Working Lists" );
-Earley Working List 0
+is( $parse->show_status(), <<'EOS', "Aycock/Horspool Parse Status" );
+Current Earley Set: 1
+Earley Set 0
 0, 0
 1, 0
 Earley Working List 1
-5, 0; v=a
+5, 0; p=[1, 0]; v=a
 EOS
+
+$parse->token([$a, "a", 1]);
+
+SKIP: {
+    skip "not yet debugged", 1;
+
+is( $parse->show_status(), <<'EOS', "Aycock/Horspool Parse Status" );
+not ok 12 - Aycock/Horspool Parse Status
+#   Failed test 'Aycock/Horspool Parse Status'
+#   in ah2.t at line 249.
+#          got: 'Current Earley Set: 2
+# Earley Set 0
+# 0, 0
+# 1, 0
+# Earley Set 1
+# 5, 0 [p=1, 0; v=a]
+# '
+#     expected: ''
+EOS
+
+}; # SKIP
 
 # Local Variables:
 #   mode: cperl
