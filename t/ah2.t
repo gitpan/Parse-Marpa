@@ -8,7 +8,7 @@ use strict;
 use warnings;
 use Parse::Marpa::Test qw( normalize_SDFA );
 
-use Test::More tests => 12;
+use Test::More tests => 14;
 
 BEGIN {
 	use_ok( 'Parse::Marpa' );
@@ -244,26 +244,25 @@ Earley Working List 1
 5, 0; p=[1, 0]; v=a
 EOS
 
+SKIP: {
+        skip "not yet debugged", 3;
+
 $parse->token([$a, "a", 1]);
 
-SKIP: {
-    skip "not yet debugged", 1;
-
 is( $parse->show_status(), <<'EOS', "Aycock/Horspool Parse Status" );
-not ok 12 - Aycock/Horspool Parse Status
-#   Failed test 'Aycock/Horspool Parse Status'
-#   in ah2.t at line 249.
-#          got: 'Current Earley Set: 2
-# Earley Set 0
-# 0, 0
-# 1, 0
-# Earley Set 1
-# 5, 0 [p=1, 0; v=a]
-# '
-#     expected: ''
 EOS
 
-}; # SKIP
+$parse->token([$a, "a", 1]);
+
+is( $parse->show_status(), <<'EOS', "Aycock/Horspool Parse Status" );
+EOS
+
+$parse->token([$a, "a", 1]);
+
+is( $parse->show_status(), <<'EOS', "Aycock/Horspool Parse Status" );
+EOS
+
+}
 
 # Local Variables:
 #   mode: cperl

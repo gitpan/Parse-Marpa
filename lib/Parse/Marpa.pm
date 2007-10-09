@@ -25,7 +25,7 @@ use strict;
 use Carp;
 use Scalar::Util qw(weaken);
 
-our $VERSION = 0.001_010;
+our $VERSION = 0.001_011;
 
 =begin Apology:
 
@@ -1643,7 +1643,7 @@ sub token {
     # as a special case:
     #
     # If there's nothing in the work list, we're done.
-    unless (@$work_list) {
+    unless (defined $work_list) {
         $earley_set_list->[$current_set] = [];
         $work_list_list->[$current_set] = undef;
         $parse->[CURRENT_SET]++;
@@ -1733,7 +1733,7 @@ sub token {
                         -> [ $parent_state -> [ Parse::Marpa::ID ] ]
                         -> [ Parse::Marpa::TRANSITION ]
                         -> { $complete_symbol_name };
-                next WORK_ENTRY unless defined $kernel_state;
+                next PARENT_ITEM unless defined $kernel_state;
                 my $new_work_entry;
                 @{$new_work_entry}[STATE, PARENT, PREDECESSOR, CAUSE]
                     = ($kernel_state, $grandparent, $parent_item, $earley_item);
@@ -1754,6 +1754,7 @@ sub token {
 
     # Go back over the earley set, and set up the links
     $record_number = 0;
+    push(@$work_list, @$completer_work_list);
     $work_list = [ @{$work_list}[
         # Perl complains unless the constant is sigiled as a subroutine
         map unpack("J", substr($_, -&J_LENGTH)),
@@ -1766,7 +1767,7 @@ sub token {
                     $record_number++
                 );
             }
-            @$work_list, @$completer_work_list
+            @$work_list
         ]
     ];
 
