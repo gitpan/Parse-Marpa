@@ -225,9 +225,9 @@ EOS
 
 my $parse = new Parse::Marpa::Parse($g);
 
-is( $parse->show_status(), <<'EOS', "Aycock/Horspool Parse Status" );
+is( $parse->show_status(), <<'EOS', "Aycock/Horspool Parse Status before parse" );
 Current Earley Set: 0
-Earley Working List 0
+Earley Set 0
 0, 0
 1, 0
 EOS
@@ -235,31 +235,34 @@ EOS
 my $a = $g->get_symbol("a");
 $parse->token([$a, "a", 1]);
 
-is( $parse->show_status(), <<'EOS', "Aycock/Horspool Parse Status" );
+is( $parse->show_status(), <<'EOS', "Aycock/Horspool Parse Status at 0" );
 Current Earley Set: 1
 Earley Set 0
 0, 0
 1, 0
-Earley Working List 1
-5, 0; p=[1, 0]; v=a
+Earley Set 1
+5, 0 [p=1, 0; v=a]
 EOS
 
 SKIP: {
-        skip "not yet debugged", 3;
+    skip "not yet debugged", 3;
 
 $parse->token([$a, "a", 1]);
 
-is( $parse->show_status(), <<'EOS', "Aycock/Horspool Parse Status" );
+is( $parse->show_status(), <<'EOS', "Aycock/Horspool Parse Status at 1" );
+stuff here
 EOS
 
 $parse->token([$a, "a", 1]);
 
-is( $parse->show_status(), <<'EOS', "Aycock/Horspool Parse Status" );
+is( $parse->show_status(), <<'EOS', "Aycock/Horspool Parse Status at 2" );
+stuff here
 EOS
 
 $parse->token([$a, "a", 1]);
 
-is( $parse->show_status(), <<'EOS', "Aycock/Horspool Parse Status" );
+is( $parse->show_status(), <<'EOS', "Aycock/Horspool Parse Status at 3" );
+stuff here
 EOS
 
 }
