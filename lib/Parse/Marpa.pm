@@ -25,7 +25,7 @@ use strict;
 use Carp;
 use Scalar::Util qw(weaken);
 
-our $VERSION = '0.001_013';
+our $VERSION = '0.001_014';
 $VERSION = eval $VERSION;
 
 =begin Apology:

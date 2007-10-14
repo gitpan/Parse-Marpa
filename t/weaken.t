@@ -6,9 +6,7 @@ use strict;
 use warnings;
 
 use Test::More tests => 5;
-use Test::Weaken;
 use Scalar::Util qw(refaddr reftype isweak weaken);
-use Data::Dumper qw(Dumper);
 
 BEGIN {
 	use_ok( 'Parse::Marpa' );
