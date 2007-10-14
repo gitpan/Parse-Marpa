@@ -8,7 +8,7 @@ use strict;
 use warnings;
 use Parse::Marpa::Test qw( normalize_SDFA );
 
-use Test::More tests => 14;
+use Test::More tests => 15;
 
 BEGIN {
 	use_ok( 'Parse::Marpa' );
@@ -228,8 +228,8 @@ my $parse = new Parse::Marpa::Parse($g);
 is( $parse->show_status(), <<'EOS', "Aycock/Horspool Parse Status before parse" );
 Current Earley Set: 0
 Earley Set 0
-0, 0
-1, 0
+0,0
+1,0
 EOS
 
 my $a = $g->get_symbol("a");
@@ -238,34 +238,147 @@ $parse->token([$a, "a", 1]);
 is( $parse->show_status(), <<'EOS', "Aycock/Horspool Parse Status at 0" );
 Current Earley Set: 1
 Earley Set 0
-0, 0
-1, 0
+0,0
+1,0
 Earley Set 1
-5, 0 [p=1, 0; v=a]
+5,0 [p=1,0; v=a]
 EOS
 
-SKIP: {
-    skip "not yet debugged", 3;
+# SKIP: {
+    # skip "not yet debugged", 3;
 
 $parse->token([$a, "a", 1]);
 
 is( $parse->show_status(), <<'EOS', "Aycock/Horspool Parse Status at 1" );
-stuff here
+Current Earley Set: 2
+Earley Set 0
+0,0
+1,0
+Earley Set 1
+5,0 [p=1,0; v=a]
+3,0 [p=1,0; c=5,0]
+4,1
+2,0 [p=0,0; c=3,0] [p=0,0; c=7,0]
+7,0 [p=1,0; c=3,0] [p=1,0; c=6,0]
+6,0 [p=1,0; c=3,0]
+Earley Set 2
+5,1 [p=4,1; v=a]
 EOS
 
 $parse->token([$a, "a", 1]);
 
 is( $parse->show_status(), <<'EOS', "Aycock/Horspool Parse Status at 2" );
-stuff here
+Current Earley Set: 3
+Earley Set 0
+0,0
+1,0
+Earley Set 1
+5,0 [p=1,0; v=a]
+3,0 [p=1,0; c=5,0]
+4,1
+2,0 [p=0,0; c=3,0] [p=0,0; c=7,0]
+7,0 [p=1,0; c=3,0] [p=1,0; c=6,0]
+6,0 [p=1,0; c=3,0]
+Earley Set 2
+5,1 [p=4,1; v=a]
+8,0 [p=3,0; c=5,1]
+11,1 [p=4,1; c=5,1]
+12,2
+6,0 [p=1,0; c=8,0]
+10,0 [p=3,0; c=11,1] [p=3,0; c=6,1]
+9,0 [p=3,0; c=11,1]
+6,1 [p=4,1; c=11,1]
+7,0 [p=1,0; c=6,0] [p=1,0; c=9,0]
+2,0 [p=0,0; c=10,0] [p=0,0; c=7,0]
+Earley Set 3
+5,2 [p=12,2; v=a]
 EOS
 
 $parse->token([$a, "a", 1]);
 
 is( $parse->show_status(), <<'EOS', "Aycock/Horspool Parse Status at 3" );
-stuff here
+Current Earley Set: 4
+Earley Set 0
+0,0
+1,0
+Earley Set 1
+5,0 [p=1,0; v=a]
+3,0 [p=1,0; c=5,0]
+4,1
+2,0 [p=0,0; c=3,0] [p=0,0; c=7,0]
+7,0 [p=1,0; c=3,0] [p=1,0; c=6,0]
+6,0 [p=1,0; c=3,0]
+Earley Set 2
+5,1 [p=4,1; v=a]
+8,0 [p=3,0; c=5,1]
+11,1 [p=4,1; c=5,1]
+12,2
+6,0 [p=1,0; c=8,0]
+10,0 [p=3,0; c=11,1] [p=3,0; c=6,1]
+9,0 [p=3,0; c=11,1]
+6,1 [p=4,1; c=11,1]
+7,0 [p=1,0; c=6,0] [p=1,0; c=9,0]
+2,0 [p=0,0; c=10,0] [p=0,0; c=7,0]
+Earley Set 3
+5,2 [p=12,2; v=a]
+8,1 [p=11,1; c=5,2]
+13,2 [p=12,2; c=5,2]
+14,3
+9,0 [p=3,0; c=8,1]
+6,1 [p=4,1; c=8,1]
+9,1 [p=11,1; c=13,2]
+7,0 [p=1,0; c=9,0]
+10,0 [p=3,0; c=6,1] [p=3,0; c=9,1]
+2,0 [p=0,0; c=7,0] [p=0,0; c=10,0]
+Earley Set 4
+5,3 [p=14,3; v=a]
 EOS
 
-}
+$parse->token();
+
+is( $parse->show_status(), <<'EOS', "Aycock/Horspool Parse Status at 4" );
+Current Earley Set: 5
+Earley Set 0
+0,0
+1,0
+Earley Set 1
+5,0 [p=1,0; v=a]
+3,0 [p=1,0; c=5,0]
+4,1
+2,0 [p=0,0; c=3,0] [p=0,0; c=7,0]
+7,0 [p=1,0; c=3,0] [p=1,0; c=6,0]
+6,0 [p=1,0; c=3,0]
+Earley Set 2
+5,1 [p=4,1; v=a]
+8,0 [p=3,0; c=5,1]
+11,1 [p=4,1; c=5,1]
+12,2
+6,0 [p=1,0; c=8,0]
+10,0 [p=3,0; c=11,1] [p=3,0; c=6,1]
+9,0 [p=3,0; c=11,1]
+6,1 [p=4,1; c=11,1]
+7,0 [p=1,0; c=6,0] [p=1,0; c=9,0]
+2,0 [p=0,0; c=10,0] [p=0,0; c=7,0]
+Earley Set 3
+5,2 [p=12,2; v=a]
+8,1 [p=11,1; c=5,2]
+13,2 [p=12,2; c=5,2]
+14,3
+9,0 [p=3,0; c=8,1]
+6,1 [p=4,1; c=8,1]
+9,1 [p=11,1; c=13,2]
+7,0 [p=1,0; c=9,0]
+10,0 [p=3,0; c=6,1] [p=3,0; c=9,1]
+2,0 [p=0,0; c=7,0] [p=0,0; c=10,0]
+Earley Set 4
+5,3 [p=14,3; v=a]
+8,2 [p=13,2; c=5,3]
+9,1 [p=11,1; c=8,2]
+10,0 [p=3,0; c=9,1]
+2,0 [p=0,0; c=10,0]
+EOS
+
+# }
 
 # Local Variables:
 #   mode: cperl

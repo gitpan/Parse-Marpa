@@ -6,6 +6,7 @@ use strict;
 use warnings;
 
 use Test::More tests => 5;
+use Test::Weaken;
 use Scalar::Util qw(refaddr reftype isweak weaken);
 use Data::Dumper qw(Dumper);
 
@@ -13,90 +14,44 @@ BEGIN {
 	use_ok( 'Parse::Marpa' );
 }
 
-my $g = new Parse::Marpa(
-    start => "S",
-    rules => [
-        [ "a" => qr/a/ ],
-        [ qw/S A A A A/ ],
-        [ qw/A a/ ],
-        [ qw/A E/ ],
-        [ qw/E/ ],
-    ],
-);
+SKIP: {
+    eval { require Test::Weaken };
+    skip "Test::Weaken not available, skipping tests", 4 if $@;
 
-# assume g is a strong reference
-my $reverse = {};
-my $workset = [ \$g ];
-my $weak = [];
-$Data::Dumper::Maxdepth = 3;
-# need to work with refs to a weak ref, because copying a weak ref (sigh) strengthens it
-WORKSET: while (@$workset) {
-    my $follow = [];
-    REF: for my $rr (@$workset)
-    {
-         my $type = reftype $$rr;
-         next REF unless defined $type;
-         if (isweak $$rr)
-         {
-              push(@$weak, $rr);
-              next REF;
-         }
-         if ($type eq "ARRAY" or $type eq "HASH" or $type eq "REF") {
-              if (defined $reverse->{refaddr $$rr}) {
-                   next REF;
-              }
-              $reverse->{refaddr $$rr} = $rr;
-              if ($type eq "ARRAY") {
-                  for my $ix (0 .. $#$$rr) {
-                    push(@$follow, \ ($$rr->[$ix]) );
-                  }
-                  next REF;
-              }
-              if ($type eq "HASH") {
-                  for my $ix (keys %$$rr) {
-                    push(@$follow, \ ($$rr->{$ix}) );
-                  }
-                  next REF;
-              }
-              # not tested !!!
-              if ($type eq "REF") {
-                  push(@$follow, \$$$rr );
-              }
-         }
-    }
-    $workset = $follow;
-}
+    my ($weak_count, $strong_count, $unfreed_weak, $unfreed_strong)
+        = Test::Weaken::poof(
+            sub {
+                my $g = new Parse::Marpa(
+                    start => "S",
+                    rules => [
+                        [ "a" => qr/a/ ],
+                        [ qw/S A A A A/ ],
+                        [ qw/A a/ ],
+                        [ qw/A E/ ],
+                        [ qw/E/ ],
+                    ],
+                );
+                my $a = $g->get_symbol("a");
+                my $parse = new Parse::Marpa::Parse($g);
+                $parse->token([$a, "a", 1]);
+                $parse->token([$a, "a", 1]);
+                $parse->token([$a, "a", 1]);
+                $parse->token([$a, "a", 1]);
+                $parse->token();
+                [ $g, $parse ];
+            }
+        );
 
-my $strong = [];
-my $ix = 0;
-for my $strong_ref (values %$reverse) {
-  weaken($strong->[$ix++] = $strong_ref);
-}
+    cmp_ok($weak_count, "!=", 0, "Found $weak_count weak refs");
+    cmp_ok($strong_count, "!=", 0, "Found $strong_count strong refs");
 
-my $weak_count = @$weak;
-cmp_ok($weak_count, "!=", 0, "Found $weak_count weak refs");
-my $strong_count = @$strong;
-cmp_ok($strong_count, "!=", 0, "Found $strong_count strong refs");
+    cmp_ok(scalar @$unfreed_strong, "==", 0, "All strong refs freed")
+        or diag("Unfreed strong refs: ", scalar @$unfreed_strong);
 
-undef $g;
-undef $reverse;
-undef $workset;
+    cmp_ok(scalar @$unfreed_weak, "==", 0, "All weak refs freed")
+        or diag("Unfreed weak refs: ", scalar @$unfreed_weak);
 
-my @unfreed_strong = grep { defined $$_ } @$strong;
-for my $rr (@unfreed_strong) {
-    diag("Unfreed strong ref ", (refaddr $$rr), ": ", Dumper($rr));
-}
-
-cmp_ok(scalar @unfreed_strong, "==", 0, "All strong refs freed")
-    or diag("Unfreed strong refs: ", scalar @unfreed_strong);
-
-my @unfreed_weak = grep { defined $$_ } @$weak;
-for my $rr (@unfreed_weak) {
-    diag("Unfreed weak ref: ", Dumper($rr));
-}
-
-cmp_ok(scalar @unfreed_weak, "==", 0, "All weak refs freed")
-    or diag("Unfreed weak refs: ", scalar @unfreed_weak);
+} # SKIP
 
 # Local Variables:
 #   mode: cperl

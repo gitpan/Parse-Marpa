@@ -25,7 +25,8 @@ use strict;
 use Carp;
 use Scalar::Util qw(weaken);
 
-our $VERSION = 0.001_012;
+our $VERSION = '0.001_013';
+$VERSION = eval $VERSION;
 
 =begin Apology:
 
@@ -1524,7 +1525,7 @@ sub new {
 sub brief_earley_item {
     my $item = shift;
     my ($state, $parent) = @{$item}[STATE, PARENT];
-    my $text = $state->[ Parse::Marpa::ID ] . ", " . $parent;
+    my $text = $state->[ Parse::Marpa::ID ] . "," . $parent;
 }
 
 sub show_earley_item {
@@ -1694,6 +1695,7 @@ sub token {
                         -> [ Parse::Marpa::TRANSITION ]
                         -> { "" };
                 next PARENT_ITEM unless defined $resetting_state;
+                $key = pack("JJ", $resetting_state, $current_set);
                 unless (defined $earley_hash->{$key}) {
                     my $new_earley_item;
                     @{$new_earley_item}[STATE, PARENT]

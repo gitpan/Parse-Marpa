@@ -6,7 +6,7 @@ use ExtUtils::MakeMaker;
 WriteMakefile(
     NAME                => 'Parse::Marpa',
     AUTHOR              => 'Jeffrey Kegler',
-    VERSION_FROM        => 'VERSION',
+    VERSION_FROM        => 'lib/Parse/Marpa.pm',
     ABSTRACT_FROM       => 'lib/Parse/Marpa.pm',
     PL_FILES            => {},
     PREREQ_PM => {
