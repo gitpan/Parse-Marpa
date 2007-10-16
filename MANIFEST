@@ -8,7 +8,6 @@ lib/Parse/Marpa/Test.pm
 t/00-load.t
 t/ah.t
 t/ah2.t
-t/boilerplate.t
 t/gj.t
 t/hu.t
 t/pod.t

@@ -25,7 +25,7 @@ use strict;
 use Carp;
 use Scalar::Util qw(weaken);
 
-our $VERSION = '0.001_014';
+our $VERSION = '0.001_015';
 $VERSION = eval $VERSION;
 
 =begin Apology:
@@ -101,6 +101,7 @@ use constant NULLABLE        => 4;    # can match null
 use constant START_REACHABLE => 5;    # reachable from start symbol
 use constant INPUT_REACHABLE => 6;    # reachable from input symbol
 use constant NULLING         => 7;    # always matches null
+use constant IS_START        => 8;    # is one of the start symbols
 
 # ADDITIONAL ELEMENTS OF THE SYMBOL STRUCTURE
 use constant REGEX => 8;      # regex, for terminals; undef otherwise
@@ -110,18 +111,19 @@ use constant NULL_ALIAS => 9; # for a non-nulling symbol, ref of a its nulling a
 # ADDITIONAL ELEMENTS of THE RULE STRUCTURE
 use constant USEFUL          => 8; # boolean, true if rule is to be used in the NFA
 
-# ELEMENTS of the NFA and SDFA STATE STRUCTURES
-use constant ITEM       => 2; # in an NFA: an LR(0) item
-use constant NFA_STATES => 2; # in an SDFA: an array of NFA states
-use constant TRANSITION => 3; # the transitions, as a hash from symbol name to NFA (SDFA) states
-use constant COMPLETE   => 4; # in an SDFA state, an array of the NFA states with
-                              # complete LR(0) items
+# ELEMENTS of the NFA and SDFA STATE structures
+use constant ITEM            => 2; # in an NFA: an LR(0) item
+use constant NFA_STATES      => 2; # in an SDFA: an array of NFA states
+use constant TRANSITION      => 3; # the transitions, as a hash from symbol name to NFA (SDFA) states
+use constant COMPLETE_LHS    => 4; # in an SDFA state, an array of the lhs's of complete rules
+use constant COMPLETE_RULES  => 5; # in an SDFA state, an array of the complete rules
+use constant START_RULE      => 6; # in an SDFA state, the start rule
 
-# ELEMENTS of the LR(0) ITEM STRUCTURE
+# ELEMENTS of the LR(0) ITEM structure
 use constant RULE     => 0;
 use constant POSITION => 1;
 
-# ELEMENTS of the GRAMMAR STRUCTURE
+# ELEMENTS of the GRAMMAR structure
 use constant RULES            => 0;    # array of rule refs
 use constant SYMBOL          => 1;    # array of symbol refs
 use constant RULE_HASH        => 2;    # hash by name of symbol refs
@@ -1138,7 +1140,7 @@ WORK_LIST: while (@$prediction_work_list) {
 
 sub _create_SDFA {
     my $self   = shift;
-    my ($symbol, $NFA)    = @{$self}[SYMBOL, NFA];
+    my ($symbol, $NFA, $start)    = @{$self}[SYMBOL, NFA, START];
     my $SDFA   = $self->[SDFA] = [];
     my $NFA_s0 = $NFA->[0];
 
@@ -1154,8 +1156,8 @@ sub _create_SDFA {
 
     while ( $next_state_id < scalar @$SDFA ) {
 
-# compute the SDFA state transitions from the transtions of the NFA states of which it
-# is composed
+        # compute the SDFA state transitions from the transitions
+        # of the NFA states of which it is composed
         my $NFA_to_states_by_symbol = {};
 
         my $SDFA_state = $SDFA->[ $next_state_id++ ];
@@ -1182,17 +1184,27 @@ sub _create_SDFA {
     }
 
     # For the parse phase, pre-compute the list of names of the lhs's of
-    # complete items
+    # complete items, the list of complete items, and the start rule (should
+    # be maximum one per state)
     STATE: for my $state (@$SDFA) {
         my $lhs_list = [];
+        my $complete_rules = [];
+        my $start_rule = undef;
         $#$lhs_list = @$symbol;
         my $NFA_states = $state->[NFA_STATES];
         for my $NFA_state (@$NFA_states) {
             my $item = $NFA_state->[ITEM];
             my ($rule, $position) = @{$item}[RULE, POSITION];
-            $lhs_list->[ $rule->[LHS]->[ID] ] = 1 if $position >= @{$rule->[RHS]};
+            my ($lhs, $rhs) = @{$rule}[ LHS, RHS ];
+            if ($position >= @$rhs) {
+                $lhs_list->[ $lhs->[ID] ] = 1;
+                push(@$complete_rules, $rule);
+                $start_rule = $rule if $lhs->[ IS_START ];
+            }
         } # NFA_state
-        $state->[COMPLETE]
+        $state->[ START ] = $start_rule;
+        $state->[ COMPLETE_RULES ] = $complete_rules;
+        $state->[ COMPLETE_LHS ]
             = [ map { $_->[NAME] }
                 @{$symbol}[
                     grep { $lhs_list->[ $_ ] } (0 .. $#$lhs_list)
@@ -1444,17 +1456,22 @@ sub _rewrite_as_CHAF {
 
     } # RULE
 
+    # Create a new start symbol
     my $old_start = $start;
     my $input_reachable = $old_start->[INPUT_REACHABLE];
     $start = _assign_symbol( $self, $start->[NAME] . "[']");
+    @{$start}[INPUT_REACHABLE, START_REACHABLE, IS_START] = ($input_reachable, 1, 1);
+
+    # Create a new start rule
     my $new_start_rule = _add_rule( $self, $start, [ $old_start ]);
     @{$new_start_rule}[INPUT_REACHABLE, START_REACHABLE, USEFUL] = ($input_reachable, 1, 1);
-    @{$start}[INPUT_REACHABLE, START_REACHABLE] = ($input_reachable, 1);
+
     if ($old_start->[NULL_ALIAS]) {
-        _alias_symbol($self, $start);
-        my $new_start_rule = _add_rule( $self, $start->[NULL_ALIAS], [ ]);
+        my $start_alias = _alias_symbol($self, $start);
+        @{$start_alias}[IS_START] = 1;
+        my $new_start_rule = _add_rule( $self, $start_alias, [ ]);
         # Nulling rules are not considered useful, but the top-level one is an exception
-        @{$new_start_rule}[INPUT_REACHABLE, START_REACHABLE, USEFUL] = ($input_reachable, 1, 1);
+        @{$new_start_rule}[INPUT_REACHABLE, START_REACHABLE, USEFUL, IS_START] = ($input_reachable, 1, 1, 1);
     }
     $self->[START] = $start;
 }
@@ -1464,7 +1481,7 @@ package Parse::Marpa::Parse;
 # Elements of the PARSE structure
 use constant GRAMMAR          => 0; # the grammar used
 use constant CURRENT_SET      => 1; # index of the first incomplete Earley set
-use constant EARLEY_SET       => 2; # the array of the Earley sets
+use constant EARLEY_SETS       => 2; # the array of the Earley sets
 use constant EARLEY_HASH      => 3; # the array of hashes used to build the Earley sets
 
 # Elements of the EARLEY ITEM structure
@@ -1473,8 +1490,8 @@ use constant EARLEY_HASH      => 3; # the array of hashes used to build the Earl
 #
 use constant STATE             => 0;    # the SDFA state
 use constant PARENT            => 1;    # the number of the Earley set with the parent item
-use constant TOKEN             => 2;    # a list of the links from token scanning
-use constant LINK              => 3;    # a list of the links from the completer step
+use constant TOKENS             => 2;    # a list of the links from token scanning
+use constant LINKS              => 3;    # a list of the links from the completer step
 
 # implementation dependent constant, used below in unpack
 use constant J_LENGTH     => (length pack("J", 0, 0));
@@ -1514,7 +1531,7 @@ sub new {
         push(@$earley_set, $item);
         $earley_hash->{$key} = $item;
     }
-    @{$self}[CURRENT_SET, EARLEY_HASH,      GRAMMAR,   EARLEY_SET ]
+    @{$self}[CURRENT_SET, EARLEY_HASH,      GRAMMAR,   EARLEY_SETS ]
         = (  0,           [ $earley_hash ], $grammar,  [ $earley_set ]);
 
     bless $self, $class;
@@ -1531,14 +1548,14 @@ sub brief_earley_item {
 sub show_earley_item {
     my $item = shift;
     my $text = brief_earley_item($item);
-    my ($token, $link) = @{$item}[TOKEN, LINK];
-    for my $value_entry (@$token) {
-        $text .= " [p=" . brief_earley_item($value_entry->[0])
-            . "; v=" . $value_entry->[1] . "]";
+    my ($tokens, $links) = @{$item}[TOKENS, LINKS];
+    for my $value (@$tokens) {
+        $text .= " [p=" . brief_earley_item($value->[0])
+            . "; v=" . $value->[1] . "]";
     }
-    for my $link_entry (@$link) {
-        $text .= " [p=" . brief_earley_item($link_entry->[0])
-            .  "; c=" .  brief_earley_item($link_entry->[1]) . "]";
+    for my $link (@$links) {
+        $text .= " [p=" . brief_earley_item($link->[0])
+            .  "; c=" .  brief_earley_item($link->[1]) . "]";
     }
     $text;
 }
@@ -1567,7 +1584,7 @@ sub show_earley_set_list {
 sub show_status {
     my $parse = shift;
     my ($current_set, $earley_set_list)
-        = @{$parse}[CURRENT_SET, EARLEY_SET];
+        = @{$parse}[CURRENT_SET, EARLEY_SETS];
     my $text = "Current Earley Set: " . $current_set . "\n";
     $text .= show_earley_set_list($earley_set_list);
 }
@@ -1597,7 +1614,7 @@ sub token {
     my $parse = shift;
 
     my ($earley_set_list, $earley_hash_list, $grammar, $current_set)
-        = @{$parse}[EARLEY_SET, EARLEY_HASH, GRAMMAR, CURRENT_SET];
+        = @{$parse}[EARLEY_SETS, EARLEY_HASH, GRAMMAR, CURRENT_SET];
     my $SDFA = $grammar->[ Parse::Marpa::SDFA ];
 
     my $earley_set =  $earley_set_list  -> [$current_set];
@@ -1650,7 +1667,7 @@ sub token {
                 $target_earley_hash->{$key} = $target_earley_item;
                 push(@$target_earley_set, $target_earley_item);
             }
-            push(@{$target_earley_item->[TOKEN]}, [ $earley_item, $value ]);
+            push(@{$target_earley_item->[TOKENS]}, [ $earley_item, $value ]);
             
             my $resetting_state
                 = $kernel_state
@@ -1670,7 +1687,7 @@ sub token {
 
         next EARLEY_ITEM if $current_set == $parent;
 
-        COMPLETE_RULE: for my $complete_symbol_name (@{$state->[ Parse::Marpa::COMPLETE ] }) {
+        COMPLETE_RULE: for my $complete_symbol_name (@{$state->[ Parse::Marpa::COMPLETE_LHS ] }) {
             PARENT_ITEM: for my $parent_item (@{$earley_set_list->[$parent]}) {
                 my ($parent_state, $grandparent) = @{$parent_item}[STATE, PARENT];
                 my $kernel_state
@@ -1688,7 +1705,7 @@ sub token {
                     $earley_hash->{$key} = $target_earley_item;
                     push(@$earley_set, $target_earley_item);
                 }
-                push(@{$target_earley_item->[LINK]}, [ $parent_item, $earley_item ]);
+                push(@{$target_earley_item->[LINKS]}, [ $parent_item, $earley_item ]);
 
                 my $resetting_state
                     = $kernel_state
@@ -1717,6 +1734,75 @@ sub token {
 
     # Increment CURRENT_SET
     @{$parse}[ CURRENT_SET ]++;
+}
+
+package Parse::Marpa::Iterator;
+
+# Elements of the parse ITERATOR structure
+use constant PARSE       => 0;
+use constant CURRENT_SET => 1;
+use constant LEAVES      => 2;
+use constant LAST_LEAF   => 3;
+
+# Elements of the LEAF structure
+use constant ITEM           => 0;
+use constant START_EARLEME  => 1;
+use constant END_EARLEME    => 2;
+use constant PARENT         => 3;
+use constant RULE           => 4;
+use constant RULE_CHOICE    => 5;
+use constant RULE_MAX       => 6;
+use constant LINK_CHOICE    => 7;
+use constant LINK_MAX       => 8;
+use constant VALUE_CHOICE   => 9;
+use constant VALUE_MAX      => 10;
+use constant RULE_LENGTH    => 11;
+use constant RULE_BUILT     => 12;
+use constant CLOSURE        => 13;
+use constant VALUE          => 14;
+
+sub new {
+    my $class = shift;
+    my $parse = shift;
+    my $self = [];
+    bless $self, $class;
+
+    croak("No parse supplied for new $class") unless defined $parse;
+    my $parse_class = ref $parse;
+    croak("Don't recognize parse() parse arg has wrong class: $parse_class")
+        unless $parse_class eq "Parse::Marpa::Parse";
+
+    my ($grammar, $current_set, $earley_sets)
+        = @{$self}[
+            Parse::Marpa::Parse::GRAMMAR,
+            Parse::Marpa::Parse::CURRENT_SET,
+            Parse::Marpa::Parse::EARLEY_SETS
+        ];
+
+    my $earley_set = $earley_sets->[ $current_set ];
+    my $start_rule;
+    my $earley_item;
+    for $earley_item (@$earley_set) {
+        my ($state)
+            = @{$earley_item}[ Parse::Marpa::Parse::STATE ];
+
+        $start_rule = $state->[ Parse::Marpa::START_RULE ];
+
+        next EARLEY_ITEM unless $start_rule;
+    }
+
+    return unless $start_rule;
+
+    my $tree = [];
+    my ($links, $values)
+        = @{$earley_item}[
+            Parse::Marpa::Parse::LINKS,
+            Parse::Marpa::Parse::TOKENS,
+        ];
+    my $rhs = $start_rule->[ Parse::Marpa::RHS ];
+    my $rhs_length = @$rhs;
+
+    $self;
 }
 
 =head1 NAME
