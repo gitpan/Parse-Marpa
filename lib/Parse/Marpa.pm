@@ -25,7 +25,7 @@ use strict;
 use Carp;
 use Scalar::Util qw(weaken);
 
-our $VERSION = '0.001_015';
+our $VERSION = '0.001_016';
 $VERSION = eval $VERSION;
 
 =begin Apology:
@@ -1746,20 +1746,18 @@ use constant LAST_LEAF   => 3;
 
 # Elements of the LEAF structure
 use constant ITEM           => 0;
-use constant START_EARLEME  => 1;
-use constant END_EARLEME    => 2;
-use constant PARENT         => 3;
-use constant RULE           => 4;
-use constant RULE_CHOICE    => 5;
-use constant RULE_MAX       => 6;
-use constant LINK_CHOICE    => 7;
-use constant LINK_MAX       => 8;
-use constant VALUE_CHOICE   => 9;
-use constant VALUE_MAX      => 10;
-use constant RULE_LENGTH    => 11;
-use constant RULE_BUILT     => 12;
-use constant CLOSURE        => 13;
-use constant VALUE          => 14;
+use constant PARENT         => 1;
+use constant RULES          => 2;
+use constant RULE_CHOICE    => 3;
+use constant LINKS          => 4;
+use constant LINK_CHOICE    => 5;
+use constant VALUES         => 6;
+use constant VALUE_CHOICE   => 7;
+use constant NULL_VALUE     => 8;
+use constant RULE_LENGTH    => 9;
+use constant RULE_BUILT     => 10;
+use constant CLOSURE        => 11;
+use constant VALUE          => 12;
 
 sub new {
     my $class = shift;
@@ -1782,8 +1780,9 @@ sub new {
     my $earley_set = $earley_sets->[ $current_set ];
     my $start_rule;
     my $earley_item;
+    my ($state, $parent);
     for $earley_item (@$earley_set) {
-        my ($state)
+        ($state, $parent)
             = @{$earley_item}[ Parse::Marpa::Parse::STATE ];
 
         $start_rule = $state->[ Parse::Marpa::START_RULE ];
@@ -1794,13 +1793,80 @@ sub new {
     return unless $start_rule;
 
     my $tree = [];
+    my $work_stack = [];
     my ($links, $values)
         = @{$earley_item}[
             Parse::Marpa::Parse::LINKS,
             Parse::Marpa::Parse::TOKENS,
         ];
-    my $rhs = $start_rule->[ Parse::Marpa::RHS ];
+    my ($nulling, $rhs)
+        = @{$start_rule}[ Parse::Marpa::NULLING, Parse::Marpa::RHS ];
     my $rhs_length = @$rhs;
+
+    my $leaf;
+    @{$leaf}[ITEM,            PARENT,
+             RULES,           RULE_CHOICE,
+             LINKS,           LINK_CHOICE,
+             VALUES,          VALUE_CHOICE,
+             RULE_LENGTH,     RULE_BUILT,
+             NULL_VALUE
+        ] = ($earley_item,    undef,
+             [ $start_rule ],  0,
+             $links,           0,
+             $values,          0,
+             $rhs_length,     $rhs_length,
+             $nulling ? \ ("") : undef
+        );
+
+    push (@$tree, $leaf);
+
+    # while there is work to do
+    WORK_ITEM: for (;;) {
+
+        my $tree_top = $tree->[ $#$tree ];
+        my (    $null_value,    $values,    $value_choice,
+                $rules,      $rule_choice,
+                $item
+        ) = @{$tree_top}[
+                NULL_VALUE,  VALUES,     VALUE_CHOICE,
+                RULES,       RULE_CHOICE,
+                ITEM
+            ];
+        # if this leaf is not being treated as a token ...
+        my $is_token = $null_value || $value_choice < @$values;
+        unless ($is_token)
+        {
+
+            # then follow the predecessor links and add to the work list
+            my $rhs = $rules->[ $rule_choice ]->[ Parse::Marpa::RHS];
+            my $symbol_item = $item;
+            SYMBOL: for my $symbol (reverse @$rhs) {
+                if ($symbol->[ Parse::Marpa::NULLING ] ) {
+                    push(@$work_stack, [ $symbol, undef ]);
+                    next SYMBOL;
+                }
+                my $values =  $symbol_item->[ VALUES ];
+                if ( @$values ) {
+                    $symbol_item = $values->[ 0 ]->[ 0 ];
+                    push(@$work_stack, [ $symbol, undef ]);
+                    next SYMBOL;
+                }
+                my $links = $symbol_item->[ LINKS ];
+                my ($predecessor, $cause) = @{ $links->[ 0 ] };
+                push(@$work_stack, [ $symbol, $cause ]);
+                $symbol_item = $predecessor;
+
+            } # SYMBOL
+
+        } # unless $is_token
+
+        my $work_item = pop @$work_stack;
+
+        last WORK_ITEM unless $work_item;
+
+        # TO HERE
+
+    } # WORK_ITEM
 
     $self;
 }
