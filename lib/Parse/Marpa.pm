@@ -25,7 +25,7 @@ use strict;
 use Carp;
 use Scalar::Util qw(weaken);
 
-our $VERSION = '0.001_016';
+our $VERSION = '0.001_017';
 $VERSION = eval $VERSION;
 
 =begin Apology:
@@ -87,61 +87,82 @@ what in C would be structures.
 
 =cut
 
-# VERY COMMON STRUCTURE ELEMENTS
-# Common elements in for many of the arrays
+package Parse::Marpa::Symbol;
+
+use constant ID              => 0;
+use constant NAME            => 1;
+use constant LHS             => 2;    # rules with this as the lhs,
+                                      # as a ref to an array of rule refs
+use constant RHS             => 3;    # rules with this in the rhs,
+                                      # as a ref to an array of rule refs
+use constant NULLABLE        => 4;    # can match null?
+use constant START_REACHABLE => 5;    # reachable from start symbol?
+use constant INPUT_REACHABLE => 6;    # reachable from input symbol?
+use constant NULLING         => 7;    # always matches null?
+use constant START           => 8;    # is one of the start symbols?
+use constant REGEX           => 9;    # regex, for terminals; undef otherwise
+use constant NULL_ALIAS      => 10
+    ;  # for a non-nulling symbol, ref of a its nulling alias, if there is one
+       # otherwise undef
+
+package Parse::Marpa::Rule;
+
+use constant ID              => 0;
+use constant NAME            => 1;
+use constant LHS             => 2;    # ref of the left hand symbol
+use constant RHS             => 3;    # array of symbol refs
+use constant NULLABLE        => 4;    # can match null?
+use constant START_REACHABLE => 5;    # reachable from start symbol?
+use constant INPUT_REACHABLE => 6;    # reachable from input symbol?
+use constant NULLING         => 7;    # always matches null?
+use constant USEFUL          => 8;    # use this rule in NFA?
+
+package Parse::Marpa::NFA;
+
 use constant ID   => 0;
 use constant NAME => 1;
+use constant ITEM => 2;               # an LR(0) item
+use constant TRANSITION =>
+    3;    # the transitions, as a hash from symbol name to NFA states
 
-# ELEMENTS COMMON TO THE RULE and SYMBOL STRUCTURES
-use constant LHS => 2;    # for rule, ref of the left hand symbol
-   # for symbol, rules with this as the lhs, as a ref to an array of rule refs
-use constant RHS => 3;    # array of symbol refs
-   # for symbol, rules with this in the rhs, as a ref to an array of rule refs
-use constant NULLABLE        => 4;    # can match null
-use constant START_REACHABLE => 5;    # reachable from start symbol
-use constant INPUT_REACHABLE => 6;    # reachable from input symbol
-use constant NULLING         => 7;    # always matches null
-use constant IS_START        => 8;    # is one of the start symbols
+package Parse::Marpa::SDFA;
 
-# ADDITIONAL ELEMENTS OF THE SYMBOL STRUCTURE
-use constant REGEX => 8;      # regex, for terminals; undef otherwise
-use constant NULL_ALIAS => 9; # for a non-nulling symbol, ref of a its nulling alias, if there is one
-                              # otherwise undef
+use constant ID         => 0;
+use constant NAME       => 1;
+use constant NFA_STATES => 2;    # in an SDFA: an array of NFA states
+use constant TRANSITION =>
+    3;    # the transitions, as a hash from symbol name to SDFA states
+use constant COMPLETE_LHS   => 4;    # an array of the lhs's of complete rules
+use constant COMPLETE_RULES => 5;    # an array of the complete rules
+use constant START_RULE     => 6;    # the start rule
 
-# ADDITIONAL ELEMENTS of THE RULE STRUCTURE
-use constant USEFUL          => 8; # boolean, true if rule is to be used in the NFA
+package Parse::Marpa::LR0_item;
 
-# ELEMENTS of the NFA and SDFA STATE structures
-use constant ITEM            => 2; # in an NFA: an LR(0) item
-use constant NFA_STATES      => 2; # in an SDFA: an array of NFA states
-use constant TRANSITION      => 3; # the transitions, as a hash from symbol name to NFA (SDFA) states
-use constant COMPLETE_LHS    => 4; # in an SDFA state, an array of the lhs's of complete rules
-use constant COMPLETE_RULES  => 5; # in an SDFA state, an array of the complete rules
-use constant START_RULE      => 6; # in an SDFA state, the start rule
-
-# ELEMENTS of the LR(0) ITEM structure
 use constant RULE     => 0;
 use constant POSITION => 1;
 
-# ELEMENTS of the GRAMMAR structure
-use constant RULES            => 0;    # array of rule refs
-use constant SYMBOL          => 1;    # array of symbol refs
-use constant RULE_HASH        => 2;    # hash by name of symbol refs
-use constant SYMBOL_HASH      => 3;    # hash by name of symbol refs
-use constant START            => 4;    # ref to start symbol
-use constant NFA              => 5;    # array of states
-use constant SDFA             => 6;    # array of states
-use constant SDFA_BY_NAME     => 7;    # hash from SDFA name to SDFA reference
+package Parse::Marpa::Grammar;
+
+use constant RULES           => 0;    # array of rule refs
+use constant SYMBOLS         => 1;    # array of symbol refs
+use constant RULE_HASH       => 2;    # hash by name of symbol refs
+use constant SYMBOL_HASH     => 3;    # hash by name of symbol refs
+use constant START           => 4;    # ref to start symbol
+use constant NFA             => 5;    # array of states
+use constant SDFA            => 6;    # array of states
+use constant SDFA_BY_NAME    => 7;    # hash from SDFA name to SDFA reference
 use constant NULLABLE_SYMBOL => 8;    # array of refs of the nullable symbols
-use constant ACADEMIC         => 9;    # true if this is a textbook grammar,
-                                       # for checking the NFA and SDFA, and NOT
-                                       # for actual Earley parsing
+use constant ACADEMIC        => 9;    # true if this is a textbook grammar,
+                                      # for checking the NFA and SDFA, and NOT
+                                      # for actual Earley parsing
+
+package Parse::Marpa;
 
 # Constructor
 
 sub new {
     my $class = shift;
-    my %args = @_;
+    my %args  = @_;
 
     my $rules;
     my $start;
@@ -152,34 +173,43 @@ sub new {
     my $academic = 0;
 
     my %arg_logic = (
-       "rules" => sub { $rules = $_[0] },
-       "start" => sub { $start = $_[0] },
-       "academic" => sub { $academic = $_[0] },
+        "rules"    => sub { $rules    = $_[0] },
+        "start"    => sub { $start    = $_[0] },
+        "academic" => sub { $academic = $_[0] },
     );
 
-    while (my ($arg, $value) = each %args) {
+    while ( my ( $arg, $value ) = each %args ) {
         my $closure = $arg_logic{$arg};
-        croak("Undefined argument to new $class: $arg") unless defined $closure;
+        croak("Undefined argument to new $class: $arg")
+            unless defined $closure;
         $closure->($value);
     }
-    
-    croak("No rules specified") unless defined $rules;
+
+    croak("No rules specified")        unless defined $rules;
     croak("No start symbol specified") unless defined $start;
 
-    my $self  = [];
-    @{$self}[ SYMBOL, SYMBOL_HASH, RULES, RULE_HASH, SDFA_BY_NAME, ACADEMIC ] =
-        ( [], {}, [], {}, {}, $academic );
+    my $self = [];
+    @{$self}[
+        Parse::Marpa::Grammar::SYMBOLS,
+        Parse::Marpa::Grammar::SYMBOL_HASH,
+        Parse::Marpa::Grammar::RULES,
+        Parse::Marpa::Grammar::RULE_HASH,
+        Parse::Marpa::Grammar::SDFA_BY_NAME,
+        Parse::Marpa::Grammar::ACADEMIC
+        ]
+        = ( [], {}, [], {}, {}, $academic );
     bless( $self, $class );
 
-    _add_user_rules($self, $rules);
+    _add_user_rules( $self, $rules );
     _nullable($self);
     _nulling($self);
     _input_reachable($self);
-    _set_start($self, $start);
+    _set_start( $self, $start );
     _start_reachable($self);
     if ($academic) {
-        _setup_academic_grammar($self)
-    } else {
+        _setup_academic_grammar($self);
+    }
+    else {
         _rewrite_as_CHAF($self);
     }
     _create_NFA($self);
@@ -193,19 +223,29 @@ sub new {
 sub show_symbol {
     my $symbol = shift;
     my $text   = "";
-    $text .= sprintf "%d: %s, lhs=[%s], rhs=[%s]", $symbol->[ID],
-        $symbol->[NAME], join( " ", map { $_->[ID] } @{ $symbol->[LHS] } ),
-        join( " ", map { $_->[ID] } @{ $symbol->[RHS] } ),;
-    if ( not $symbol->[INPUT_REACHABLE] ) { $text .= " !upreach"; }
-    if ( not $symbol->[START_REACHABLE] ) { $text .= " !downreach"; }
-    if ( $symbol->[NULLABLE] )            { $text .= " nullable"; }
-    if ( $symbol->[NULLING] )            { $text .= " nulling"; }
+    $text .= sprintf "%d: %s, lhs=[%s], rhs=[%s]",
+        $symbol->[Parse::Marpa::Symbol::ID],
+        $symbol->[Parse::Marpa::Symbol::NAME],
+        join( " ",
+        map { $_->[Parse::Marpa::Rule::ID] }
+            @{ $symbol->[Parse::Marpa::Symbol::LHS] } ),
+        join( " ",
+        map { $_->[Parse::Marpa::Rule::ID] }
+            @{ $symbol->[Parse::Marpa::Symbol::RHS] } );
+    if ( not $symbol->[Parse::Marpa::Symbol::INPUT_REACHABLE] ) {
+        $text .= " !upreach";
+    }
+    if ( not $symbol->[Parse::Marpa::Symbol::START_REACHABLE] ) {
+        $text .= " !downreach";
+    }
+    if ( $symbol->[Parse::Marpa::Symbol::NULLABLE] ) { $text .= " nullable"; }
+    if ( $symbol->[Parse::Marpa::Symbol::NULLING] )  { $text .= " nulling"; }
     $text .= "\n";
 }
 
 sub show_symbols {
-    my $grammar    = shift;
-    my $symbols = $grammar->[SYMBOL];
+    my $grammar = shift;
+    my $symbols = $grammar->[Parse::Marpa::Grammar::SYMBOLS];
     my $text    = "";
     for my $symbol_ref (@$symbols) {
         $text .= show_symbol($symbol_ref);
@@ -214,50 +254,65 @@ sub show_symbols {
 }
 
 sub show_nulling_symbols {
-    my $self    = shift;
-    my $symbols = $self->[SYMBOL];
-    join( " ", sort map { $_->[NAME] } grep { $_->[NULLING] } @$symbols );
+    my $grammar = shift;
+    my $symbols = $grammar->[Parse::Marpa::Grammar::SYMBOLS];
+    join( " ",
+        sort map { $_->[Parse::Marpa::Symbol::NAME] }
+            grep { $_->[Parse::Marpa::Symbol::NULLING] } @$symbols );
 }
 
 sub show_nullable_symbols {
-    my $self    = shift;
-    my $symbols = $self->[NULLABLE_SYMBOL];
-    join( " ", sort map { $_->[NAME] } @$symbols );
+    my $grammar = shift;
+    my $symbols = $grammar->[Parse::Marpa::Grammar::NULLABLE_SYMBOL];
+    join( " ", sort map { $_->[Parse::Marpa::Symbol::NAME] } @$symbols );
 }
 
 sub show_input_reachable_symbols {
-    my $self    = shift;
-    my $symbols = $self->[SYMBOL];
+    my $grammar = shift;
+    my $symbols = $grammar->[Parse::Marpa::Grammar::SYMBOLS];
     join( " ",
-        sort map { $_->[NAME] } grep { $_->[INPUT_REACHABLE] } @$symbols );
+        sort map { $_->[Parse::Marpa::Symbol::NAME] }
+            grep { $_->[Parse::Marpa::Symbol::INPUT_REACHABLE] } @$symbols );
 }
 
 sub show_start_reachable_symbols {
-    my $self    = shift;
-    my $symbols = $self->[SYMBOL];
+    my $grammar = shift;
+    my $symbols = $grammar->[Parse::Marpa::Grammar::SYMBOLS];
     join( " ",
-        sort map { $_->[NAME] } grep { $_->[START_REACHABLE] } @$symbols );
+        sort map { $_->[Parse::Marpa::Symbol::NAME] }
+            grep { $_->[Parse::Marpa::Symbol::START_REACHABLE] } @$symbols );
 }
 
 sub show_rule {
     my $rule = shift;
 
-    my ($lhs, $rhs, $rule_id, $input_reachable, $start_reachable, $nullable, $nulling, $useful)    
-        = @{$rule}[LHS, RHS, ID, INPUT_REACHABLE, START_REACHABLE, NULLABLE, NULLING, USEFUL];
+    my ( $lhs, $rhs, $rule_id, $input_reachable, $start_reachable, $nullable,
+        $nulling, $useful )
+        = @{$rule}[
+        Parse::Marpa::Rule::LHS,
+        Parse::Marpa::Rule::RHS,
+        Parse::Marpa::Rule::ID,
+        Parse::Marpa::Rule::INPUT_REACHABLE,
+        Parse::Marpa::Rule::START_REACHABLE,
+        Parse::Marpa::Rule::NULLABLE,
+        Parse::Marpa::Rule::NULLING,
+        Parse::Marpa::Rule::USEFUL
+        ];
     my $text    = "";
     my @comment = ();
 
-    $text .= $rule_id . ": " . $lhs->[NAME] . " ->";
+    $text .= $rule_id . ": " . $lhs->[Parse::Marpa::Symbol::NAME] . " ->";
     if (@$rhs) {
-        $text .= " " . join( " ", map { $_->[NAME] } @$rhs );
+        $text .= " "
+            . join( " ", map { $_->[Parse::Marpa::Symbol::NAME] } @$rhs );
     }
     else {
         push( @comment, "empty" );
     }
     if ( not $input_reachable ) { push( @comment, "!upreach" ); }
     if ( not $start_reachable ) { push( @comment, "!downreach" ); }
-    if ( $nullable )            { push( @comment, "nullable" ); }
-    if ( $nulling )             { push( @comment, "nulling" ); }
+    if ($nullable)              { push( @comment, "nullable" ); }
+    if ($nulling)               { push( @comment, "nulling" ); }
     if ( not $useful )          { push( @comment, "!useful" ); }
     if (@comment) {
         $text .= " " . join( " ", "/*", @comment, "*/" );
@@ -266,9 +321,9 @@ sub show_rule {
 }
 
 sub show_rules {
-    my $self   = shift;
-    my $rules  = $self->[RULES];
-    my $ruleno = -1;
+    my $grammar = shift;
+    my $rules   = $grammar->[Parse::Marpa::Grammar::RULES];
+    my $ruleno  = -1;
     my $text;
 
     for my $rule (@$rules) {
@@ -284,9 +339,14 @@ sub show_item {
         $text .= "/* empty */";
     }
     else {
-        my ( $rule, $position ) = @{$item}[ RULE, POSITION ];
-        my @names = ( $rule->[LHS]->[NAME] );
-        push( @names, map { $_->[NAME] } @{ $rule->[RHS] } );
+        my ( $rule, $position ) =
+            @{$item}[ Parse::Marpa::LR0_item::RULE,
+            Parse::Marpa::LR0_item::POSITION ];
+        my @names = (
+            $rule->[Parse::Marpa::Rule::LHS]->[Parse::Marpa::Symbol::NAME] );
+        push( @names,
+            map { $_->[Parse::Marpa::Symbol::NAME] }
+                @{ $rule->[Parse::Marpa::Rule::RHS] } );
         splice( @names, $position + 1, 0, "." );
         splice( @names, 1, 0, "::=" );
         $text .= join( " ", @names );
@@ -296,23 +356,28 @@ sub show_item {
 
 sub show_NFA_state {
     my $state = shift;
-    my ( $name, $item, $transition ) = @{$state}[ NAME, ITEM, TRANSITION ];
+    my ( $name, $item, $transition ) = @{$state}[
+        Parse::Marpa::NFA::NAME, Parse::Marpa::NFA::ITEM,
+        Parse::Marpa::NFA::TRANSITION
+    ];
     my $text .= $name . ": " . show_item($item) . "\n";
-    for my $symbol_name (sort keys %$transition ) {
+    for my $symbol_name ( sort keys %$transition ) {
         my $transition_states = $transition->{$symbol_name};
-        $text .= " "
+        $text
+            .= " "
             . ( $symbol_name eq "" ? "empty" : "<" . $symbol_name . ">" )
             . " => "
-            . join( " ", map { $_->[NAME] } @$transition_states )
+            . join( " ",
+            map { $_->[Parse::Marpa::NFA::NAME] } @$transition_states )
             . "\n";
     }
     $text;
 }
 
 sub show_NFA {
-    my $self = shift;
-    my $text = "";
-    my $NFA  = $self->[NFA];
+    my $grammar = shift;
+    my $text    = "";
+    my $NFA     = $grammar->[Parse::Marpa::Grammar::NFA];
     for my $state (@$NFA) {
         $text .= show_NFA_state($state);
     }
@@ -323,19 +388,26 @@ sub show_SDFA_state {
     my $state = shift;
 
     my $text = "";
-    my ( $id, $name, $NFA_states, $transition ) =
-        @{$state}[ ID, NAME, NFA_STATES, TRANSITION ];
+    my ( $id, $name, $NFA_states, $transition ) = @{$state}[
+        Parse::Marpa::SDFA::ID,         Parse::Marpa::SDFA::NAME,
+        Parse::Marpa::SDFA::NFA_STATES, Parse::Marpa::SDFA::TRANSITION
+    ];
 
     $text .= "S" . $id . ": " . $name . "\n";
     for my $NFA_state (@$NFA_states) {
-        my $item = $NFA_state->[ITEM];
+        my $item = $NFA_state->[Parse::Marpa::NFA::ITEM];
         $text .= show_item($item) . "\n";
     }
     for my $symbol_name ( sort keys %$transition ) {
-        my ($to_id, $to_name) = @{$transition->{$symbol_name}}[ID, NAME];
-        $text .= " "
+        my ( $to_id, $to_name ) =
+            @{ $transition->{$symbol_name} }[ Parse::Marpa::SDFA::ID,
+            Parse::Marpa::SDFA::NAME ];
+        $text
+            .= " "
             . ( $symbol_name eq "" ? "empty" : "<" . $symbol_name . ">" )
-            . " => S" . $to_id . " (" . $to_name . ")\n";
+            . " => S"
+            . $to_id . " ("
+            . $to_name . ")\n";
     }
     $text;
 }
@@ -343,7 +415,7 @@ sub show_SDFA_state {
 sub show_SDFA {
     my $self = shift;
     my $text = "";
-    my $SDFA = $self->[SDFA];
+    my $SDFA = $self->[Parse::Marpa::Grammar::SDFA];
     for my $state (@$SDFA) { $text .= show_SDFA_state($state); }
     $text;
 }
@@ -351,9 +423,9 @@ sub show_SDFA {
 # Accessor Methods
 
 sub get_symbol {
-    my $grammar = shift;
-    my $name = shift;
-    my $symbol_hash = $grammar->[SYMBOL_HASH];
+    my $grammar     = shift;
+    my $name        = shift;
+    my $symbol_hash = $grammar->[Parse::Marpa::Grammar::SYMBOL_HASH];
     defined $symbol_hash ? $symbol_hash->{$name} : undef;
 }
 
@@ -381,10 +453,12 @@ sub _canonical_name {
 }
 
 sub _add_terminal {
-    my $self  = shift;
-    my $name  = shift;
-    my $regex = shift;
-    my ( $symbol, $symbols ) = @$self[ SYMBOL_HASH, SYMBOL ];
+    my $grammar = shift;
+    my $name    = shift;
+    my $regex   = shift;
+    my ( $symbol, $symbols ) =
+        @{$grammar}[ Parse::Marpa::Grammar::SYMBOL_HASH,
+        Parse::Marpa::Grammar::SYMBOLS ];
 
     if ( $symbol->{$name} ) {
         croak("Attempt to add duplicate terminal: $name");
@@ -400,24 +474,38 @@ sub _add_terminal {
         croak("attempt to redefine symbol $name as a terminal");
     }
     my $new_symbol = [];
-    @{$new_symbol}[ID, NAME, LHS, RHS, NULLABLE, START_REACHABLE, INPUT_REACHABLE, NULLING, REGEX] = (
-        $symbol_count, $name, [], [], 0, undef, 1, 0, $regex
-    );
+    @{$new_symbol}[
+        Parse::Marpa::Symbol::ID,
+        Parse::Marpa::Symbol::NAME,
+        Parse::Marpa::Symbol::LHS,
+        Parse::Marpa::Symbol::RHS,
+        Parse::Marpa::Symbol::NULLABLE,
+        Parse::Marpa::Symbol::START_REACHABLE,
+        Parse::Marpa::Symbol::INPUT_REACHABLE,
+        Parse::Marpa::Symbol::NULLING,
+        Parse::Marpa::Symbol::REGEX
+        ]
+        = ( $symbol_count, $name, [], [], 0, undef, 1, 0, $regex );
+
     push( @$symbols, $new_symbol );
     weaken( $symbol->{$name} = $new_symbol );
 }
 
 sub _assign_symbol {
-    my $self = shift;
-    my $name = shift;
-    my ( $symbol, $symbols ) = @{$self}[ SYMBOL_HASH, SYMBOL ];
+    my $grammar = shift;
+    my $name    = shift;
+    my ( $symbol, $symbols ) =
+        @{$grammar}[ Parse::Marpa::Grammar::SYMBOL_HASH,
+        Parse::Marpa::Grammar::SYMBOLS ];
 
     my $symbol_count = @$symbols;
-    my $ret = $symbol->{$name};
+    my $ret          = $symbol->{$name};
     if ( not defined $ret ) {
-        @{$ret}[ID, NAME, LHS, RHS] = (
-            $symbol_count, $name, [], []
-        );
+        @{$ret}[
+            Parse::Marpa::Rule::ID,  Parse::Marpa::Rule::NAME,
+            Parse::Marpa::Rule::LHS, Parse::Marpa::Rule::RHS
+            ]
+            = ( $symbol_count, $name, [], [] );
         push( @$symbols, $ret );
         weaken( $symbol->{$name} = $ret );
     }
@@ -427,7 +515,7 @@ sub _assign_symbol {
 sub _assign_user_symbol {
     my $self = shift;
     my $name = shift;
-    _assign_symbol($self, _canonical_name($name));
+    _assign_symbol( $self, _canonical_name($name) );
 }
 
 sub _add_user_rule {
@@ -435,45 +523,64 @@ sub _add_user_rule {
     my $lhs_name  = shift;
     my $rhs_names = shift;
 
-    _add_rule($self,
-        _assign_symbol($self, _canonical_name($lhs_name)),
-        [ map { _assign_symbol($self, _canonical_name($_)); } @$rhs_names ]
+    _add_rule(
+        $self,
+        _assign_symbol( $self, _canonical_name($lhs_name) ),
+        [ map { _assign_symbol( $self, _canonical_name($_) ); } @$rhs_names ]
     );
 }
 
 sub _add_rule {
-    my $self      = shift;
-    my $lhs       = shift;
-    my $rhs       = shift;
+    my $grammar = shift;
+    my $lhs     = shift;
+    my $rhs     = shift;
 
-    my ($rule, $rules) = @{$self}[RULE_HASH, RULES];
+    my ( $rule, $rules ) =
+        @{$grammar}[ Parse::Marpa::Grammar::RULE_HASH,
+        Parse::Marpa::Grammar::RULES ];
     my $rule_count = @$rules;
-    my $new_rule = [];
-    my $nulling = !@$rhs ? 1 : undef;
-    @{$new_rule}[ID, NAME, LHS, RHS, NULLABLE, START_REACHABLE, INPUT_REACHABLE, NULLING] = (
-        $rule_count, "rule $rule_count", $lhs, $rhs,
-            $nulling, undef,  $nulling, $nulling
-    );
+    my $new_rule   = [];
+    my $nulling    = !@$rhs ? 1 : undef;
+    @{$new_rule}[
+        Parse::Marpa::Rule::ID,
+        Parse::Marpa::Rule::NAME,
+        Parse::Marpa::Rule::LHS,
+        Parse::Marpa::Rule::RHS,
+        Parse::Marpa::Rule::NULLABLE,
+        Parse::Marpa::Rule::START_REACHABLE,
+        Parse::Marpa::Rule::INPUT_REACHABLE,
+        Parse::Marpa::Rule::NULLING
+        ]
+        = (
+        $rule_count, "rule $rule_count",
+        $lhs, $rhs, $nulling, undef, $nulling, $nulling
+        );
 
     # Don't allow the same rule twice
-    my $rule_key = join(",", map { $_->[ID] } ($lhs, @$rhs));
-    croak("Duplicate rule:" . show_rule($new_rule)) if $rule->{$rule_key};
+    my $rule_key =
+        join( ",", map { $_->[Parse::Marpa::Symbol::ID] } ( $lhs, @$rhs ) );
+    croak( "Duplicate rule:" . show_rule($new_rule) ) if $rule->{$rule_key};
     $rule->{$rule_key} = $new_rule;
 
     push( @$rules, $new_rule );
     {
-        my $lhs_rules = $lhs->[LHS];
+        my $lhs_rules = $lhs->[Parse::Marpa::Symbol::LHS];
         weaken( $lhs_rules->[ scalar @$lhs_rules ] = $new_rule );
     }
-    if ( $nulling ) {
-        @{$lhs}[NULLABLE, INPUT_REACHABLE] = (1, 1);
-    } else {
-        my $last_ref = [];
-        SYMBOL: for my $symbol_ref (sort @$rhs) {
-            next SYMBOL if $symbol_ref == $last_ref;
-            my $rhs_rules = $symbol_ref->[RHS];
+    if ($nulling) {
+        @{$lhs}[
+            Parse::Marpa::Symbol::NULLABLE,
+            Parse::Marpa::Symbol::INPUT_REACHABLE
+            ]
+            = ( 1, 1 );
+    }
+    else {
+        my $last_symbol = [];
+        SYMBOL: for my $symbol ( sort @$rhs ) {
+            next SYMBOL if $symbol == $last_symbol;
+            my $rhs_rules = $symbol->[Parse::Marpa::Symbol::RHS];
             weaken( $rhs_rules->[ scalar @$rhs_rules ] = $new_rule );
-            $last_ref = $symbol_ref;
+            $last_symbol = $symbol;
         }
     }
     $new_rule;
@@ -484,7 +591,7 @@ sub _add_user_rules {
     my $self  = shift;
     my $rules = shift;
 
-rule: for my $rule (@$rules) {
+    rule: for my $rule (@$rules) {
         if ( 0 == @$rule ) {
             croak("empty rule");
         }
@@ -498,7 +605,8 @@ rule: for my $rule (@$rules) {
             # fall through if not a terminal definition
         }
 
-        _add_user_rule($self,
+        _add_user_rule(
+            $self,
             $rule->[0],
             (   $#$rule > 0
                 ? [ @{$rule}[ 1 .. $#$rule ] ]
@@ -509,32 +617,32 @@ rule: for my $rule (@$rules) {
 }
 
 sub _set_start {
-    my $self       = shift;
+    my $grammar    = shift;
     my $start_name = shift;
 
-    my $symbol = $self->[SYMBOL_HASH];
+    my $symbol = $grammar->[Parse::Marpa::Grammar::SYMBOL_HASH];
     my $start  = $symbol->{$start_name};
     if ( not defined $start ) {
         croak( "start symbol " . $start_name . " not defined\n" );
     }
-    if ( not scalar @{ $start->[LHS] } ) {
+    if ( not scalar @{ $start->[Parse::Marpa::Symbol::LHS] } ) {
         croak( "start symbol " . $start_name . " not on LHS of any rule\n" );
     }
-    if ( scalar @{ $start->[RHS] } ) {
+    if ( scalar @{ $start->[Parse::Marpa::Symbol::RHS] } ) {
         croak( "start symbol " . $start_name . " on RHS\n" );
     }
-    if ( not $start->[INPUT_REACHABLE] ) {
+    if ( not $start->[Parse::Marpa::Symbol::INPUT_REACHABLE] ) {
         croak( "start symbol " . $start_name . " not input reachable\n" );
     }
-    $self->[START] = $start;
+    $grammar->[Parse::Marpa::Grammar::START] = $start;
 }
 
 # return list of rules reachable from the start symbol;
 sub _start_reachable {
-    my $self  = shift;
-    my $start = $self->[START];
+    my $grammar = shift;
+    my $start   = $grammar->[Parse::Marpa::Grammar::START];
 
-    $start->[START_REACHABLE] = 1;
+    $start->[Parse::Marpa::Symbol::START_REACHABLE] = 1;
     my $symbol_work_set = [$start];
     my $rule_work_set   = [];
 
@@ -543,27 +651,30 @@ sub _start_reachable {
     while ($work_to_do) {
         $work_to_do = 0;
 
-    SYMBOL_PASS: while ( my $work_symbol = shift @$symbol_work_set ) {
-            my $rules_produced = $work_symbol->[LHS];
-        PRODUCED_RULE: for my $rule (@$rules_produced) {
+        SYMBOL_PASS: while ( my $work_symbol = shift @$symbol_work_set ) {
+            my $rules_produced = $work_symbol->[Parse::Marpa::Symbol::LHS];
+            PRODUCED_RULE: for my $rule (@$rules_produced) {
 
-                next PRODUCED_RULE if defined $rule->[START_REACHABLE];
+                next PRODUCED_RULE
+                    if defined $rule->[Parse::Marpa::Rule::START_REACHABLE];
 
-              # assume nullable until we hit an unmarked or unreachable symbol
-                $rule->[START_REACHABLE] = 1;
+                # assume nullable until we hit an unmarked or unreachable symbol
+                $rule->[Parse::Marpa::Rule::START_REACHABLE] = 1;
                 $work_to_do++;
                 push( @$rule_work_set, $rule );
 
             }
         }    # SYMBOL_PASS
 
-    RULE: while ( my $work_rule = shift @$rule_work_set ) {
-            my $rhs_symbol = $work_rule->[RHS];
+        RULE: while ( my $work_rule = shift @$rule_work_set ) {
+            my $rhs_symbol = $work_rule->[Parse::Marpa::Rule::RHS];
 
-        RHS: for my $symbol (@$rhs_symbol) {
+            RHS: for my $symbol (@$rhs_symbol) {
 
-                next RHS if defined $symbol->[START_REACHABLE];
-                $symbol->[START_REACHABLE] = 1;
+                next RHS
+                    if
+                    defined $symbol->[Parse::Marpa::Symbol::START_REACHABLE];
+                $symbol->[Parse::Marpa::Symbol::START_REACHABLE] = 1;
                 $work_to_do++;
 
                 push( @$symbol_work_set, $symbol );
@@ -576,22 +687,32 @@ sub _start_reachable {
 }
 
 sub _input_reachable {
-    my $self = shift;
+    my $grammar = shift;
 
-    my ($rules, $symbols) = @{$self}[RULES, SYMBOL];
+    my ( $rules, $symbols ) =
+        @{$grammar}[ Parse::Marpa::Grammar::RULES,
+        Parse::Marpa::Grammar::SYMBOLS ];
 
     # if a symbol's nullability could not be determined, it was unreachable
     # all nullable symbols are reachable
     for my $symbol (@$symbols) {
-        if ( not defined $_->[NULLABLE] ) { $_->[INPUT_REACHABLE] = 0; }
-        if ( $_->[NULLABLE] )             { $_->[INPUT_REACHABLE] = 1; }
+        if ( not defined $_->[Parse::Marpa::Symbol::NULLABLE] ) {
+            $_->[Parse::Marpa::Symbol::INPUT_REACHABLE] = 0;
+        }
+        if ( $_->[Parse::Marpa::Symbol::NULLABLE] ) {
+            $_->[Parse::Marpa::Symbol::INPUT_REACHABLE] = 1;
+        }
     }
 
     # if a rule's nullability could not be determined, it was unreachable
     # all nullable rules are reachable
     for my $rule (@$rules) {
-        if ( not defined $_->[NULLABLE] ) { $_->[INPUT_REACHABLE] = 0; }
-        if ( $_->[NULLABLE] )             { $_->[INPUT_REACHABLE] = 1; }
+        if ( not defined $rule->[Parse::Marpa::Rule::NULLABLE] ) {
+            $_->[Parse::Marpa::Symbol::INPUT_REACHABLE] = 0;
+        }
+        if ( $rule->[Parse::Marpa::Rule::NULLABLE] ) {
+            $_->[Parse::Marpa::Symbol::INPUT_REACHABLE] = 1;
+        }
     }
 
     my $symbol_work_set = [];
@@ -599,36 +720,54 @@ sub _input_reachable {
     my $rule_work_set = [];
     $#$rule_work_set = @$rules;
 
-    for my $symbol_id (grep { defined $symbols ->  [ $_ ] -> [INPUT_REACHABLE] } ( 0 .. $#$symbols ) ) {
-        $symbol_work_set -> [ $symbol_id ] = 1;
+    for my $symbol_id (
+        grep {
+            defined $symbols->[$_]->[Parse::Marpa::Symbol::INPUT_REACHABLE]
+        } ( 0 .. $#$symbols )
+        )
+    {
+        $symbol_work_set->[$symbol_id] = 1;
     }
-    for my $rule_id (grep { defined $rules ->  [ $_ ] -> [INPUT_REACHABLE] } ( 0 .. $#$rules ) ) {
-        $rule_work_set -> [ $rule_id ] = 1;
+    for my $rule_id (
+        grep {
+            defined $rules->[$_]->[Parse::Marpa::Rule::INPUT_REACHABLE]
+        } ( 0 .. $#$rules )
+        )
+    {
+        $rule_work_set->[$rule_id] = 1;
     }
     my $work_to_do = 1;
 
     while ($work_to_do) {
         $work_to_do = 0;
 
-    SYMBOL_PASS: for my $symbol_id (grep { $symbol_work_set->[ $_ ] } (0 .. $#$symbol_work_set) ) {
-            my $work_symbol = $symbols->[ $symbol_id ];
-            $symbol_work_set->[ $symbol_id ] = 0;
+        SYMBOL_PASS:
+        for my $symbol_id ( grep { $symbol_work_set->[$_] }
+            ( 0 .. $#$symbol_work_set ) )
+        {
+            my $work_symbol = $symbols->[$symbol_id];
+            $symbol_work_set->[$symbol_id] = 0;
 
-            my $rules_producing = $work_symbol->[RHS];
-        PRODUCING_RULE: for my $rule (@$rules_producing) {
+            my $rules_producing = $work_symbol->[Parse::Marpa::Symbol::RHS];
+            PRODUCING_RULE: for my $rule (@$rules_producing) {
 
                 # no work to do -- this rule already has nullability marked
-                next PRODUCING_RULE if defined $rule->[INPUT_REACHABLE];
+                next PRODUCING_RULE
+                    if defined $rule->[Parse::Marpa::Rule::INPUT_REACHABLE];
 
-              # assume nullable until we hit an unmarked or unreachable symbol
+                # assume nullable until we hit an unmarked or unreachable symbol
                 my $rule_reachable = 1;
 
                 # are all symbols on the RHS of this rule bottom marked?
-            RHS_SYMBOL: for my $rhs_symbol ( @{ $rule->[RHS] } ) {
-                    my $reachable = $rhs_symbol->[INPUT_REACHABLE];
+                RHS_SYMBOL:
+                for my $rhs_symbol ( @{ $rule->[Parse::Marpa::Rule::RHS] } )
+                {
+                    my $reachable =
+                        $rhs_symbol->[Parse::Marpa::Symbol::INPUT_REACHABLE];
 
-# unmarked symbol, change the assumption for rule to undef, but keep scanning for unreachable
-# symbol, which will override everything else
+                    # unmarked symbol, change the assumption for rule to undef,
+                    # but keep scanning for unreachable
+                    # symbol, which will override everything else
                     if ( not defined $reachable ) {
                         $rule_reachable = undef;
                         next RHS_SYMBOL;
@@ -641,33 +780,41 @@ sub _input_reachable {
                     }
                 }
 
-         # if this pass found the rule reachable or unreachable, mark the rule
+                # if this pass found the rule reachable or unreachable, mark the rule
                 if ( defined $rule_reachable ) {
-                    $rule->[INPUT_REACHABLE] = $rule_reachable;
+                    $rule->[Parse::Marpa::Rule::INPUT_REACHABLE] =
+                        $rule_reachable;
                     $work_to_do++;
-                    $rule_work_set -> [ $rule->[ ID ] ] = 1;
+                    $rule_work_set->[ $rule->[Parse::Marpa::Rule::ID] ] = 1;
                 }
 
             }
         }    # SYMBOL_PASS
 
-    RULE: for my $rule_id (grep { $rule_work_set->[ $_ ] } (0 .. $#$rule_work_set) ) {
-            my $work_rule = $rules->[ $rule_id ];
-            $rule_work_set->[ $rule_id ] = 0;
-            my $lhs_symbol = $work_rule->[LHS];
+        RULE:
+        for my $rule_id ( grep { $rule_work_set->[$_] }
+            ( 0 .. $#$rule_work_set ) )
+        {
+            my $work_rule = $rules->[$rule_id];
+            $rule_work_set->[$rule_id] = 0;
+            my $lhs_symbol = $work_rule->[Parse::Marpa::Rule::LHS];
 
             # no work to do -- this symbol already has reachability marked
-            next RULE if defined $lhs_symbol->[INPUT_REACHABLE];
+            next RULE
+                if
+                defined $lhs_symbol->[Parse::Marpa::Symbol::INPUT_REACHABLE];
 
-          # assume unreachable until we hit an unmarked or non-nullable symbol
+            # assume unreachable until we hit an unmarked or non-nullable symbol
             my $symbol_reachable = 0;
 
-        LHS_RULE: for my $rule ( @{ $lhs_symbol->[LHS] } ) {
+            LHS_RULE:
+            for my $rule ( @{ $lhs_symbol->[Parse::Marpa::Symbol::LHS] } )
+            {
 
-                my $reachable = $rule->[INPUT_REACHABLE];
+                my $reachable = $rule->[Parse::Marpa::Rule::INPUT_REACHABLE];
 
-# unmarked symbol, change the assumption for rule to undef, but keep scanning for nullable
-# rule, which will override everything else
+                # unmarked symbol, change the assumption for rule to undef, but keep scanning for nullable
+                # rule, which will override everything else
                 if ( not defined $reachable ) {
                     $symbol_reachable = undef;
                     next LHS_RULE;
@@ -680,11 +827,13 @@ sub _input_reachable {
                 }
             }
 
-     # if this pass found the symbol reachable or unreachable, mark the symbol
+            # if this pass found the symbol reachable or unreachable, mark the symbol
             if ( defined $symbol_reachable ) {
-                $lhs_symbol->[INPUT_REACHABLE] = $symbol_reachable;
+                $lhs_symbol->[Parse::Marpa::Symbol::INPUT_REACHABLE] =
+                    $symbol_reachable;
                 $work_to_do++;
-                $symbol_work_set->[ $lhs_symbol->[ ID ] ] = 1;
+                $symbol_work_set->[ $lhs_symbol->[Parse::Marpa::Symbol::ID] ]
+                    = 1;
             }
 
         }    # RULE
@@ -694,16 +843,21 @@ sub _input_reachable {
 }
 
 sub _nulling {
-    my $self = shift;
+    my $grammar = shift;
 
-    my ($rules, $symbols) = @{$self}[RULES, SYMBOL];
+    my ( $rules, $symbols ) =
+        @{$grammar}[ Parse::Marpa::Grammar::RULES,
+        Parse::Marpa::Grammar::SYMBOLS ];
 
     my $symbol_work_set = [];
     $#$symbol_work_set = @$symbols;
     my $rule_work_set = [];
     $#$rule_work_set = @$rules;
 
-    for my $rule_id (map { $_->[ ID ] } grep { $_->[NULLING] } @$rules )
+    for my $rule_id (
+        map  { $_->[Parse::Marpa::Rule::ID] }
+        grep { $_->[Parse::Marpa::Rule::NULLING] } @$rules
+        )
     {
         $rule_work_set->[$rule_id] = 1;
     }
@@ -712,21 +866,26 @@ sub _nulling {
     while ($work_to_do) {
         $work_to_do = 0;
 
-    RULE: for my $rule_id (grep { $rule_work_set->[ $_ ] } (0 .. $#$rule_work_set) ) {
+        RULE:
+        for my $rule_id ( grep { $rule_work_set->[$_] }
+            ( 0 .. $#$rule_work_set ) )
+        {
             my $work_rule = $rules->[$rule_id];
             $rule_work_set->[$rule_id] = 0;
-            my $lhs_symbol = $work_rule->[LHS];
+            my $lhs_symbol = $work_rule->[Parse::Marpa::Rule::LHS];
 
             # no work to do -- this symbol already is marked one way or the other
-            next RULE if defined $lhs_symbol->[NULLING];
+            next RULE if defined $lhs_symbol->[Parse::Marpa::Symbol::NULLING];
 
-          # assume nulling until we hit an unmarked or non-nulling symbol
+            # assume nulling until we hit an unmarked or non-nulling symbol
             my $symbol_nulling = 1;
 
-        # make sure that all rules for this lhs are nulling
-        LHS_RULE: for my $rule ( @{ $lhs_symbol->[LHS] } ) {
+            # make sure that all rules for this lhs are nulling
+            LHS_RULE:
+            for my $rule ( @{ $lhs_symbol->[Parse::Marpa::Symbol::LHS] } )
+            {
 
-                my $nulling = $rule->[NULLING];
+                my $nulling = $rule->[Parse::Marpa::Rule::NULLING];
 
                 # unmarked rule, change the assumption for the symbol to undef,
                 # but keep scanning for rule marked non-nulling,
@@ -746,31 +905,40 @@ sub _nulling {
             # if this pass found the symbol nulling or non-nulling
             #  mark the symbol
             if ( defined $symbol_nulling ) {
-                $lhs_symbol->[NULLING] = $symbol_nulling;
+                $lhs_symbol->[Parse::Marpa::Symbol::NULLING] =
+                    $symbol_nulling;
                 $work_to_do++;
 
-                $symbol_work_set->[ $lhs_symbol->[ID] ] = 1;
+                $symbol_work_set->[ $lhs_symbol->[Parse::Marpa::Symbol::ID] ]
+                    = 1;
             }
 
         }    # RULE
 
-    SYMBOL_PASS: for my $symbol_id (grep { $symbol_work_set->[ $_ ] } (0 .. $#$symbol_work_set) ) {
-            my $work_symbol = $symbols->[ $symbol_id ];
-            $symbol_work_set->[ $symbol_id ] = 0;
-            my $lhs_symbol = $work_symbol->[LHS];
+        SYMBOL_PASS:
+        for my $symbol_id ( grep { $symbol_work_set->[$_] }
+            ( 0 .. $#$symbol_work_set ) )
+        {
+            my $work_symbol = $symbols->[$symbol_id];
+            $symbol_work_set->[$symbol_id] = 0;
+            my $lhs_symbol = $work_symbol->[Parse::Marpa::Symbol::LHS];
 
-            my $rules_producing = $work_symbol->[RHS];
-        PRODUCING_RULE: for my $rule (@$rules_producing) {
+            my $rules_producing = $work_symbol->[Parse::Marpa::Symbol::RHS];
+            PRODUCING_RULE: for my $rule (@$rules_producing) {
 
                 # no work to do -- this rule already has nulling marked
-                next PRODUCING_RULE if defined $rule->[NULLING];
+                next PRODUCING_RULE
+                    if defined $rule->[Parse::Marpa::Rule::NULLING];
 
-              # assume nulling until we hit an unmarked or unreachable symbol
+                # assume nulling until we hit an unmarked or unreachable symbol
                 my $rule_nulling = 1;
 
                 # are all symbols on the RHS of this rule bottom marked?
-            RHS_SYMBOL: for my $rhs_symbol ( @{ $rule->[RHS] } ) {
-                    my $nulling = $rhs_symbol->[ NULLING ];
+                RHS_SYMBOL:
+                for my $rhs_symbol ( @{ $rule->[Parse::Marpa::Rule::RHS] } )
+                {
+                    my $nulling =
+                        $rhs_symbol->[Parse::Marpa::Symbol::NULLING];
 
                     # unmarked rule, change the assumption for rule to undef,
                     # but keep scanning for non-nulling
@@ -787,11 +955,11 @@ sub _nulling {
                     }
                 }
 
-         # if this pass found the rule reachable or unreachable, mark the rule
+                # if this pass found the rule reachable or unreachable, mark the rule
                 if ( defined $rule_nulling ) {
-                    $rule->[ NULLING ] = $rule_nulling;
+                    $rule->[Parse::Marpa::Rule::NULLING] = $rule_nulling;
                     $work_to_do++;
-                    $rule_work_set -> [ $rule -> [ ID ] ] = 1;
+                    $rule_work_set->[ $rule->[Parse::Marpa::Rule::ID] ] = 1;
                 }
 
             }
@@ -802,83 +970,108 @@ sub _nulling {
 }
 
 sub _nullable {
-    my $self    = shift;
-    my ($rules, $symbols)   = @{$self}[RULES, SYMBOL];
+    my $grammar = shift;
+    my ( $rules, $symbols ) =
+        @{$grammar}[ Parse::Marpa::Grammar::RULES,
+        Parse::Marpa::Grammar::SYMBOLS ];
 
-    my $work_to_do = 1;    # boolean to track if current pass has changed anything
+    my $work_to_do =
+        1;    # boolean to track if current pass has changed anything
 
     my $symbol_work_set = [];
     $#$symbol_work_set = @$symbols;
     my $rule_work_set = [];
     $#$rule_work_set = @$rules;
 
-    for my $symbol_id (map { $_->[ ID ] }  grep { defined $_->[NULLABLE] } @$symbols ) {
-        $symbol_work_set->[ $symbol_id ] = 1;
+    for my $symbol_id (
+        map  { $_->[Parse::Marpa::Symbol::ID] }
+        grep { defined $_->[Parse::Marpa::Symbol::NULLABLE] } @$symbols
+        )
+    {
+        $symbol_work_set->[$symbol_id] = 1;
     }
-    for my $rule_id (map { $_->[ ID ] }  grep { defined $_->[NULLABLE] } @$rules ) {
-        $rule_work_set->[ $rule_id ] = 1;
+    for my $rule_id (
+        map  { $_->[Parse::Marpa::Rule::ID] }
+        grep { defined $_->[Parse::Marpa::Rule::NULLABLE] } @$rules
+        )
+    {
+        $rule_work_set->[$rule_id] = 1;
     }
 
     while ($work_to_do) {
         $work_to_do = 0;
 
-    SYMBOL_PASS: for my $symbol_id (grep { $symbol_work_set->[ $_ ] } (0 .. $#$symbol_work_set) ) {
-        my $work_symbol = $symbols->[ $symbol_id ];
-        $symbol_work_set->[ $symbol_id ] = 0;
-        my $rules_producing = $work_symbol->[RHS];
+        SYMBOL_PASS:
+        for my $symbol_id ( grep { $symbol_work_set->[$_] }
+            ( 0 .. $#$symbol_work_set ) )
+        {
+            my $work_symbol = $symbols->[$symbol_id];
+            $symbol_work_set->[$symbol_id] = 0;
+            my $rules_producing = $work_symbol->[Parse::Marpa::Symbol::RHS];
 
-        PRODUCING_RULE: for my $rule (@$rules_producing) {
+            PRODUCING_RULE: for my $rule (@$rules_producing) {
 
-             # assume nullable until we hit an unmarked or non-nullable symbol
+                # assume nullable until we hit an unmarked or non-nullable symbol
                 my $rule_nullable = 1;
 
                 # no work to do -- this rule already has nullability marked
-                next PRODUCING_RULE if defined $rule->[NULLABLE];
+                next PRODUCING_RULE
+                    if defined $rule->[Parse::Marpa::Rule::NULLABLE];
 
                 # are all symbols on the RHS of this rule bottom marked?
-            RHS_SYMBOL: for my $rhs_symbol ( @{ $rule->[RHS] } ) {
-                    my $nullable = $rhs_symbol->[NULLABLE];
+                RHS_SYMBOL:
+                for my $rhs_symbol ( @{ $rule->[Parse::Marpa::Rule::RHS] } )
+                {
+                    my $nullable =
+                        $rhs_symbol->[Parse::Marpa::Symbol::NULLABLE];
 
-# unmarked symbol, change the assumption for rule to undef, but keep scanning for non-nullable
-# symbol, which will override everything else
+                    # unmarked symbol, change the assumption for rule to undef, but keep scanning for non-nullable
+                    # symbol, which will override everything else
                     if ( not defined $nullable ) {
                         $rule_nullable = undef;
                         next RHS_SYMBOL;
                     }
 
-                  # any non-nullable RHS symbol means the rule is not nullable
+                    # any non-nullable RHS symbol means the rule is not nullable
                     if ( $nullable == 0 ) {
                         $rule_nullable = 0;
                         last RHS_SYMBOL;
                     }
                 }
 
-               # if this pass found the rule nullable or not, so mark the rule
+                # if this pass found the rule nullable or not, so mark the rule
                 if ( defined $rule_nullable ) {
-                    $rule->[NULLABLE] = $rule_nullable;
+                    $rule->[Parse::Marpa::Rule::NULLABLE] = $rule_nullable;
                     $work_to_do++;
-                    $rule_work_set->[ $rule->[ ID ] ] = 1;
+                    $rule_work_set->[ $rule->[Parse::Marpa::Rule::ID] ] = 1;
                 }
 
             }
         }    # SYMBOL_PASS
 
-    RULE: for my $rule_id (grep { $rule_work_set->[ $_ ] } (0 .. $#$rule_work_set) ) {
-            my $work_rule = $rules->[ $rule_id ];
-            my $lhs_symbol = $work_rule->[LHS];
+        RULE:
+        for my $rule_id ( grep { $rule_work_set->[$_] }
+            ( 0 .. $#$rule_work_set ) )
+        {
+            my $work_rule  = $rules->[$rule_id];
+            my $lhs_symbol = $work_rule->[Parse::Marpa::Rule::LHS];
 
             # no work to do -- this symbol already has nullability marked
-            next RULE if defined $lhs_symbol->[NULLABLE];
+            next RULE
+                if defined $lhs_symbol->[Parse::Marpa::Symbol::NULLABLE];
 
-         # assume non-nullable until we hit an unmarked or non-nullable symbol
+            # assume non-nullable until we hit an unmarked or non-nullable symbol
             my $symbol_nullable = 0;
 
-        LHS_RULE: for my $rule ( @{ $lhs_symbol->[LHS] } ) {
+            LHS_RULE:
+            for my $rule ( @{ $lhs_symbol->[Parse::Marpa::Symbol::LHS] } )
+            {
 
-                my $nullable = $rule->[NULLABLE];
+                my $nullable = $rule->[Parse::Marpa::Rule::NULLABLE];
 
-# unmarked symbol, change the assumption for rule to undef, but keep scanning for nullable
-# rule, which will override everything else
+                # unmarked symbol, change the assumption for rule to undef,
+                # but keep scanning for nullable
+                # rule, which will override everything else
                 if ( not defined $nullable ) {
                     $symbol_nullable = undef;
                     next LHS_RULE;
@@ -893,9 +1086,11 @@ sub _nullable {
 
             # if this pass found the symbol nullable or not, mark the symbol
             if ( defined $symbol_nullable ) {
-                $lhs_symbol->[NULLABLE] = $symbol_nullable;
+                $lhs_symbol->[Parse::Marpa::Symbol::NULLABLE] =
+                    $symbol_nullable;
                 $work_to_do++;
-                $symbol_work_set->[ $lhs_symbol->[ID] ] = 1;
+                $symbol_work_set->[ $lhs_symbol->[Parse::Marpa::Symbol::ID] ]
+                    = 1;
             }
 
         }    # RULE
@@ -905,49 +1100,69 @@ sub _nullable {
 }
 
 sub _create_NFA {
-    my $self        = shift;
-    my ($rules, $symbols, $symbol_hash, $start, $academic)
-        = @{$self}[RULES, SYMBOL, SYMBOL_HASH, START, ACADEMIC];
+    my $grammar = shift;
+    my ( $rules, $symbols, $symbol_hash, $start, $academic ) = @{$grammar}[
+        Parse::Marpa::Grammar::RULES,       Parse::Marpa::Grammar::SYMBOLS,
+        Parse::Marpa::Grammar::SYMBOL_HASH, Parse::Marpa::Grammar::START,
+        Parse::Marpa::Grammar::ACADEMIC
+    ];
 
-    $self->[NULLABLE_SYMBOL] = [ grep { $_->[NULLABLE] } @$symbols ];
+    $grammar->[Parse::Marpa::Grammar::NULLABLE_SYMBOL] =
+        [ grep { $_->[Parse::Marpa::Symbol::NULLABLE] } @$symbols ];
 
     my $NFA = [];
-    $self->[NFA] = $NFA;
+    $grammar->[Parse::Marpa::Grammar::NFA] = $NFA;
 
     my $state_id = 0;
     my @NFA_by_item;
 
     # create S0
     my $s0 = [];
-    @{$s0}[ID, NAME, TRANSITION] = ($state_id++, "S0", {});
+    @{$s0}[
+        Parse::Marpa::NFA::ID, Parse::Marpa::NFA::NAME,
+        Parse::Marpa::NFA::TRANSITION
+        ]
+        = ( $state_id++, "S0", {} );
     push( @$NFA, $s0 );
 
     # create the other states
-RULE: for my $rule (@$rules) {
-        my ($rule_id, $rhs, $useful) = @{$rule}[ID, RHS, USEFUL];
+    RULE: for my $rule (@$rules) {
+        my ( $rule_id, $rhs, $useful ) = @{$rule}[
+            Parse::Marpa::Rule::ID, Parse::Marpa::Rule::RHS,
+            Parse::Marpa::Rule::USEFUL
+        ];
         next RULE unless $academic or $useful;
-        for my $position ( 0 .. scalar @{ $rhs } ) {
+        for my $position ( 0 .. scalar @{$rhs} ) {
             my $new_state = [];
-            @{$new_state}[ID, NAME, ITEM, TRANSITION]
+            @{$new_state}[
+                Parse::Marpa::NFA::ID,   Parse::Marpa::NFA::NAME,
+                Parse::Marpa::NFA::ITEM, Parse::Marpa::NFA::TRANSITION
+                ]
                 = ( $state_id, "S" . $state_id, [ $rule, $position ], {} );
             $state_id++;
             push( @$NFA, $new_state );
-            $NFA_by_item[ $rule_id ][$position] = $new_state;
+            $NFA_by_item[$rule_id][$position] = $new_state;
         }    # position
     }    # rule
 
     # now add the transitions
-STATE: for my $state (@$NFA) {
+    STATE: for my $state (@$NFA) {
         my ( $id, $name, $item, $transition ) = @$state;
 
-       # transitions from state 0:
-       # for every rule with the start symbol on its LHS, the item [ rule, 0 ]
+        # transitions from state 0:
+        # for every rule with the start symbol on its LHS, the item [ rule, 0 ]
         if ( not defined $item ) {
-            my @start_rules = @{$start->[LHS]};
-            my $start_alias = $start->[NULL_ALIAS];
-            push(@start_rules, @{$start_alias->[LHS]}) if defined $start_alias;
+            my @start_rules = @{ $start->[Parse::Marpa::Symbol::LHS] };
+            my $start_alias = $start->[Parse::Marpa::Symbol::NULL_ALIAS];
+            if ( defined $start_alias ) {
+                push( @start_rules,
+                    @{ $start_alias->[Parse::Marpa::Symbol::LHS] } );
+            }
+
             RULE: for my $start_rule (@start_rules) {
-                my ($start_rule_id, $useful) = @{$start_rule}[ID, USEFUL];
+                my ( $start_rule_id, $useful ) =
+                    @{$start_rule}[ Parse::Marpa::Rule::ID,
+                    Parse::Marpa::Rule::USEFUL ];
                 next RULE unless $useful;
                 push(
                     @{ $transition->{""} },
@@ -959,27 +1174,35 @@ STATE: for my $state (@$NFA) {
 
         # transitions from states other than state 0:
 
-        my ( $rule, $position ) = @{$item}[RULE, POSITION];
-        my $rule_id     = $rule->[ID];
-        my $next_symbol = $rule->[RHS]->[$position];
+        my ( $rule, $position ) =
+            @{$item}[ Parse::Marpa::LR0_item::RULE,
+            Parse::Marpa::LR0_item::POSITION ];
+        my $rule_id     = $rule->[Parse::Marpa::Rule::ID];
+        my $next_symbol = $rule->[Parse::Marpa::Rule::RHS]->[$position];
 
         # no transitions if position is after the end of the RHS
         if ( not defined $next_symbol ) { next STATE; }
 
-      # the scanning transition: the transition if the position is at symbol X
-      # in the RHS, via symbol X, to the state corresponding to the same
-      # rule with the position incremented by 1
-      # should I use ID as the key for those hashes, or NAME?
+        # the scanning transition: the transition if the position is at symbol X
+        # in the RHS, via symbol X, to the state corresponding to the same
+        # rule with the position incremented by 1
+        # should I use ID as the key for those hashes, or NAME?
         push(
-            @{ $transition->{ $next_symbol->[NAME] } },
+            @{  $transition->{ $next_symbol->[Parse::Marpa::Symbol::NAME] }
+                },
             $NFA_by_item[$rule_id][ $position + 1 ]
         );
 
-      # the prediction transitions: transitions if the position is at symbol X
-      # in the RHS, via the empty symbol, to all states with X on the LHS and
-      # position 0
-        RULE: for my $predicted_rule ( @{ $next_symbol->[LHS] } ) {
-            my ($predicted_rule_id, $useful) = @{$predicted_rule}[ID, USEFUL];
+        # the prediction transitions: transitions if the position is at symbol X
+        # in the RHS, via the empty symbol, to all states with X on the LHS and
+        # position 0
+        RULE:
+        for my $predicted_rule (
+            @{ $next_symbol->[Parse::Marpa::Symbol::LHS] } )
+        {
+            my ( $predicted_rule_id, $useful ) =
+                @{$predicted_rule}[ Parse::Marpa::Rule::ID,
+                Parse::Marpa::Rule::USEFUL ];
             next RULE unless $useful;
             push(
                 @{ $transition->{""} },
@@ -996,54 +1219,68 @@ STATE: for my $state (@$NFA) {
 #
 
 sub _assign_SDFA_kernel_state {
-    my $self          = shift;
+    my $grammar       = shift;
     my $kernel_states = shift;
-    my ($NFA_states, $SDFA_by_name, $SDFA) = @{$self}[NFA, SDFA_BY_NAME, SDFA];
+    my ( $NFA_states, $SDFA_by_name, $SDFA ) = @{$grammar}[
+        Parse::Marpa::Grammar::NFA, Parse::Marpa::Grammar::SDFA_BY_NAME,
+        Parse::Marpa::Grammar::SDFA
+    ];
 
     my $kernel_NFA_state_seen     = [];
     my $prediction_NFA_state_seen = [];
 
-# the two split DFA states which we are to find or create.  The kernel SDFA state is the
-# return value.
+    # the two split DFA states which we are to find or create.  The kernel SDFA state is the
+    # return value.
     my $kernel_SDFA_state;
     my $prediction_SDFA_state;
 
-  # pre-allocate the arrays that track whether we've already used an NFA state
-    $#$kernel_NFA_state_seen = $#$prediction_NFA_state_seen =
-        @$NFA_states;
+    # pre-allocate the arrays that track whether we've already used an NFA state
+    $#$kernel_NFA_state_seen = $#$prediction_NFA_state_seen = @$NFA_states;
 
     # lists of NFA states to followed up on for the closure
-    my $kernel_work_list =
-        [ grep { not $kernel_NFA_state_seen->[ $_->[ID] ]++ }
-            @$kernel_states ];
+    my $kernel_work_list = [
+        grep {
+            not $kernel_NFA_state_seen->[ $_->[Parse::Marpa::NFA::ID] ]++
+            } @$kernel_states
+    ];
     my $prediction_work_list = [];
 
     # create the kernel SDFA state
-WORK_LIST: while (@$kernel_work_list) {
+    WORK_LIST: while (@$kernel_work_list) {
         my $next_work_list = [];
 
-    NFA_STATE: for my $NFA_state (@$kernel_work_list) {
+        NFA_STATE: for my $NFA_state (@$kernel_work_list) {
 
-            my $to_states = $NFA_state->[TRANSITION]->{""};
+            my $to_states = $NFA_state->[Parse::Marpa::NFA::TRANSITION]->{""};
 
             # First the empty transitions.  These will all be predictions,
             # and need to go into the
             # work list for the prediction SDFA state
             if ( defined $to_states ) {
-                push( @$prediction_work_list,
-                    grep { not $prediction_NFA_state_seen->[ $_->[ID] ]++ }
-                        @$to_states );
+                push(
+                    @$prediction_work_list,
+                    grep {
+                        not $prediction_NFA_state_seen
+                            ->[ $_->[Parse::Marpa::NFA::ID] ]++
+                        } @$to_states
+                );
             }
 
-        SYMBOL:
-            for my $nullable_symbol ( @{ $self->[NULLABLE_SYMBOL] } )
+            SYMBOL:
+            for my $nullable_symbol (
+                @{ $grammar->[Parse::Marpa::Grammar::NULLABLE_SYMBOL] } )
             {
                 $to_states =
-                    $NFA_state->[TRANSITION]->{ $nullable_symbol->[NAME] };
+                    $NFA_state->[Parse::Marpa::NFA::TRANSITION]
+                    ->{ $nullable_symbol->[Parse::Marpa::Symbol::NAME] };
                 next SYMBOL unless defined $to_states;
-                push( @$next_work_list,
-                    grep { not $kernel_NFA_state_seen->[ $_->[ID] ]++ }
-                        @$to_states );
+                push(
+                    @$next_work_list,
+                    grep {
+                        not $kernel_NFA_state_seen
+                            ->[ $_->[Parse::Marpa::NFA::ID] ]++
+                        } @$to_states
+                );
             }
         }
 
@@ -1051,29 +1288,34 @@ WORK_LIST: while (@$kernel_work_list) {
     }    # kernel WORK_LIST
 
     my $NFA_ids = [];
-    NFA_ID: for (my $NFA_id = 0; $NFA_id <= $#$NFA_states; $NFA_id++) {
+    NFA_ID: for ( my $NFA_id = 0; $NFA_id <= $#$NFA_states; $NFA_id++ ) {
         next NFA_ID unless $kernel_NFA_state_seen->[$NFA_id];
-        my $LR0_item = $NFA_states->[$NFA_id]->[ITEM];
-        my ($rule, $position) = @{$LR0_item}[RULE, POSITION];
-        my $rhs = $rule->[RHS];
-        if ($position < @$rhs) 
-        {
+        my $LR0_item = $NFA_states->[$NFA_id]->[Parse::Marpa::NFA::ITEM];
+        my ( $rule, $position ) =
+            @{$LR0_item}[ Parse::Marpa::LR0_item::RULE,
+            Parse::Marpa::LR0_item::POSITION ];
+        my $rhs = $rule->[Parse::Marpa::Rule::RHS];
+        if ( $position < @$rhs ) {
             my $next_symbol = $rhs->[$position];
-            next NFA_ID if $next_symbol->[NULLING];
+            next NFA_ID if $next_symbol->[Parse::Marpa::Symbol::NULLING];
         }
-        push(@$NFA_ids, $NFA_id);
+        push( @$NFA_ids, $NFA_id );
     }
     my $kernel_SDFA_name = join( ",", @$NFA_ids );
 
     $kernel_SDFA_state = $SDFA_by_name->{$kernel_SDFA_name};
 
-# if we already built the kernel SDFA state, we have also already built any necessary prediction SDFA
-# state and linked it, so we're done
+    # if we already built the kernel SDFA state, we have also already built any necessary prediction SDFA
+    # state and linked it, so we're done
     return $kernel_SDFA_state if defined $kernel_SDFA_state;
 
     # build the kernel state except for the transitions.
-    @{$kernel_SDFA_state}[ ID, NAME, NFA_STATES ] =
-        ( scalar @$SDFA, $kernel_SDFA_name, [ @{$NFA_states}[@$NFA_ids] ], );
+    @{$kernel_SDFA_state}[
+        Parse::Marpa::SDFA::ID, Parse::Marpa::SDFA::NAME,
+        Parse::Marpa::SDFA::NFA_STATES
+        ]
+        = ( scalar @$SDFA, $kernel_SDFA_name, [ @{$NFA_states}[@$NFA_ids] ],
+        );
     push( @$SDFA, $kernel_SDFA_state );
     $SDFA_by_name->{$kernel_SDFA_name} = $kernel_SDFA_state;
 
@@ -1081,20 +1323,27 @@ WORK_LIST: while (@$kernel_work_list) {
     return $kernel_SDFA_state unless @$prediction_work_list;
 
     # there is a prediction state, so find its canonical name
-WORK_LIST: while (@$prediction_work_list) {
+    WORK_LIST: while (@$prediction_work_list) {
         my $next_work_list = [];
 
-    NFA_STATE: for my $NFA_state (@$prediction_work_list) {
+        NFA_STATE: for my $NFA_state (@$prediction_work_list) {
 
-        SYMBOL:
+            SYMBOL:
             for my $symbol_name ( "",
-                map { $_->[NAME] } @{ $self->[NULLABLE_SYMBOL] } )
+                map { $_->[Parse::Marpa::Symbol::NAME] }
+                @{ $grammar->[Parse::Marpa::Grammar::NULLABLE_SYMBOL] } )
             {
-                my $to_states = $NFA_state->[TRANSITION]->{$symbol_name};
+                my $to_states =
+                    $NFA_state->[Parse::Marpa::NFA::TRANSITION]
+                    ->{$symbol_name};
                 next SYMBOL unless defined $to_states;
-                push( @$next_work_list,
-                    grep { not $prediction_NFA_state_seen->[ $_->[ID] ]++ }
-                        @$to_states );
+                push(
+                    @$next_work_list,
+                    grep {
+                        not $prediction_NFA_state_seen
+                            ->[ $_->[Parse::Marpa::NFA::ID] ]++
+                        } @$to_states
+                );
             }
         }
 
@@ -1102,17 +1351,18 @@ WORK_LIST: while (@$prediction_work_list) {
     }    # kernel WORK_LIST
 
     $NFA_ids = [];
-    NFA_ID: for (my $NFA_id = 0; $NFA_id <= $#$NFA_states; $NFA_id++) {
+    NFA_ID: for ( my $NFA_id = 0; $NFA_id <= $#$NFA_states; $NFA_id++ ) {
         next NFA_ID unless $prediction_NFA_state_seen->[$NFA_id];
-        my $LR0_item = $NFA_states->[$NFA_id]->[ITEM];
-        my ($rule, $position) = @{$LR0_item}[RULE, POSITION];
-        my $rhs = $rule->[RHS];
-        if ($position < @$rhs) 
-        {
+        my $LR0_item = $NFA_states->[$NFA_id]->[Parse::Marpa::NFA::ITEM];
+        my ( $rule, $position ) =
+            @{$LR0_item}[ Parse::Marpa::LR0_item::RULE,
+            Parse::Marpa::LR0_item::POSITION ];
+        my $rhs = $rule->[Parse::Marpa::Rule::RHS];
+        if ( $position < @$rhs ) {
             my $next_symbol = $rhs->[$position];
-            next NFA_ID if $next_symbol->[NULLING];
+            next NFA_ID if $next_symbol->[Parse::Marpa::Symbol::NULLING];
         }
-        push(@$NFA_ids, $NFA_id);
+        push( @$NFA_ids, $NFA_id );
     }
     my $prediction_SDFA_name = join( ",", @$NFA_ids );
 
@@ -1122,37 +1372,45 @@ WORK_LIST: while (@$prediction_work_list) {
     if ( not defined $prediction_SDFA_state ) {
 
         # build the prediction state except for the transitions.
-        @{$prediction_SDFA_state}[ ID, NAME, NFA_STATES ] = (
+        @{$prediction_SDFA_state}[
+            Parse::Marpa::SDFA::ID, Parse::Marpa::SDFA::NAME,
+            Parse::Marpa::SDFA::NFA_STATES
+            ]
+            = (
             scalar @$SDFA,
             $prediction_SDFA_name, [ @{$NFA_states}[@$NFA_ids] ],
-        );
+            );
         push( @$SDFA, $prediction_SDFA_state );
         $SDFA_by_name->{$prediction_SDFA_name} = $prediction_SDFA_state;
 
     }
 
     # add the empty transition from kernel SDFA state to prediction SDFA state
-    $kernel_SDFA_state->[TRANSITION]->{""} = $prediction_SDFA_state;
+    $kernel_SDFA_state->[Parse::Marpa::SDFA::TRANSITION]->{""} =
+        $prediction_SDFA_state;
 
     # return the kernel SDFA state
     $kernel_SDFA_state;
 }
 
 sub _create_SDFA {
-    my $self   = shift;
-    my ($symbol, $NFA, $start)    = @{$self}[SYMBOL, NFA, START];
-    my $SDFA   = $self->[SDFA] = [];
+    my $grammar = shift;
+    my ( $symbol, $NFA, $start ) = @{$grammar}[
+        Parse::Marpa::Grammar::SYMBOLS, Parse::Marpa::Grammar::NFA,
+        Parse::Marpa::Grammar::START
+    ];
+    my $SDFA = $grammar->[Parse::Marpa::Grammar::SDFA] = [];
     my $NFA_s0 = $NFA->[0];
 
     # next SDFA state to compute transitions for
     my $next_state_id = 0;
 
-    my $initial_NFA_states = $NFA_s0->[TRANSITION]->{""};
-    if (not defined $initial_NFA_states) {
+    my $initial_NFA_states = $NFA_s0->[Parse::Marpa::NFA::TRANSITION]->{""};
+    if ( not defined $initial_NFA_states ) {
         carp("Empty NFA, cannot create SDFA");
         return;
     }
-    _assign_SDFA_kernel_state( $self, $initial_NFA_states );
+    _assign_SDFA_kernel_state( $grammar, $initial_NFA_states );
 
     while ( $next_state_id < scalar @$SDFA ) {
 
@@ -1164,22 +1422,22 @@ sub _create_SDFA {
 
         # aggregrate the transitions, by symbol, for every NFA state in this SDFA
         # state
-        for my $NFA_state ( @{ $SDFA_state->[NFA_STATES] } ) {
-            my $transition = $NFA_state->[TRANSITION];
-        NFA_TRANSITION:
-            while ( my ( $symbol, $to_states ) = each(%$transition) )
-            {
+        for my $NFA_state (
+            @{ $SDFA_state->[Parse::Marpa::SDFA::NFA_STATES] } )
+        {
+            my $transition = $NFA_state->[Parse::Marpa::NFA::TRANSITION];
+            NFA_TRANSITION:
+            while ( my ( $symbol, $to_states ) = each(%$transition) ) {
                 next NFA_TRANSITION if $symbol eq "";
                 push( @{ $NFA_to_states_by_symbol->{$symbol} }, @$to_states );
             }
-        } # $NFA_state
+        }    # $NFA_state
 
         # for each transition symbol, create the transition to the SDFA kernel state
-        while ( my ( $symbol, $to_states ) =
-            each(%$NFA_to_states_by_symbol) )
+        while ( my ( $symbol, $to_states ) = each(%$NFA_to_states_by_symbol) )
         {
-            $SDFA_state->[TRANSITION]->{$symbol} =
-                _assign_SDFA_kernel_state( $self, $to_states );
+            $SDFA_state->[Parse::Marpa::SDFA::TRANSITION]->{$symbol} =
+                _assign_SDFA_kernel_state( $grammar, $to_states );
         }
     }
 
@@ -1187,60 +1445,80 @@ sub _create_SDFA {
     # complete items, the list of complete items, and the start rule (should
     # be maximum one per state)
     STATE: for my $state (@$SDFA) {
-        my $lhs_list = [];
+        my $lhs_list       = [];
         my $complete_rules = [];
-        my $start_rule = undef;
+        my $start_rule     = undef;
         $#$lhs_list = @$symbol;
-        my $NFA_states = $state->[NFA_STATES];
+        my $NFA_states = $state->[Parse::Marpa::SDFA::NFA_STATES];
         for my $NFA_state (@$NFA_states) {
-            my $item = $NFA_state->[ITEM];
-            my ($rule, $position) = @{$item}[RULE, POSITION];
-            my ($lhs, $rhs) = @{$rule}[ LHS, RHS ];
-            if ($position >= @$rhs) {
-                $lhs_list->[ $lhs->[ID] ] = 1;
-                push(@$complete_rules, $rule);
-                $start_rule = $rule if $lhs->[ IS_START ];
-            }
-        } # NFA_state
-        $state->[ START ] = $start_rule;
-        $state->[ COMPLETE_RULES ] = $complete_rules;
-        $state->[ COMPLETE_LHS ]
-            = [ map { $_->[NAME] }
-                @{$symbol}[
-                    grep { $lhs_list->[ $_ ] } (0 .. $#$lhs_list)
-                ]
+            my $item = $NFA_state->[Parse::Marpa::NFA::ITEM];
+            my ( $rule, $position ) = @{$item}[
+                Parse::Marpa::LR0_item::RULE,
+                Parse::Marpa::LR0_item::POSITION
             ];
-    } # STATE
+            my ( $lhs, $rhs ) =
+                @{$rule}[ Parse::Marpa::Rule::LHS, Parse::Marpa::Rule::RHS ];
+            if ( $position >= @$rhs ) {
+                $lhs_list->[ $lhs->[Parse::Marpa::Symbol::ID] ] = 1;
+                push( @$complete_rules, $rule );
+                $start_rule = $rule if $lhs->[Parse::Marpa::Symbol::START];
+            }
+        }    # NFA_state
+        $state->[Parse::Marpa::SDFA::START_RULE]     = $start_rule;
+        $state->[Parse::Marpa::SDFA::COMPLETE_RULES] = $complete_rules;
+        $state->[Parse::Marpa::SDFA::COMPLETE_LHS] =
+            [ map { $_->[Parse::Marpa::Symbol::NAME] }
+                @{$symbol}[ grep { $lhs_list->[$_] } ( 0 .. $#$lhs_list ) ] ];
+    }    # STATE
 }
 
 sub _setup_academic_grammar {
-     my $self = shift;
-     my $rules = $self->[RULES];
-     # in an academic grammar, consider all rules useful
-     for my $rule (@$rules) {
-         $rule->[USEFUL] = 1;
-     }
+    my $grammar = shift;
+    my $rules   = $grammar->[Parse::Marpa::Grammar::RULES];
+
+    # in an academic grammar, consider all rules useful
+    for my $rule (@$rules) {
+        $rule->[Parse::Marpa::Rule::USEFUL] = 1;
+    }
 }
 
 # given a nullable symbol, create a nulling alias and make the first symbol non-nullable
 sub _alias_symbol {
-    my $self = shift;
+    my $grammar         = shift;
     my $nullable_symbol = shift;
-    my ( $symbol, $symbols ) = @{$self}[ SYMBOL_HASH, SYMBOL ];
-    my ($start_reachable, $input_reachable, $name)
-        = @{$nullable_symbol}[START_REACHABLE, INPUT_REACHABLE, NAME];
+    my ( $symbol, $symbols ) =
+        @{$grammar}[ Parse::Marpa::Grammar::SYMBOL_HASH,
+        Parse::Marpa::Grammar::SYMBOLS ];
+    my ( $start_reachable, $input_reachable, $name ) = @{$nullable_symbol}[
+        Parse::Marpa::Symbol::START_REACHABLE,
+        Parse::Marpa::Symbol::INPUT_REACHABLE,
+        Parse::Marpa::Symbol::NAME
+    ];
 
     # create the new, nulling symbol
     my $symbol_count = @$symbols;
-    my $alias_name = $nullable_symbol->[NAME] . "[]";
-    my $alias = [];
-    @{$alias}[ID, NAME, LHS, RHS, START_REACHABLE, INPUT_REACHABLE, NULLABLE, NULLING]
-        = ($symbol_count, $alias_name, [], [], $start_reachable, $input_reachable, 1, 1);
+    my $alias_name   = $nullable_symbol->[Parse::Marpa::Symbol::NAME] . "[]";
+    my $alias        = [];
+    @{$alias}[
+        Parse::Marpa::Symbol::ID,
+        Parse::Marpa::Symbol::NAME,
+        Parse::Marpa::Symbol::LHS,
+        Parse::Marpa::Symbol::RHS,
+        Parse::Marpa::Symbol::START_REACHABLE,
+        Parse::Marpa::Symbol::INPUT_REACHABLE,
+        Parse::Marpa::Symbol::NULLABLE,
+        Parse::Marpa::Symbol::NULLING
+        ]
+        = (
+        $symbol_count, $alias_name, [], [], $start_reachable,
+        $input_reachable, 1, 1
+        );
     push( @$symbols, $alias );
     weaken( $symbol->{$alias_name} = $alias );
 
     # turn the original symbol into a non-nullable with a reference to the new alias
-    @{$nullable_symbol}[NULLABLE, NULL_ALIAS] = (0, $alias);
+    @{$nullable_symbol}[ Parse::Marpa::Symbol::NULLABLE,
+        Parse::Marpa::Symbol::NULL_ALIAS ] = ( 0, $alias );
     $alias;
 }
 
@@ -1263,15 +1541,25 @@ that the semantics of the original grammar are not affected.
 
 # rewrite as Chomsky-Horspool-Aycock Form
 sub _rewrite_as_CHAF {
-    my $self = shift;
-    my ($rules, $symbols, $start) = @{$self}[RULES, SYMBOL, START];
+    my $grammar = shift;
+    my ( $rules, $symbols, $start ) = @{$grammar}[
+        Parse::Marpa::Grammar::RULES, Parse::Marpa::Grammar::SYMBOLS,
+        Parse::Marpa::Grammar::START
+    ];
 
     # add null aliases to symbols which need them
     my $symbol_count = @$symbols;
-    SYMBOL: for (my $ix=0; $ix < $symbol_count; $ix++) {
+    SYMBOL: for ( my $ix = 0; $ix < $symbol_count; $ix++ ) {
         my $symbol = $symbols->[$ix];
-        my ($input_reachable, $start_reachable, $nulling, $nullable, $null_alias)
-            = @{$symbol}[INPUT_REACHABLE, START_REACHABLE, NULLING, NULLABLE, NULL_ALIAS];
+        my ( $input_reachable, $start_reachable, $nulling, $nullable,
+            $null_alias )
+            = @{$symbol}[
+            Parse::Marpa::Symbol::INPUT_REACHABLE,
+            Parse::Marpa::Symbol::START_REACHABLE,
+            Parse::Marpa::Symbol::NULLING,
+            Parse::Marpa::Symbol::NULLABLE,
+            Parse::Marpa::Symbol::NULL_ALIAS
+            ];
 
         # aliases are added at the end -- stop the iteration once we reach them
         last SYMBOL if $null_alias;
@@ -1284,7 +1572,7 @@ sub _rewrite_as_CHAF {
         next SYMBOL if $nulling;
         next SYMBOL unless $nullable;
 
-        _alias_symbol( $self, $symbol );
+        _alias_symbol( $grammar, $symbol );
     }
 
     # mark, or create as needed, the useful rules
@@ -1292,10 +1580,18 @@ sub _rewrite_as_CHAF {
     # get the initial rule count -- new rules will be added and we don't iterate
     # over them
     my $rule_count = @$rules;
-    RULE: for (my $rule_id = 0; $rule_id < $rule_count; $rule_id++) {
+    RULE: for ( my $rule_id = 0; $rule_id < $rule_count; $rule_id++ ) {
         my $rule = $rules->[$rule_id];
-        my ($lhs, $rhs, $input_reachable, $start_reachable, $nulling, $nullable)
-            = @{$rule}[LHS, RHS, INPUT_REACHABLE, START_REACHABLE, NULLING, NULLABLE];
+        my ( $lhs, $rhs, $input_reachable, $start_reachable, $nulling,
+            $nullable )
+            = @{$rule}[
+            Parse::Marpa::Rule::LHS,
+            Parse::Marpa::Rule::RHS,
+            Parse::Marpa::Rule::INPUT_REACHABLE,
+            Parse::Marpa::Rule::START_REACHABLE,
+            Parse::Marpa::Rule::NULLING,
+            Parse::Marpa::Rule::NULLABLE
+            ];
 
         # unreachable and nulling rules are useless
         next RULE unless $input_reachable;
@@ -1315,16 +1611,19 @@ sub _rewrite_as_CHAF {
         #
         # Finally, in one more complication, remember that the nullable flag
         # was unset if a nullable was aliased.  So we need to check both the
-        # NULL_ALIAS (for proper nullables) and the NULLING flags to see if 
+        # NULL_ALIAS (for proper nullables) and the NULLING flags to see if
 
         my $last_nonnullable = -1;
         my $proper_nullables = [];
-        RHS_SYMBOL: for (my $ix = 0; $ix <= $#$rhs; $ix++) {
+        RHS_SYMBOL: for ( my $ix = 0; $ix <= $#$rhs; $ix++ ) {
             my $symbol = $rhs->[$ix];
-            my ($null_alias, $nulling) = @{$symbol}[NULL_ALIAS, NULLING];
+            my ( $null_alias, $nulling ) = @{$symbol}[
+                Parse::Marpa::Symbol::NULL_ALIAS,
+                Parse::Marpa::Symbol::NULLING
+            ];
             next RHS_SYMBOL if $nulling;
             if ($null_alias) {
-                push(@$proper_nullables, $ix);
+                push( @$proper_nullables, $ix );
                 next RHS_SYMBOL;
             }
             $last_nonnullable = $ix;
@@ -1332,22 +1631,22 @@ sub _rewrite_as_CHAF {
 
         # we found no properly nullable symbols in the RHS, so this rule is useful without
         # any changes
-        if (@$proper_nullables == 0) {
-            $rule->[USEFUL] = 1;
+        if ( @$proper_nullables == 0 ) {
+            $rule->[Parse::Marpa::Rule::USEFUL] = 1;
             next RULE;
         }
 
         # The left hand side of the first subproduction is the lhs of the original rule
-        my $subp_lhs = $lhs;
+        my $subp_lhs   = $lhs;
         my $subp_start = 0;
 
         # break this production into subproductions with a fixed number of proper nullables,
         # then factor out the proper nullables into a set of productions
         # with only non-nullable and nulling symbols.
-        SUBPRODUCTION: for (;;) {
+        SUBPRODUCTION: for ( ;; ) {
 
             my $subp_end;
-            my $proper_nullable0 = $proper_nullables->[0];
+            my $proper_nullable0      = $proper_nullables->[0];
             my $subp_proper_nullable0 = $proper_nullable0 - $subp_start;
             my $proper_nullable1;
             my $subp_proper_nullable1;
@@ -1356,51 +1655,73 @@ sub _rewrite_as_CHAF {
 
             SETUP_SUBPRODUCTION: {
 
-                if (@$proper_nullables == 1) {
+                if ( @$proper_nullables == 1 ) {
                     $subp_end = $#$rhs;
-                    $subp_factor0_rhs = [ @{$rhs}[$subp_start .. $subp_end] ];
+                    $subp_factor0_rhs =
+                        [ @{$rhs}[ $subp_start .. $subp_end ] ];
                     $proper_nullables = [];
                     last SETUP_SUBPRODUCTION;
                 }
 
-                $proper_nullable1 = $proper_nullables->[1];
+                $proper_nullable1      = $proper_nullables->[1];
                 $subp_proper_nullable1 = $proper_nullable1 - $subp_start;
 
-                if (@$proper_nullables == 2) {
+                if ( @$proper_nullables == 2 ) {
                     $subp_end = $#$rhs;
-                    $subp_factor0_rhs = [ @{$rhs}[$subp_start .. $subp_end] ];
+                    $subp_factor0_rhs =
+                        [ @{$rhs}[ $subp_start .. $subp_end ] ];
                     $proper_nullables = [];
                     last SETUP_SUBPRODUCTION;
                 }
 
                 # the following subproduction is non-nullable
-                if ($proper_nullable1 < $last_nonnullable) {
+                if ( $proper_nullable1 < $last_nonnullable ) {
                     $subp_end = $proper_nullable1;
-                    spice(@$proper_nullables, 0, 2);
-                    $next_subp_lhs = _assign_symbol($self,
-                        $lhs->[NAME] .  "[" . $rule_id . ":" . ($subp_end + 1) . "]");
-                    @{$next_subp_lhs}[NULLABLE, START_REACHABLE, INPUT_REACHABLE, NULLING] =
-                        (0, 1, 1, 0);
-                    $subp_factor0_rhs = [ @{$rhs}[$subp_start .. $subp_end], $next_subp_lhs ];
+                    spice( @$proper_nullables, 0, 2 );
+                    $next_subp_lhs = _assign_symbol( $grammar,
+                              $lhs->[Parse::Marpa::Symbol::NAME] . "[" 
+                            . $rule_id . ":"
+                            . ( $subp_end + 1 )
+                            . "]" );
+                    @{$next_subp_lhs}[
+                        Parse::Marpa::Symbol::NULLABLE,
+                        Parse::Marpa::Symbol::START_REACHABLE,
+                        Parse::Marpa::Symbol::INPUT_REACHABLE,
+                        Parse::Marpa::Symbol::NULLING
+                        ]
+                        = ( 0, 1, 1, 0 );
+                    $subp_factor0_rhs = [
+                        @{$rhs}[ $subp_start .. $subp_end ],
+                        $next_subp_lhs
+                    ];
                 }
 
                 # if we got this far we have 3 or more proper nullables, and the next
                 # subproduction is nullable
                 $subp_end = $proper_nullable1 - 1;
                 shift @$proper_nullables;
-                $next_subp_lhs = _assign_symbol($self,
-                    $lhs->[NAME] .  "[" . $rule_id . ":" . ($subp_end + 1) . "]");
-                @{$next_subp_lhs}[NULLABLE, START_REACHABLE, INPUT_REACHABLE, NULLING] =
-                    (1, 1, 1, 0);
-                _alias_symbol( $self, $next_subp_lhs );
-                $subp_factor0_rhs = [ @{$rhs}[$subp_start .. $subp_end], $next_subp_lhs ];
+                $next_subp_lhs = _assign_symbol( $grammar,
+                          $lhs->[Parse::Marpa::Symbol::NAME] . "[" 
+                        . $rule_id . ":"
+                        . ( $subp_end + 1 )
+                        . "]" );
+                @{$next_subp_lhs}[
+                    Parse::Marpa::Symbol::NULLABLE,
+                    Parse::Marpa::Symbol::START_REACHABLE,
+                    Parse::Marpa::Symbol::INPUT_REACHABLE,
+                    Parse::Marpa::Symbol::NULLING
+                    ]
+                    = ( 1, 1, 1, 0 );
+                _alias_symbol( $grammar, $next_subp_lhs );
+                $subp_factor0_rhs =
+                    [ @{$rhs}[ $subp_start .. $subp_end ], $next_subp_lhs ];
 
-            } # SETUP_SUBPRODUCTION
+            }    # SETUP_SUBPRODUCTION
 
-            my $factored_rhs = [ $subp_factor0_rhs ];
+            my $factored_rhs = [$subp_factor0_rhs];
 
             FACTOR: {
-                
+
                 # We have additional factored productions if
                 # 1) there is more than one proper nullable;
                 # 2) there's only one, but replacing it with a nulling symbol will
@@ -1418,151 +1739,201 @@ sub _rewrite_as_CHAF {
                 # the first proper nullable.
                 # and nulling it would make this factored subproduction nulling, don't
                 # bother.
-                $factored_rhs->[1] = [ @$subp_factor0_rhs ];
-                $factored_rhs->[1]->[ $subp_proper_nullable0 ]
-                    = $subp_factor0_rhs->[ $subp_proper_nullable0 ]->[NULL_ALIAS];
-                
+                $factored_rhs->[1] = [@$subp_factor0_rhs];
+                $factored_rhs->[1]->[$subp_proper_nullable0] =
+                    $subp_factor0_rhs->[$subp_proper_nullable0]
+                    ->[Parse::Marpa::Symbol::NULL_ALIAS];
+
                 # The third factored production, with a nulling symbol replacing the
                 # second proper nullable.  Make sure there ARE two proper nullables.
                 last FACTOR unless defined $proper_nullable1;
-                $factored_rhs->[2] = [ @$subp_factor0_rhs ];
-                $factored_rhs->[2]->[ $subp_proper_nullable1 ]
-                    = $subp_factor0_rhs->[ $subp_proper_nullable1 ]->[NULL_ALIAS];
+                $factored_rhs->[2] = [@$subp_factor0_rhs];
+                $factored_rhs->[2]->[$subp_proper_nullable1] =
+                    $subp_factor0_rhs->[$subp_proper_nullable1]
+                    ->[Parse::Marpa::Symbol::NULL_ALIAS];
 
                 # The fourth and last factored production, with a nulling symbol replacing
                 # both proper nullables.  We don't include it if it results in a nulling
                 # production.
                 last FACTOR if $nullable;
-                $factored_rhs->[3] = [ @{$factored_rhs->[2]} ];
-                $factored_rhs->[3]->[ $subp_proper_nullable0 ]
-                    = $subp_factor0_rhs->[ $subp_proper_nullable0 ]->[NULL_ALIAS];
+                $factored_rhs->[3] = [ @{ $factored_rhs->[2] } ];
+                $factored_rhs->[3]->[$subp_proper_nullable0] =
+                    $subp_factor0_rhs->[$subp_proper_nullable0]
+                    ->[Parse::Marpa::Symbol::NULL_ALIAS];
 
-            } # FACTOR
+            }    # FACTOR
 
-            for my $factor_rhs (@$factored_rhs)
-            {
-                my $new_rule = _add_rule( $self, $subp_lhs, $factor_rhs);
-                @{$new_rule}[USEFUL, START_REACHABLE, INPUT_REACHABLE, NULLABLE, NULLING]
-                    = (1, 1, 1, 0, 0);
+            for my $factor_rhs (@$factored_rhs) {
+                my $new_rule = _add_rule( $grammar, $subp_lhs, $factor_rhs );
+                @{$new_rule}[
+                    Parse::Marpa::Rule::USEFUL,
+                    Parse::Marpa::Rule::START_REACHABLE,
+                    Parse::Marpa::Rule::INPUT_REACHABLE,
+                    Parse::Marpa::Rule::NULLABLE,
+                    Parse::Marpa::Rule::NULLING
+                    ]
+                    = ( 1, 1, 1, 0, 0 );
             }
 
-            # no more 
+            # no more
             last SUBPRODUCTION unless $next_subp_lhs;
-            $subp_lhs = $next_subp_lhs;
+            $subp_lhs   = $next_subp_lhs;
             $subp_start = $subp_end + 1;
-            $nullable = $subp_start > $last_nonnullable;
+            $nullable   = $subp_start > $last_nonnullable;
 
-        } # SUBPRODUCTION
+        }    # SUBPRODUCTION
 
-    } # RULE
+    }    # RULE
 
     # Create a new start symbol
-    my $old_start = $start;
-    my $input_reachable = $old_start->[INPUT_REACHABLE];
-    $start = _assign_symbol( $self, $start->[NAME] . "[']");
-    @{$start}[INPUT_REACHABLE, START_REACHABLE, IS_START] = ($input_reachable, 1, 1);
+    my $old_start       = $start;
+    my $input_reachable = $old_start->[Parse::Marpa::Symbol::INPUT_REACHABLE];
+    $start =
+        _assign_symbol( $grammar,
+        $start->[Parse::Marpa::Symbol::NAME] . "[']" );
+    @{$start}[
+        Parse::Marpa::Symbol::INPUT_REACHABLE,
+        Parse::Marpa::Symbol::START_REACHABLE,
+        Parse::Marpa::Symbol::START
+        ]
+        = ( $input_reachable, 1, 1 );
 
     # Create a new start rule
-    my $new_start_rule = _add_rule( $self, $start, [ $old_start ]);
-    @{$new_start_rule}[INPUT_REACHABLE, START_REACHABLE, USEFUL] = ($input_reachable, 1, 1);
+    my $new_start_rule = _add_rule( $grammar, $start, [$old_start] );
+    @{$new_start_rule}[
+        Parse::Marpa::Rule::INPUT_REACHABLE,
+        Parse::Marpa::Rule::START_REACHABLE,
+        Parse::Marpa::Rule::USEFUL
+        ]
+        = ( $input_reachable, 1, 1 );
 
-    if ($old_start->[NULL_ALIAS]) {
-        my $start_alias = _alias_symbol($self, $start);
-        @{$start_alias}[IS_START] = 1;
-        my $new_start_rule = _add_rule( $self, $start_alias, [ ]);
+    if ( $old_start->[Parse::Marpa::Symbol::NULL_ALIAS] ) {
+        my $start_alias = _alias_symbol( $grammar, $start );
+        @{$start_alias}[Parse::Marpa::Symbol::START] = 1;
+        my $new_start_rule = _add_rule( $grammar, $start_alias, [] );
+
         # Nulling rules are not considered useful, but the top-level one is an exception
-        @{$new_start_rule}[INPUT_REACHABLE, START_REACHABLE, USEFUL, IS_START] = ($input_reachable, 1, 1, 1);
+        @{$new_start_rule}[
+            Parse::Marpa::Rule::INPUT_REACHABLE,
+            Parse::Marpa::Rule::START_REACHABLE,
+            Parse::Marpa::Rule::USEFUL,
+            ]
+            = ( $input_reachable, 1, 1, 1 );
     }
-    $self->[START] = $start;
+    $grammar->[Parse::Marpa::Grammar::START] = $start;
 }
+
+package Parse::Marpa::Earley_item;
+
+# Elements of the EARLEY ITEM structure
+# Note that these are Earley items as modified by Aycock & Horspool, with SDFA states instead of
+# LR(0) items.
+#
+use constant STATE  => 0;  # the SDFA state
+use constant PARENT => 1;  # the number of the Earley set with the parent item
+use constant TOKENS => 2;  # a list of the links from token scanning
+use constant LINKS  => 3;  # a list of the links from the completer step
 
 package Parse::Marpa::Parse;
 
 # Elements of the PARSE structure
-use constant GRAMMAR          => 0; # the grammar used
-use constant CURRENT_SET      => 1; # index of the first incomplete Earley set
-use constant EARLEY_SETS       => 2; # the array of the Earley sets
-use constant EARLEY_HASH      => 3; # the array of hashes used to build the Earley sets
-
-# Elements of the EARLEY ITEM structure
-# Note that these are Earley items as modified by Aycock & Horspool, with SDFA states instead of 
-# LR(0) items.
-#
-use constant STATE             => 0;    # the SDFA state
-use constant PARENT            => 1;    # the number of the Earley set with the parent item
-use constant TOKENS             => 2;    # a list of the links from token scanning
-use constant LINKS              => 3;    # a list of the links from the completer step
+use constant GRAMMAR     => 0;    # the grammar used
+use constant CURRENT_SET => 1;    # index of the first incomplete Earley set
+use constant EARLEY_SETS => 2;    # the array of the Earley sets
+use constant EARLEY_HASH =>
+    3;    # the array of hashes used to build the Earley sets
 
 # implementation dependent constant, used below in unpack
-use constant J_LENGTH     => (length pack("J", 0, 0));
+use constant J_LENGTH => ( length pack( "J", 0, 0 ) );
 
 # Constructor method
 
 sub new {
-    my $class = shift;
+    my $class   = shift;
     my $grammar = shift;
-    my $self = [];
+    my $parse   = [];
     croak("No grammar supplied for new $class") unless defined $grammar;
     my $grammar_class = ref $grammar;
-    croak("Don't recognize parse() grammar arg has wrong class: $grammar_class")
-        unless $grammar_class  eq "Parse::Marpa";
+    croak(
+        "Don't recognize parse() grammar arg has wrong class: $grammar_class")
+        unless $grammar_class eq "Parse::Marpa";
 
-    my $SDFA = $grammar->[Parse::Marpa::SDFA];
+    my $SDFA = $grammar->[Parse::Marpa::Grammar::SDFA];
     croak("Attempt to parse grammar with empty SDFA")
-        if not defined $SDFA or not scalar @$SDFA;
+        if not defined $SDFA
+            or not scalar @$SDFA;
 
     my $earley_hash;
     my $earley_set;
     my $item;
+
     # A bit of a cheat here: I rely on an assumption about the numbering
     # of the SDFA states -- specifically, that state 0 contains the
     # start productions.
     my $SDFA0 = $SDFA->[0];
-    my $key = pack("JJ", $SDFA0 + 0, 0);
-    @{$item}[STATE, PARENT] = ($SDFA0, 0);
-    push(@$earley_set, $item);
+    my $key = pack( "JJ", $SDFA0 + 0, 0 );
+    @{$item}[
+        Parse::Marpa::Earley_item::STATE,
+        Parse::Marpa::Earley_item::PARENT
+        ]
+        = ( $SDFA0, 0 );
+    push( @$earley_set, $item );
     $earley_hash->{$key} = $item;
 
-    my $resetting_state = $SDFA0->[Parse::Marpa::TRANSITION]->{""};
-    if (defined $resetting_state) {
-        $key = pack("JJ", $resetting_state, 0);
+    my $resetting_state = $SDFA0->[Parse::Marpa::SDFA::TRANSITION]->{""};
+    if ( defined $resetting_state ) {
+        $key = pack( "JJ", $resetting_state, 0 );
         undef $item;
-        @{$item}[STATE, PARENT] = ($resetting_state, 0);
-        push(@$earley_set, $item);
+        @{$item}[
+            Parse::Marpa::Earley_item::STATE,
+            Parse::Marpa::Earley_item::PARENT
+            ]
+            = ( $resetting_state, 0 );
+        push( @$earley_set, $item );
         $earley_hash->{$key} = $item;
     }
-    @{$self}[CURRENT_SET, EARLEY_HASH,      GRAMMAR,   EARLEY_SETS ]
-        = (  0,           [ $earley_hash ], $grammar,  [ $earley_set ]);
+    @{$parse}[ CURRENT_SET, EARLEY_HASH, GRAMMAR, EARLEY_SETS ] =
+        ( 0, [$earley_hash], $grammar, [$earley_set] );
 
-    bless $self, $class;
+    bless $parse, $class;
 }
 
 # Viewing methods, for debugging
 
 sub brief_earley_item {
     my $item = shift;
-    my ($state, $parent) = @{$item}[STATE, PARENT];
-    my $text = $state->[ Parse::Marpa::ID ] . "," . $parent;
+    my ( $state, $parent ) = @{$item}[
+        Parse::Marpa::Earley_item::STATE,
+        Parse::Marpa::Earley_item::PARENT
+    ];
+    my $text = $state->[Parse::Marpa::SDFA::ID] . "," . $parent;
 }
 
 sub show_earley_item {
     my $item = shift;
     my $text = brief_earley_item($item);
-    my ($tokens, $links) = @{$item}[TOKENS, LINKS];
+    my ( $tokens, $links ) = @{$item}[
+        Parse::Marpa::Earley_item::TOKENS,
+        Parse::Marpa::Earley_item::LINKS
+    ];
     for my $value (@$tokens) {
-        $text .= " [p=" . brief_earley_item($value->[0])
-            . "; v=" . $value->[1] . "]";
+        $text
+            .= " [p="
+            . brief_earley_item( $value->[0] ) . "; v="
+            . $value->[1] . "]";
     }
     for my $link (@$links) {
-        $text .= " [p=" . brief_earley_item($link->[0])
-            .  "; c=" .  brief_earley_item($link->[1]) . "]";
+        $text
+            .= " [p="
+            . brief_earley_item( $link->[0] ) . "; c="
+            . brief_earley_item( $link->[1] ) . "]";
     }
     $text;
 }
 
 sub show_earley_set {
     my $earley_set = shift;
-    my $text = "";
+    my $text       = "";
     for my $earley_item (@$earley_set) {
         $text .= show_earley_item($earley_item) . "\n";
     }
@@ -1570,10 +1941,10 @@ sub show_earley_set {
 }
 
 sub show_earley_set_list {
-    my $earley_set_list = shift;
-    my $text = "";
+    my $earley_set_list  = shift;
+    my $text             = "";
     my $earley_set_count = @$earley_set_list;
-    LIST: for (my $ix = 0; $ix < $earley_set_count; $ix++) {
+    LIST: for ( my $ix = 0; $ix < $earley_set_count; $ix++ ) {
         my $set = $earley_set_list->[$ix];
         next LIST unless defined $set;
         $text .= "Earley Set $ix\n" . show_earley_set($set);
@@ -1583,8 +1954,8 @@ sub show_earley_set_list {
 
 sub show_status {
     my $parse = shift;
-    my ($current_set, $earley_set_list)
-        = @{$parse}[CURRENT_SET, EARLEY_SETS];
+    my ( $current_set, $earley_set_list ) =
+        @{$parse}[ CURRENT_SET, EARLEY_SETS ];
     my $text = "Current Earley Set: " . $current_set . "\n";
     $text .= show_earley_set_list($earley_set_list);
 }
@@ -1613,262 +1984,316 @@ earlemes.
 sub token {
     my $parse = shift;
 
-    my ($earley_set_list, $earley_hash_list, $grammar, $current_set)
-        = @{$parse}[EARLEY_SETS, EARLEY_HASH, GRAMMAR, CURRENT_SET];
-    my $SDFA = $grammar->[ Parse::Marpa::SDFA ];
+    my ( $earley_set_list, $earley_hash_list, $grammar, $current_set ) =
+        @{$parse}[ EARLEY_SETS, EARLEY_HASH, GRAMMAR, CURRENT_SET ];
+    my $SDFA = $grammar->[Parse::Marpa::Grammar::SDFA];
 
-    my $earley_set =  $earley_set_list  -> [$current_set];
-    my $earley_hash = $earley_hash_list -> [$current_set];
+    my $earley_set  = $earley_set_list->[$current_set];
+    my $earley_hash = $earley_hash_list->[$current_set];
 
     # It's helpful below to assume there's at least one item in the work list,
     # so for sanity's sake, I treat the empty work list
     # as a special case:
     #
     # If there's nothing in the work list, we're done.
-    if (not defined $earley_set) {
-        $earley_set_list -> [ $current_set ] = [];
-        $earley_hash -> [ $current_set ] = undef;
-        $parse -> [ CURRENT_SET ]++;
+    if ( not defined $earley_set ) {
+        $earley_set_list->[$current_set] = [];
+        $earley_hash->[$current_set]     = undef;
+        $parse->[CURRENT_SET]++;
         return;
     }
 
-    EARLEY_ITEM: for (my $ix = 0; $ix < @$earley_set; $ix++) {
+    EARLEY_ITEM: for ( my $ix = 0; $ix < @$earley_set; $ix++ ) {
 
-        my $earley_item = $earley_set -> [ $ix ];
-        my ($state, $parent) = @{$earley_item}[STATE, PARENT];
+        my $earley_item = $earley_set->[$ix];
+        my ( $state, $parent ) = @{$earley_item}[
+            Parse::Marpa::Earley_item::STATE,
+            Parse::Marpa::Earley_item::PARENT
+        ];
 
         # I allow ambigious tokenization.
         # Loop through the alternative tokens.
         ALTERNATIVE: for my $alternative (@_) {
-            my ($token, $value, $length) = @$alternative;
+            my ( $token, $value, $length ) = @$alternative;
 
-            if ($length <= 0) {
-                croack("Token " . $token->[ Parse::Marpa::NAME ]
-                    . " with bad length " . $length);
+            if ( $length <= 0 ) {
+                croack(   "Token "
+                        . $token->[Parse::Marpa::Symbol::NAME]
+                        . " with bad length "
+                        . $length );
             }
 
             # compute goto(kernel_state, token_name)
-            my $kernel_state
-                = $SDFA
-                    -> [ $state -> [ Parse::Marpa::ID ] ]
-                    -> [ Parse::Marpa::TRANSITION ]
-                    -> { $token -> [ Parse::Marpa::NAME ] };
+            my $kernel_state =
+                $SDFA->[ $state->[Parse::Marpa::SDFA::ID] ]
+                ->[Parse::Marpa::SDFA::TRANSITION]
+                ->{ $token->[Parse::Marpa::Symbol::NAME] };
             next ALTERNATIVE unless $kernel_state;
 
             # Create the kernel item and its link.
-            my $target_ix = $current_set  + $length;
-            my $target_earley_hash = ($earley_hash_list -> [ $target_ix ] ||= {});
-            my $target_earley_set  = ($earley_set_list  -> [ $target_ix ] ||= []);
-            my $key = pack("JJ", $kernel_state, $parent);
+            my $target_ix = $current_set + $length;
+            my $target_earley_hash =
+                ( $earley_hash_list->[$target_ix] ||= {} );
+            my $target_earley_set = ( $earley_set_list->[$target_ix] ||= [] );
+            my $key = pack( "JJ", $kernel_state, $parent );
             my $target_earley_item = $target_earley_hash->{$key};
-            unless (defined $target_earley_item) {
-                @{$target_earley_item}[STATE, PARENT]
-                    = ($kernel_state, $parent);
+            unless ( defined $target_earley_item ) {
+                @{$target_earley_item}[
+                    Parse::Marpa::Earley_item::STATE,
+                    Parse::Marpa::Earley_item::PARENT
+                    ]
+                    = ( $kernel_state, $parent );
                 $target_earley_hash->{$key} = $target_earley_item;
-                push(@$target_earley_set, $target_earley_item);
+                push( @$target_earley_set, $target_earley_item );
             }
-            push(@{$target_earley_item->[TOKENS]}, [ $earley_item, $value ]);
-            
-            my $resetting_state
-                = $kernel_state
-                    -> [ Parse::Marpa::TRANSITION ]
-                    -> { "" };
+            push(
+                @{  $target_earley_item->[Parse::Marpa::Earley_item::TOKENS]
+                    },
+                [ $earley_item, $value ]
+            );
+
+            my $resetting_state =
+                $kernel_state->[Parse::Marpa::SDFA::TRANSITION]->{""};
             next ALTERNATIVE unless defined $resetting_state;
-            $key = pack("JJ", $resetting_state, $parent);
-            unless (exists $target_earley_hash->{$key}) {
+            $key = pack( "JJ", $resetting_state, $parent );
+            unless ( exists $target_earley_hash->{$key} ) {
                 my $new_earley_item;
-                @{$new_earley_item}[STATE, PARENT]
-                    = ($resetting_state, $parent);
+                @{$new_earley_item}[
+                    Parse::Marpa::Earley_item::STATE,
+                    Parse::Marpa::Earley_item::PARENT
+                    ]
+                    = ( $resetting_state, $parent );
                 $target_earley_hash->{$key} = $new_earley_item;
-                push(@$target_earley_set, $new_earley_item);
+                push( @$target_earley_set, $new_earley_item );
             }
 
-        } # ALTERNATIVE
+        }    # ALTERNATIVE
 
         next EARLEY_ITEM if $current_set == $parent;
 
-        COMPLETE_RULE: for my $complete_symbol_name (@{$state->[ Parse::Marpa::COMPLETE_LHS ] }) {
-            PARENT_ITEM: for my $parent_item (@{$earley_set_list->[$parent]}) {
-                my ($parent_state, $grandparent) = @{$parent_item}[STATE, PARENT];
-                my $kernel_state
-                    = $SDFA
-                        -> [ $parent_state -> [ Parse::Marpa::ID ] ]
-                        -> [ Parse::Marpa::TRANSITION ]
-                        -> { $complete_symbol_name };
+        COMPLETE_RULE:
+        for my $complete_symbol_name (
+            @{ $state->[Parse::Marpa::SDFA::COMPLETE_LHS] } )
+        {
+            PARENT_ITEM:
+            for my $parent_item ( @{ $earley_set_list->[$parent] } )
+            {
+                my ( $parent_state, $grandparent ) = @{$parent_item}[
+                    Parse::Marpa::Earley_item::STATE,
+                    Parse::Marpa::Earley_item::PARENT
+                ];
+                my $kernel_state =
+                    $SDFA->[ $parent_state->[Parse::Marpa::SDFA::ID] ]
+                    ->[Parse::Marpa::SDFA::TRANSITION]
+                    ->{$complete_symbol_name};
                 next PARENT_ITEM unless defined $kernel_state;
 
-                my $key = pack("JJ", $kernel_state, $grandparent);
+                my $key = pack( "JJ", $kernel_state, $grandparent );
                 my $target_earley_item = $earley_hash->{$key};
-                unless (defined $target_earley_item) {
-                    @{$target_earley_item}[STATE, PARENT]
-                        = ($kernel_state, $grandparent);
+                unless ( defined $target_earley_item ) {
+                    @{$target_earley_item}[
+                        Parse::Marpa::Earley_item::STATE,
+                        Parse::Marpa::Earley_item::PARENT
+                        ]
+                        = ( $kernel_state, $grandparent );
                     $earley_hash->{$key} = $target_earley_item;
-                    push(@$earley_set, $target_earley_item);
+                    push( @$earley_set, $target_earley_item );
                 }
-                push(@{$target_earley_item->[LINKS]}, [ $parent_item, $earley_item ]);
+                push(
+                    @{  $target_earley_item
+                            ->[Parse::Marpa::Earley_item::LINKS]
+                        },
+                    [ $parent_item, $earley_item ]
+                );
 
-                my $resetting_state
-                    = $kernel_state
-                        -> [ Parse::Marpa::TRANSITION ]
-                        -> { "" };
+                my $resetting_state =
+                    $kernel_state->[Parse::Marpa::SDFA::TRANSITION]->{""};
                 next PARENT_ITEM unless defined $resetting_state;
-                $key = pack("JJ", $resetting_state, $current_set);
-                unless (defined $earley_hash->{$key}) {
+                $key = pack( "JJ", $resetting_state, $current_set );
+                unless ( defined $earley_hash->{$key} ) {
                     my $new_earley_item;
-                    @{$new_earley_item}[STATE, PARENT]
-                        = ($resetting_state, $current_set);
+                    @{$new_earley_item}[
+                        Parse::Marpa::Earley_item::STATE,
+                        Parse::Marpa::Earley_item::PARENT
+                        ]
+                        = ( $resetting_state, $current_set );
                     $earley_hash->{$key} = $new_earley_item;
-                    push(@$earley_set, $new_earley_item);
+                    push( @$earley_set, $new_earley_item );
                 }
 
-            } # PARENT_ITEM
-        } # COMPLETE_RULE
-    } # EARLEY_ITEM
+            }    # PARENT_ITEM
+        }    # COMPLETE_RULE
+    }    # EARLEY_ITEM
 
     # TO DO: Make sure the completion links are UNIQUE !!!
 
-    $earley_set_list -> [ $current_set ] = $earley_set;
+    $earley_set_list->[$current_set] = $earley_set;
 
     # Free memory for the hash
-    $earley_hash_list -> [ $current_set ] = undef;
+    $earley_hash_list->[$current_set] = undef;
 
     # Increment CURRENT_SET
-    @{$parse}[ CURRENT_SET ]++;
+    @{$parse}[CURRENT_SET]++;
 }
 
-package Parse::Marpa::Iterator;
+package Parse::Marpa::Node;
 
-# Elements of the parse ITERATOR structure
+use constant PARENT_NODE  => 0;
+use constant CHILD_NUMBER => 1;
+use constant RULES        => 2;
+use constant RULE_CHOICE  => 3;
+use constant LINKS        => 4;
+use constant LINK_CHOICE  => 5;
+use constant VALUES       => 6;
+use constant VALUE_CHOICE => 7;
+use constant RHS_LENGTH   => 8;
+use constant RHS_BUILT    => 9;
+use constant CLOSURE      => 10;
+use constant VALUE        => 11;
+
+package Parse::Marpa::Evaluator;
+
 use constant PARSE       => 0;
 use constant CURRENT_SET => 1;
 use constant LEAVES      => 2;
 use constant LAST_LEAF   => 3;
 
-# Elements of the LEAF structure
-use constant ITEM           => 0;
-use constant PARENT         => 1;
-use constant RULES          => 2;
-use constant RULE_CHOICE    => 3;
-use constant LINKS          => 4;
-use constant LINK_CHOICE    => 5;
-use constant VALUES         => 6;
-use constant VALUE_CHOICE   => 7;
-use constant NULL_VALUE     => 8;
-use constant RULE_LENGTH    => 9;
-use constant RULE_BUILT     => 10;
-use constant CLOSURE        => 11;
-use constant VALUE          => 12;
-
 sub new {
-    my $class = shift;
-    my $parse = shift;
-    my $self = [];
-    bless $self, $class;
+    my $class    = shift;
+    my $parse    = shift;
+    my $iterator = [];
+    bless $iterator, $class;
 
     croak("No parse supplied for new $class") unless defined $parse;
     my $parse_class = ref $parse;
     croak("Don't recognize parse() parse arg has wrong class: $parse_class")
         unless $parse_class eq "Parse::Marpa::Parse";
 
-    my ($grammar, $current_set, $earley_sets)
-        = @{$self}[
-            Parse::Marpa::Parse::GRAMMAR,
-            Parse::Marpa::Parse::CURRENT_SET,
-            Parse::Marpa::Parse::EARLEY_SETS
-        ];
+    my ( $grammar, $current_set, $earley_sets ) = @{$iterator}[
+        Parse::Marpa::Parse::GRAMMAR, Parse::Marpa::Parse::CURRENT_SET,
+        Parse::Marpa::Parse::EARLEY_SETS
+    ];
 
-    my $earley_set = $earley_sets->[ $current_set ];
+    my $earley_set = $earley_sets->[$current_set];
     my $start_rule;
     my $earley_item;
-    my ($state, $parent);
+    my ( $state, $parent );
     for $earley_item (@$earley_set) {
-        ($state, $parent)
-            = @{$earley_item}[ Parse::Marpa::Parse::STATE ];
+        ( $state, $parent ) =
+            @{$earley_item}[Parse::Marpa::Earley_item::STATE];
 
-        $start_rule = $state->[ Parse::Marpa::START_RULE ];
+        $start_rule = $state->[Parse::Marpa::SDFA::START_RULE];
 
         next EARLEY_ITEM unless $start_rule;
     }
 
     return unless $start_rule;
 
-    my $tree = [];
+    my $tree       = [];
     my $work_stack = [];
-    my ($links, $values)
-        = @{$earley_item}[
-            Parse::Marpa::Parse::LINKS,
-            Parse::Marpa::Parse::TOKENS,
-        ];
-    my ($nulling, $rhs)
-        = @{$start_rule}[ Parse::Marpa::NULLING, Parse::Marpa::RHS ];
+    my ( $links, $values ) = @{$earley_item}[
+        Parse::Marpa::Earley_item::LINKS,
+        Parse::Marpa::Earley_item::TOKENS,
+    ];
+    my ( $nulling, $rhs ) =
+        @{$start_rule}[ Parse::Marpa::Rule::NULLING,
+        Parse::Marpa::Rule::RHS ];
     my $rhs_length = @$rhs;
 
-    my $leaf;
-    @{$leaf}[ITEM,            PARENT,
-             RULES,           RULE_CHOICE,
-             LINKS,           LINK_CHOICE,
-             VALUES,          VALUE_CHOICE,
-             RULE_LENGTH,     RULE_BUILT,
-             NULL_VALUE
-        ] = ($earley_item,    undef,
-             [ $start_rule ],  0,
-             $links,           0,
-             $values,          0,
-             $rhs_length,     $rhs_length,
-             $nulling ? \ ("") : undef
+    my $node;
+    @{$node}[
+        # undef PARENT_NODE and CHILD_NUMBER
+        Parse::Marpa::Node::RULES,       Parse::Marpa::Node::RULE_CHOICE,
+        Parse::Marpa::Node::LINKS,       Parse::Marpa::Node::LINK_CHOICE,
+        Parse::Marpa::Node::VALUES,      Parse::Marpa::Node::VALUE_CHOICE,
+        Parse::Marpa::Node::RHS_LENGTH,  Parse::Marpa::Node::RHS_BUILT,
+        ]
+        = (
+        [$start_rule], 0,
+        $links, 0,
+        ($nulling ? [ "" ] : $values), 0,
+        $rhs_length, $rhs_length,
         );
 
-    push (@$tree, $leaf);
+    push( @$tree, $node );
 
     # while there is work to do
-    WORK_ITEM: for (;;) {
+    WORK_NODE: for ( ;; ) {
 
-        my $tree_top = $tree->[ $#$tree ];
-        my (    $null_value,    $values,    $value_choice,
-                $rules,      $rule_choice,
-                $item
-        ) = @{$tree_top}[
-                NULL_VALUE,  VALUES,     VALUE_CHOICE,
-                RULES,       RULE_CHOICE,
-                ITEM
+        my $tree_top = $tree->[$#$tree];
+        my ($values,     $value_choice,
+            $links,      $link_choice,
+            $rules,      $rule_choice,
+            )
+            = @{$tree_top}[
+                Parse::Marpa::Node::RULES, Parse::Marpa::Node::RULE_CHOICE,
+                Parse::Marpa::Node::LINKS, Parse::Marpa::Node::LINK_CHOICE,
+                Parse::Marpa::Node::VALUES, Parse::Marpa::Node::VALUE_CHOICE,
             ];
-        # if this leaf is not being treated as a token ...
-        my $is_token = $null_value || $value_choice < @$values;
-        unless ($is_token)
-        {
 
-            # then follow the predecessor links and add to the work list
-            my $rhs = $rules->[ $rule_choice ]->[ Parse::Marpa::RHS];
-            my $symbol_item = $item;
-            SYMBOL: for my $symbol (reverse @$rhs) {
-                if ($symbol->[ Parse::Marpa::NULLING ] ) {
-                    push(@$work_stack, [ $symbol, undef ]);
-                    next SYMBOL;
-                }
-                my $values =  $symbol_item->[ VALUES ];
-                if ( @$values ) {
-                    $symbol_item = $values->[ 0 ]->[ 0 ];
-                    push(@$work_stack, [ $symbol, undef ]);
-                    next SYMBOL;
-                }
-                my $links = $symbol_item->[ LINKS ];
-                my ($predecessor, $cause) = @{ $links->[ 0 ] };
-                push(@$work_stack, [ $symbol, $cause ]);
-                $symbol_item = $predecessor;
+        # if this node is initially being treated as a token ...
+        if ( $value_choice < @$values ) {
+            my $work_node = pop @$work_stack;
 
-            } # SYMBOL
+            # We've processed every item in the tree and the
+            # work stack is empty, so we're done
+            last WORK_NODE unless $work_node;
 
-        } # unless $is_token
+            # Otherwise, put the latest work node on top
+            # of the tree for us to work on
+            push( @$tree, $work_node );
 
-        my $work_item = pop @$work_stack;
+            next WORK_NODE;
+        }
 
-        last WORK_ITEM unless $work_item;
+        # REDO FROM HERE
+
+        # Follow the predecessor links
+        my $rhs         = $rules->[$rule_choice]->[Parse::Marpa::Rule::RHS];
+        my $new_node;
+
+        # for all the symbols, in reverse order
+        # since this is how the links
+        # run, from a production to its predecessor
+        SYMBOL: for (my $child_number = $#$rhs; $child_number >= 0; $child_number--) {
+
+            my $symbol = $rhs->[$child_number];
+            if ( $symbol->[Parse::Marpa::Symbol::NULLING] ) {
+                @{$new_node}[
+                    Parse::Marpa::Node::PARENT_NODE,
+                    Parse::Marpa::Node::CHILD_NUMBER,
+                    Parse::Marpa::Node::RULES, Parse::Marpa::Node::RULE_CHOICE,
+                    Parse::Marpa::Node::LINKS, Parse::Marpa::Node::LINK_CHOICE,
+                    Parse::Marpa::Node::VALUES, Parse::Marpa::Node::VALUE_CHOICE,
+                    Parse::Marpa::Node::RHS_LENGTH, Parse::Marpa::Node::RHS_BUILT,
+                ] = (
+                    $tree_top,
+                    $child_number,
+                    [], 0,
+                    [], 0,
+                    [ "" ], 0,
+                    0, 0,
+                );
+                next SYMBOL;
+            }
+            # my $values = $symbol_item->[Parse::Marpa::Earley_item::TOKENS];
+            # if (@$values) {
+                # $symbol_item = $values->[0]->[0];
+                # push( @$work_stack, [ $symbol, undef ] );
+                # next SYMBOL;
+            # }
+            # my $links = $symbol_item->[Parse::Marpa::Earley_item::LINKS];
+            # my ( $predecessor, $cause ) = @{ $links->[0] };
+            # push( @$work_stack, [ $symbol, $cause ] );
+            # $symbol_item = $predecessor;
+
+        }    # SYMBOL
 
         # TO HERE
 
-    } # WORK_ITEM
+    }    # WORK_NODE
 
-    $self;
+    $iterator;
 }
 
 =head1 NAME
