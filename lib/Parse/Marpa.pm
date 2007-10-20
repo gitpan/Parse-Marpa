@@ -25,7 +25,7 @@ use strict;
 use Carp;
 use Scalar::Util qw(weaken);
 
-our $VERSION = '0.001_017';
+our $VERSION = '0.001_018';
 $VERSION = eval $VERSION;
 
 =begin Apology:
@@ -2155,24 +2155,28 @@ package Parse::Marpa::Evaluator;
 
 use constant PARSE       => 0;
 use constant CURRENT_SET => 1;
-use constant LEAVES      => 2;
-use constant LAST_LEAF   => 3;
+use constant TREE        => 2;
+use constant LAST_NODE   => 3;
 
 sub new {
     my $class    = shift;
     my $parse    = shift;
-    my $iterator = [];
-    bless $iterator, $class;
+    my $evaluator = [];
+    bless $evaluator, $class;
 
     croak("No parse supplied for new $class") unless defined $parse;
     my $parse_class = ref $parse;
     croak("Don't recognize parse() parse arg has wrong class: $parse_class")
         unless $parse_class eq "Parse::Marpa::Parse";
 
-    my ( $grammar, $current_set, $earley_sets ) = @{$iterator}[
+    my ( $grammar, $current_set, $earley_sets ) = @{$parse}[
         Parse::Marpa::Parse::GRAMMAR, Parse::Marpa::Parse::CURRENT_SET,
         Parse::Marpa::Parse::EARLEY_SETS
     ];
+
+    my $tree       = [];
+    @{$evaluator}[TREE, PARSE, CURRENT_SET]
+        = ($tree, $parse, $current_set);
 
     my $earley_set = $earley_sets->[$current_set];
     my $start_rule;
@@ -2189,8 +2193,8 @@ sub new {
 
     return unless $start_rule;
 
-    my $tree       = [];
     my $work_stack = [];
+
     my ( $links, $values ) = @{$earley_item}[
         Parse::Marpa::Earley_item::LINKS,
         Parse::Marpa::Earley_item::TOKENS,
@@ -2209,10 +2213,10 @@ sub new {
         Parse::Marpa::Node::RHS_LENGTH,  Parse::Marpa::Node::RHS_BUILT,
         ]
         = (
-        [$start_rule], 0,
-        $links, 0,
-        ($nulling ? [ "" ] : $values), 0,
-        $rhs_length, $rhs_length,
+            [$start_rule], 0,
+            $links, 0,
+            ($nulling ? [ "" ] : $values), 0,
+            $rhs_length, $rhs_length,
         );
 
     push( @$tree, $node );
@@ -2246,11 +2250,10 @@ sub new {
             next WORK_NODE;
         }
 
-        # REDO FROM HERE
-
         # Follow the predecessor links
         my $rhs         = $rules->[$rule_choice]->[Parse::Marpa::Rule::RHS];
         my $new_node;
+        my $symbol_item = $earley_item;
 
         # for all the symbols, in reverse order
         # since this is how the links
@@ -2276,24 +2279,75 @@ sub new {
                 );
                 next SYMBOL;
             }
-            # my $values = $symbol_item->[Parse::Marpa::Earley_item::TOKENS];
-            # if (@$values) {
-                # $symbol_item = $values->[0]->[0];
-                # push( @$work_stack, [ $symbol, undef ] );
-                # next SYMBOL;
-            # }
-            # my $links = $symbol_item->[Parse::Marpa::Earley_item::LINKS];
-            # my ( $predecessor, $cause ) = @{ $links->[0] };
-            # push( @$work_stack, [ $symbol, $cause ] );
-            # $symbol_item = $predecessor;
+
+            my ($links, $value)
+                = @{$symbol_item}[
+                    Parse::Marpa::Earley_item::LINKS,
+                    Parse::Marpa::Earley_item::TOKENS,
+                ];
+            # set up the child links -- I don't separate terminals from non-terminals,
+            # so a node can have both a child node and token values
+            my $child_rules = [];
+            my $child_links = [];
+            my $child_values = [];
+            if (@$links) {
+                 my $child_item;
+                 ($symbol_item, $child_item) = @{$links->[0] };
+                 $child_rules
+                     = $child_item
+                         -> [ Parse::Marpa::Earley_item::STATE ]
+                         -> [ Parse::Marpa::SDFA::COMPLETE_RULES ]
+                         -> {$symbol->[ Parse::Marpa::Symbol::NAME ]};
+                 ($child_links, $child_values) = @{$child_item}[
+                     Parse::Marpa::Earley_item::LINKS,
+                     Parse::Marpa::Earley_item::TOKENS
+                 ];
+            }
+
+            my $rhs_length;
+
+            # If it has token values, the predecessor link comes from the token
+            if  (@$values) {
+                $symbol_item = $values->[0]->[0];
+
+            # If there are no token values, the rhs metrics
+            # need to be set up.
+            } else {
+                $rhs_length = @{$rules->[0]->[ Parse::Marpa::Rule::RHS ]};
+            }
+
+            my $new_node;
+            @{$new_node}[
+                Parse::Marpa::Node::PARENT_NODE,
+                Parse::Marpa::Node::CHILD_NUMBER,
+                Parse::Marpa::Node::RULES, Parse::Marpa::Node::RULE_CHOICE,
+                Parse::Marpa::Node::LINKS, Parse::Marpa::Node::LINK_CHOICE,
+                Parse::Marpa::Node::VALUES, Parse::Marpa::Node::VALUE_CHOICE,
+                Parse::Marpa::Node::RHS_LENGTH, Parse::Marpa::Node::RHS_BUILT,
+            ] = (
+                $tree_top,
+                $child_number,
+                $child_rules, 0,
+                $child_links, 0,
+                $child_values, 0,
+                $rhs_length, $rhs_length,
+            );
+
+            # push them on the work stack ...
+            if ($child_number) {
+                 push(@$work_stack, $new_node);
+
+            # up to the last, which goes on the top of the tree
+            # for the next round
+            } else {
+                 push(@$tree, $new_node);
+            }
 
         }    # SYMBOL
 
-        # TO HERE
-
     }    # WORK_NODE
 
-    $iterator;
+    $evaluator;
 }
 
 =head1 NAME
