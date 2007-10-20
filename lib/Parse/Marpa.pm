@@ -25,7 +25,7 @@ use strict;
 use Carp;
 use Scalar::Util qw(weaken);
 
-our $VERSION = '0.001_018';
+our $VERSION = '0.001_019';
 $VERSION = eval $VERSION;
 
 =begin Apology:
@@ -127,14 +127,15 @@ use constant TRANSITION =>
 
 package Parse::Marpa::SDFA;
 
-use constant ID         => 0;
-use constant NAME       => 1;
-use constant NFA_STATES => 2;    # in an SDFA: an array of NFA states
-use constant TRANSITION =>
-    3;    # the transitions, as a hash from symbol name to SDFA states
+use constant ID             => 0;
+use constant NAME           => 1;
+use constant NFA_STATES     => 2;    # in an SDFA: an array of NFA states
+use constant TRANSITION     => 3;    # the transitions, as a hash
+                                     # from symbol name to SDFA states
 use constant COMPLETE_LHS   => 4;    # an array of the lhs's of complete rules
 use constant COMPLETE_RULES => 5;    # an array of the complete rules
 use constant START_RULE     => 6;    # the start rule
+use constant TAG            => 7;    # implementation-independant tag
 
 package Parse::Marpa::LR0_item;
 
@@ -386,14 +387,17 @@ sub show_NFA {
 
 sub show_SDFA_state {
     my $state = shift;
+    my $tags  = shift;
 
     my $text = "";
-    my ( $id, $name, $NFA_states, $transition ) = @{$state}[
+    my ( $id, $name, $NFA_states, $transition, $tag) = @{$state}[
         Parse::Marpa::SDFA::ID,         Parse::Marpa::SDFA::NAME,
-        Parse::Marpa::SDFA::NFA_STATES, Parse::Marpa::SDFA::TRANSITION
+        Parse::Marpa::SDFA::NFA_STATES, Parse::Marpa::SDFA::TRANSITION,
+        Parse::Marpa::SDFA::TAG
     ];
 
-    $text .= "S" . $id . ": " . $name . "\n";
+    $text .= defined $tags ? "St" . $tag : "S" . $id;
+    $text .= ": " . $name . "\n";
     for my $NFA_state (@$NFA_states) {
         my $item = $NFA_state->[Parse::Marpa::NFA::ITEM];
         $text .= show_item($item) . "\n";
@@ -405,18 +409,56 @@ sub show_SDFA_state {
         $text
             .= " "
             . ( $symbol_name eq "" ? "empty" : "<" . $symbol_name . ">" )
-            . " => S"
-            . $to_id . " ("
+            . " => "
+            . (defined $tags ? "St" . $tags->[ $to_id ] : "S" . $to_id)
+            . " ("
             . $to_name . ")\n";
     }
     $text;
 }
 
+sub tag_SDFA {
+    my $grammar = shift;
+    my $SDFA = $grammar->[Parse::Marpa::Grammar::SDFA];
+    my $tag = 0;
+    for my $state (
+        sort {
+            $a-> [ Parse::Marpa::SDFA::NAME ]
+            cmp $b-> [ Parse::Marpa::SDFA::NAME ]
+        }
+        @$SDFA
+    ) {
+        $state->[ Parse::Marpa::SDFA::TAG ] = $tag++;
+    }
+}
+
 sub show_SDFA {
-    my $self = shift;
+    my $grammar = shift;
     my $text = "";
-    my $SDFA = $self->[Parse::Marpa::Grammar::SDFA];
+    my $SDFA = $grammar->[Parse::Marpa::Grammar::SDFA];
     for my $state (@$SDFA) { $text .= show_SDFA_state($state); }
+    $text;
+}
+
+sub show_ii_SDFA {
+    my $grammar = shift;
+    my $text = "";
+    my $SDFA = $grammar->[Parse::Marpa::Grammar::SDFA];
+    my $tags;
+    tag_SDFA($grammar) unless defined $SDFA->[0]->[ Parse::Marpa::SDFA::TAG ];
+
+    for my $state (@$SDFA) {
+        $tags->[ $state->[ Parse::Marpa::SDFA::ID ] ]
+             = $state->[ Parse::Marpa::SDFA::TAG ];
+    }
+    for my $state (
+        map { $_->[0] } 
+        sort { $a->[1] <=> $b->[1] } 
+        map { [ $_, $_->[ Parse::Marpa::SDFA::TAG ] ] }
+        @$SDFA
+    ) {
+        $text .= show_SDFA_state($state, $tags);
+    }
     $text;
 }
 
@@ -2396,104 +2438,97 @@ You can find documentation for this module with the perldoc command.
 
 =head1 THE ALGORITHM
 
-Marpa is essentially the parser described in John Aycock and R. Nigel Horspool's "Practical
-Earley Parsing", I<The Computer Journal>, Vol. 45, No. 6, 2002, pp. 620-630.  This combined
-LR(0) with Jay Earley's parsing algorithm.  I've made some improvements.
+Marpa is essentially the parser described in John Aycock and R.
+Nigel Horspool's "Practical Earley Parsing", I<The Computer Journal>,
+Vol. 45, No. 6, 2002, pp. 620-630.  This combined LR(0) with Jay
+Earley's parsing algorithm.  I've made some improvements.
 
-First, Aycock and Horspool's algorithm rewrites the original grammar into NNF (Nihilist Normal Form).
-Earley's original algorithms had serious issues with nullable symbols and productions,
-and NNF fixes most of them.
-(A nullable symbol or production is one which could eventually parse out to the
-empty string.)
-Importantly, NNF also allows complete and easy mapping of the semantics
-of the original grammar to its NNF rewrite,
-so that NNF and the whole rewrite process can be made invisible to the user.
+First, Aycock and Horspool's algorithm rewrites the original grammar
+into NNF (Nihilist Normal Form).  Earley's original algorithms had
+serious issues with nullable symbols and productions, and NNF fixes
+most of them.  (A nullable symbol or production is one which could
+eventually parse out to the empty string.) Importantly, NNF also
+allows complete and easy mapping of the semantics of the original
+grammar to its NNF rewrite, so that NNF and the whole rewrite process
+can be made invisible to the user.
 
-My problem with NNF grammar is that the rewritten grammar is exponentially larger
-than the original in the theoretical worst case,
-and I just don't like exponential explosion,
-even as a theoretical possibility in pre-processing.
-Furthermore, I think that in some cases likely to arise in practice
-(Perl 6 "rules" with significant whitespace, for example),
-the size explosion, while not exponential,
-is linear with a very large multiplier.
+My problem with NNF grammar is that the rewritten grammar is
+exponentially larger than the original in the theoretical worst
+case, and I just don't like exponential explosion, even as a
+theoretical possibility in pre-processing.  Furthermore, I think
+that in some cases likely to arise in practice (Perl 6 "rules" with
+significant whitespace, for example), the size explosion, while not
+exponential, is linear with a very large multiplier.
 
-My solution was is Chomsky-Horspool-Aycock Form (CHAF).
-This is Horspool and Aycock's NNF,
-but with the further restriction that no more than two nullable symbols may appear
-in any production.
-(In the literature, the discovery that any context-free grammar
-can be rewritten into productions of at most a small fixed size
-is credited to Noam Chomsky.)
-The shortened CHAF production maps back to the original grammar,
-so that like NNF, the CHAF rewrite can be made invisible to the user.
-With CHAF, the theoretical worst behavior is linear,
-and in those difficult cases likely to arise in practice the multiplier is smaller.
+My solution was is Chomsky-Horspool-Aycock Form (CHAF).  This is
+Horspool and Aycock's NNF, but with the further restriction that
+no more than two nullable symbols may appear in any production.
+(In the literature, the discovery that any context-free grammar can
+be rewritten into productions of at most a small fixed size is
+credited to Noam Chomsky.) The shortened CHAF production maps back
+to the original grammar, so that like NNF, the CHAF rewrite can be
+made invisible to the user.  With CHAF, the theoretical worst
+behavior is linear, and in those difficult cases likely to arise
+in practice the multiplier is smaller.
 
-Second, I've extended the scanning step of Earley's algorithm,
-and introduced the "earleme" (named after Jay Earley).
-Previous implementations
-required the Earley grammar's input to be broken up into tokens, presumably by lexical analysis of
-the input using DFA's (deterministic finite automata, which are the equivalent of regular expressions).
-Requiring that the first level of analysis
+Second, I've extended the scanning step of Earley's algorithm, and
+introduced the "earleme" (named after Jay Earley).  Previous
+implementations required the Earley grammar's input to be broken
+up into tokens, presumably by lexical analysis of the input using
+DFA's (deterministic finite automata, which are the equivalent of
+regular expressions).  Requiring that the first level of analysis
 be performed by a DFA hobbles a general parser like Earley's.
 
-Marpa loosens the restriction, by allowing
-the scanning phase of Earley's algorithm to add items not just
-to the current Earley set and the next one, but to any later Earley set.
-Since items can be scanned onto several different Earley sets,
-so that the input to the Earley scanning step no longer has to be deterministic.
-Several alternative scans of the input can be put into the Earley sets, and the power of
-Earley's algorithm harnessed to deal with the indeterminism.
+Marpa loosens the restriction, by allowing the scanning phase of
+Earley's algorithm to add items not just to the current Earley set
+and the next one, but to any later Earley set.  Since items can be
+scanned onto several different Earley sets, so that the input to
+the Earley scanning step no longer has to be deterministic.  Several
+alternative scans of the input can be put into the Earley sets, and
+the power of Earley's algorithm harnessed to deal with the
+indeterminism.
 
-In the new Marpa scanner,
-each scanned item has a length in "earlemes", call it C<l>.
-If the current Earley set is C<i>, a newly scanned Earley item is added to Earley set C<l+i>.
-The B<earleme> is the distance measured in Earley sets, and an implementation can sync earlemes up
-with any measure that's convenient.
-For example, the distance in earlemes may be the length of a string,
-as measured either in ASCII characters,
-or UNICODE graphemes.
-Another implementation may define the earleme length as the distance in a token stream, measured in tokens.
+In the new Marpa scanner, each scanned item has a length in "earlemes",
+call it C<l>.  If the current Earley set is C<i>, a newly scanned
+Earley item is added to Earley set C<l+i>.  The B<earleme> is the
+distance measured in Earley sets, and an implementation can sync
+earlemes up with any measure that's convenient.  For example, the
+distance in earlemes may be the length of a string, as measured
+either in ASCII characters, or UNICODE graphemes.  Another
+implementation may define the earleme length as the distance in a
+token stream, measured in tokens.
 
 =head1 WHY CALL IT MARPA? or BLATANT PLUG
 
 This translator is named after the great Tibetan translator, Marpa.
-At Marpa's time (the 11th century A.D.),
-Indian Buddhism was at its height,
-and a generation of Tibetans translators were devoting themselves to
-obtaining its texts and translating them from Sanskrit.
-Marpa was their major figure,
-so much so that today he is known as Marpa Lotsawa,
-or "Marpa the Translator".
+At Marpa's time (the 11th century A.D.), Indian Buddhism was at its
+height, and a generation of Tibetans translators were devoting
+themselves to obtaining its texts and translating them from Sanskrit.
+Marpa was their major figure, so much so that today he is known as
+Marpa Lotsawa, or "Marpa the Translator".
 
 In those days, the job of translator was not for the indoors type.
-"Translation" required studying with the Buddhist teachers who had the
-texts and could explain them.
-That meant travel from Tibet to India.
-From Marpa's home in the Lhotrak Valley, the easiest way to reach India was
-15,000 foot Khala Chela Pass.
-Even to reach Khala Chela's relatively easy, three-mile high summit,
-Marpa had to cross two hundred
-miles of Tibet, most of them difficult and all of them lawless.
-From Khala Chela downhill to the great Buddhist
-center of Nalanda University was four hundred miles, but Tibetans would stop
-for years or months in Nepal, getting used to the low altitudes.
+"Translation" required studying with the Buddhist teachers who had
+the texts and could explain them.  That meant travel from Tibet to
+India.  From Marpa's home in the Lhotrak Valley, the easiest way
+to reach India was 15,000 foot Khala Chela Pass.  Even to reach
+Khala Chela's relatively easy, three-mile high summit, Marpa had
+to cross two hundred miles of Tibet, most of them difficult and all
+of them lawless.  From Khala Chela downhill to the great Buddhist
+center of Nalanda University was four hundred miles, but Tibetans
+would stop for years or months in Nepal, getting used to the low
+altitudes.
 
-Tibetans had learned the hard way
-not to go straight to Nalanda.
-Almost no germs live in the cold, thin air of Tibet,
-and Tibetans arriving directly in the lowlands had no immunities.
-Whole expeditions had died from disease within weeks of arrival on the hot
-plains.
+Tibetans had learned the hard way not to go straight to Nalanda.
+Almost no germs live in the cold, thin air of Tibet, and Tibetans
+arriving directly in the lowlands had no immunities.  Whole expeditions
+had died from disease within weeks of arrival on the hot plains.
 
-Marpa plays a significant role in my novel,
-B<The God Proof>, which centers around
-Kurt GE<ouml>del's
-proof of God's existence.
-Yes, I<that> Kurt GE<ouml>del, and yes, he really did worked out a God Proof
-(it's in his I<Collected Works>, Vol. 3, pp. 403-404).
-B<The God Proof> is available at Amazon:
+Marpa plays a significant role in my novel, B<The God Proof>, which
+centers around Kurt GE<ouml>del's proof of God's existence.  Yes,
+I<that> Kurt GE<ouml>del, and yes, he really did worked out a God
+Proof (it's in his I<Collected Works>, Vol. 3, pp. 403-404).  B<The
+God Proof> is available at Amazon:
 L<http://www.amazon.com/God-Proof-Jeffrey-Kegler/dp/1434807355>.
 
 =head1 COPYRIGHT & LICENSE
