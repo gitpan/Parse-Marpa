@@ -8,7 +8,7 @@ use strict;
 use warnings;
 use Parse::Marpa::Test qw( normalize_SDFA );
 
-use Test::More tests => 15;
+use Test::More tests => 16;
 
 BEGIN {
 	use_ok( 'Parse::Marpa' );
@@ -377,7 +377,19 @@ Earley Set 4
 2,0 [p=0,0; c=10,0]
 EOS
 
-my $evaluator = new Parse::Marpa::Evaluator($parse);
+SKIP: {
+    skip "Not debugged yet", 1;
+
+    my $evaluator = new Parse::Marpa::Evaluator($parse);
+    if ($evaluator) {
+        is( $evaluator->show_ii_evaluator(), <<'EOS', "Aycock/Horspool Evaluator Tree" );
+EOS
+    } else {
+        fail("Valid parse in evaluator");
+        diag("No valid parse in evaluator");
+    }
+
+}
 
 # Local Variables:
 #   mode: cperl
