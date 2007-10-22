@@ -25,7 +25,7 @@ use strict;
 use Carp;
 use Scalar::Util qw(weaken);
 
-our $VERSION = '0.001_020';
+our $VERSION = '0.001_021';
 $VERSION = eval $VERSION;
 
 =begin Apology:
@@ -2215,6 +2215,7 @@ use constant CLOSURE      => 10;
 use constant VALUE        => 11;
 use constant ACTION       => 12;
 use constant TAG          => 13;
+use constant EARLEY_ITEM  => 14;
 
 # Non-negative ACTION is number (possibly 0) of values on the
 # stack to pop before calling CLOSURE.  Negative numbers are
@@ -2290,43 +2291,38 @@ sub new {
         Parse::Marpa::Node::LINKS,       Parse::Marpa::Node::LINK_CHOICE,
         Parse::Marpa::Node::VALUES,      Parse::Marpa::Node::VALUE_CHOICE,
         Parse::Marpa::Node::RHS_LENGTH,  Parse::Marpa::Node::RHS_BUILT,
+        Parse::Marpa::Node::EARLEY_ITEM
         ]
         = (
             [$start_rule], 0,
             $links, 0,
             ($nulling ? [ "" ] : $values), 0,
             $rhs_length, $rhs_length,
+            $earley_item
         );
 
-    push( @$tree, $node );
+    push( @$work_stack, $node );
 
     # while there is work to do
     WORK_NODE: for ( ;; ) {
 
-        my $tree_top = $tree->[$#$tree];
+        my $tree_top = pop @$work_stack;
+        last WORK_NODE unless $tree_top;
+        push(@$tree, $tree_top);
+
         my ($rules,      $rule_choice,
             $links,      $link_choice,
             $values,     $value_choice,
+            $earley_item
             ) = @{$tree_top}[
                 Parse::Marpa::Node::RULES, Parse::Marpa::Node::RULE_CHOICE,
                 Parse::Marpa::Node::LINKS, Parse::Marpa::Node::LINK_CHOICE,
                 Parse::Marpa::Node::VALUES, Parse::Marpa::Node::VALUE_CHOICE,
+                Parse::Marpa::Node::EARLEY_ITEM
             ];
 
-        # if this node is initially being treated as a token ...
-        if ( $value_choice < @$values ) {
-            my $work_node = pop @$work_stack;
-
-            # We've processed every item in the tree and the
-            # work stack is empty, so we're done
-            last WORK_NODE unless $work_node;
-
-            # Otherwise, put the latest work node on top
-            # of the tree for us to work on
-            push( @$tree, $work_node );
-
-            next WORK_NODE;
-        }
+        # if this node is being treated as a token ...
+        next WORK_NODE if $value_choice < @$values;
 
         # Follow the predecessor links
         my $rhs         = $rules->[$rule_choice]->[Parse::Marpa::Rule::RHS];
@@ -2335,11 +2331,9 @@ sub new {
         # for all the symbols, in reverse order
         # since this is how the links
         # run, from a production to its predecessor
-        my $new_node;
-        my $child_number = $#$rhs;
-        SYMBOL: while ( $child_number >= 0 ) {
+        SYMBOL: for (my $child_number = $#$rhs; $child_number >= 0 ; $child_number-- ) {
 
-            $new_node = [];
+            my $new_node;
 
             my $symbol = $rhs->[$child_number];
             if ( $symbol->[Parse::Marpa::Symbol::NULLING] ) {
@@ -2350,6 +2344,7 @@ sub new {
                     Parse::Marpa::Node::LINKS, Parse::Marpa::Node::LINK_CHOICE,
                     Parse::Marpa::Node::VALUES, Parse::Marpa::Node::VALUE_CHOICE,
                     Parse::Marpa::Node::RHS_LENGTH, Parse::Marpa::Node::RHS_BUILT,
+                    Parse::Marpa::Node::EARLEY_ITEM
                 ] = (
                     $tree_top,
                     $child_number,
@@ -2357,7 +2352,9 @@ sub new {
                     [], 0,
                     [ "" ], 0,
                     0, 0,
+                    $symbol_item
                 );
+                push(@$work_stack, $new_node);
                 next SYMBOL;
             }
 
@@ -2379,6 +2376,9 @@ sub new {
                          -> [ Parse::Marpa::Earley_item::STATE ]
                          -> [ Parse::Marpa::SDFA::COMPLETE_RULES ]
                          -> {$symbol->[ Parse::Marpa::Symbol::NAME ]};
+                 if (not defined $child_rules) {
+                     $child_rules = [];
+                 }
                  ($child_links, $child_values) = @{$child_item}[
                      Parse::Marpa::Earley_item::LINKS,
                      Parse::Marpa::Earley_item::TOKENS
@@ -2404,6 +2404,7 @@ sub new {
                 Parse::Marpa::Node::LINKS, Parse::Marpa::Node::LINK_CHOICE,
                 Parse::Marpa::Node::VALUES, Parse::Marpa::Node::VALUE_CHOICE,
                 Parse::Marpa::Node::RHS_LENGTH, Parse::Marpa::Node::RHS_BUILT,
+                Parse::Marpa::Node::EARLEY_ITEM
             ] = (
                 $tree_top,
                 $child_number,
@@ -2411,19 +2412,10 @@ sub new {
                 $child_links, 0,
                 $child_values, 0,
                 $rhs_length, $rhs_length,
+                $symbol_item
             );
 
-        } continue { # SYMBOL
-
-            # push them on the work stack ...
-            if ($child_number--) {
-                 push(@$work_stack, $new_node);
-
-            # up to the last, which goes on the top of the tree
-            # for the next round
-            } else {
-                 push(@$tree, $new_node);
-            }
+            push(@$work_stack, $new_node);
 
         }    # SYMBOL
 
@@ -2445,8 +2437,9 @@ sub show_ii_node {
         $parent_node, $child_number, $rhs_length, $rhs_built, $closure, $value, $action, $tag,
         $rules, $rule_choice,
         $links, $link_choice,
-        $values, $value_choice
-    ) = [
+        $values, $value_choice,
+        $earley_item
+    ) = @{$node}[
         Parse::Marpa::Node::PARENT_NODE,
         Parse::Marpa::Node::CHILD_NUMBER,
         Parse::Marpa::Node::RHS_LENGTH,
@@ -2460,9 +2453,11 @@ sub show_ii_node {
         Parse::Marpa::Node::LINKS,
         Parse::Marpa::Node::LINK_CHOICE,
         Parse::Marpa::Node::VALUES,
-        Parse::Marpa::Node::VALUE_CHOICE
+        Parse::Marpa::Node::VALUE_CHOICE,
+        Parse::Marpa::Node::EARLEY_ITEM
     ];
-    my $text = "Node " . $tag;
+    my $text;
+    $text .= defined $tag ? ("Node " . $tag) : "Untagged node";
     $text .= "; parent=" . $parent_node->[ Parse::Marpa::Node::TAG ]
         if defined $parent_node;
     $text .= "; child #" . $child_number
@@ -2476,12 +2471,14 @@ sub show_ii_node {
     $text .= "; action=" . $action
         if defined $action;
     $text .= "\n";
-    $text .= "   rule "  . $rule_choice . " in " . join(",", map { brief_rule($_) } @$rules) . "\n";
+    $text .= "   rule "  . $rule_choice . " in "
+        . join(",", map { Parse::Marpa::brief_rule($_) } @$rules) . "\n";
     $text .= "   link "  . $link_choice . " in " . join(",", map {
-            " [p=" . brief_earley_item( $_->[0] ) .
-            "; c=" . brief_earley_item( $_->[1] ) . "]"
+            " [p=" . Parse::Marpa::Parse::brief_earley_item( $_->[0] ) .
+            "; c=" . Parse::Marpa::Parse::brief_earley_item( $_->[1] ) . "]"
         } @$links) . "\n";
     $text .= "   value " . $value_choice . " in " . join(",", map { show_ii_value($_) } @$values) . "\n";
+    $text .= "   item=" . Parse::Marpa::Parse::brief_earley_item( $earley_item ) . "\n";
 }
 
 sub show_ii_tree {

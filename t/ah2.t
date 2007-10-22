@@ -6,7 +6,6 @@
 
 use strict;
 use warnings;
-use Parse::Marpa::Test qw( normalize_SDFA );
 
 use Test::More tests => 16;
 

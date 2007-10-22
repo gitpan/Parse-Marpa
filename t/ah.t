@@ -1,11 +1,10 @@
 #!perl
 
-# the example grammar in Aycock/Horspool "Practical Earley Parsing",
+# The example grammar in Aycock/Horspool "Practical Earley Parsing",
 # _The Computer Journal_, Vol. 45, No. 6, pp. 620-630
 
 use strict;
 use warnings;
-use Parse::Marpa::Test qw( normalize_SDFA );
 
 use Test::More tests => 9;
 
@@ -75,14 +74,15 @@ S11: A ::= E .
 S12: E ::= .
 EOS
 
-is( normalize_SDFA($g->show_SDFA()),
-    normalize_SDFA(<<'EOS'), "Aycock/Horspool SDFA" );
-S0: 1,2
+is( $g->show_ii_SDFA(), <<'EOS', , "Aycock/Horspool SDFA" );
+St0: 1,2
 S' ::= . S
 S' ::= S .
- empty => S1 (3,4,5,6,7,8,11,12)
- <S> => S2 (2)
-S1: 3,4,5,6,7,8,11,12
+ empty => St2 (3,4,5,6,7,8,11,12)
+ <S> => St1 (2)
+St1: 2
+S' ::= S .
+St2: 3,4,5,6,7,8,11,12
 S ::= . A A A A
 S ::= A . A A A
 S ::= A A . A A
@@ -91,37 +91,35 @@ S ::= A A A A .
 A ::= . a
 A ::= E .
 E ::= .
- <A> => S3 (4,5,6,7)
- <a> => S5 (9)
-S2: 2
-S' ::= S .
-S3: 4,5,6,7
+ <A> => St3 (4,5,6,7)
+ <a> => St8 (9)
+St3: 4,5,6,7
 S ::= A . A A A
 S ::= A A . A A
 S ::= A A A . A
 S ::= A A A A .
- empty => S4 (8,11,12)
- <A> => S6 (5,6,7)
-S4: 8,11,12
-A ::= . a
-A ::= E .
-E ::= .
- <a> => S5 (9)
-S5: 9
-A ::= a .
-S6: 5,6,7
+ empty => St7 (8,11,12)
+ <A> => St4 (5,6,7)
+St4: 5,6,7
 S ::= A A . A A
 S ::= A A A . A
 S ::= A A A A .
- empty => S4 (8,11,12)
- <A> => S7 (6,7)
-S7: 6,7
+ empty => St7 (8,11,12)
+ <A> => St5 (6,7)
+St5: 6,7
 S ::= A A A . A
 S ::= A A A A .
- empty => S4 (8,11,12)
- <A> => S8 (7)
-S8: 7
+ empty => St7 (8,11,12)
+ <A> => St6 (7)
+St6: 7
 S ::= A A A A .
+St7: 8,11,12
+A ::= . a
+A ::= E .
+E ::= .
+ <a> => St8 (9)
+St8: 9
+A ::= a .
 EOS
 
 # Local Variables:

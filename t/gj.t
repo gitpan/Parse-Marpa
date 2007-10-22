@@ -2,7 +2,6 @@
 
 use strict;
 use warnings;
-use Parse::Marpa::Test qw( normalize_SDFA );
 
 use Test::More tests => 9;
 
@@ -10,9 +9,9 @@ BEGIN {
 	use_ok( 'Parse::Marpa' );
 }
 
+# A grammar from Grune & Jacobs, Parsing Techniques: A Practical Guide, pp 206-207.
+# The book is available on the web.
 
-# Grammar from Grune & Jacobs, Parsing Techniques: A Practical Guide, pp 206-207
-# the book is available on the web
 my $g = new Parse::Marpa(
     start => "S'",
     rules => [
@@ -95,66 +94,65 @@ S16: T ::= ( E . )
 S17: T ::= ( E ) .
 EOS
 
-is(normalize_SDFA($g->show_SDFA()),
-    normalize_SDFA(<<'EOS'), "Grune/Jacobs SDFA");
-S0: 1
+is( $g->show_ii_SDFA(), <<'EOS', "Grune/Jacobs SDFA");
+St0: 1
 S' ::= . S $
- empty => S1 (4,6,10,12,14)
- <S> => S2 (2)
-S1: 4,6,10,12,14
+ empty => St9 (4,6,10,12,14)
+ <S> => St7 (2)
+St1: 11
+E ::= T .
+St2: 12,14
+T ::= . n
+T ::= . ( E )
+ <(> => St4 (15)
+ <n> => St3 (13)
+St3: 13
+T ::= n .
+St4: 15
+T ::= ( . E )
+ empty => St11 (6,10,12,14)
+ <E> => St5 (16)
+St5: 16
+T ::= ( E . )
+ <)> => St6 (17)
+St6: 17
+T ::= ( E ) .
+St7: 2
+S' ::= S . $
+ <$> => St8 (3)
+St8: 3
+S' ::= S $ .
+St9: 4,6,10,12,14
 S ::= . E
 E ::= . E - T
 E ::= . T
 T ::= . n
 T ::= . ( E )
- <(> => S5 (15)
- <E> => S7 (5,7)
- <T> => S4 (11)
- <n> => S3 (13)
-S2: 2
-S' ::= S . $
- <$> => S8 (3)
-S3: 13
-T ::= n .
-S4: 11
-E ::= T .
-S5: 15
-T ::= ( . E )
- empty => S6 (6,10,12,14)
- <E> => S9 (16)
-S6: 6,10,12,14
+ <(> => St4 (15)
+ <E> => St10 (5,7)
+ <T> => St1 (11)
+ <n> => St3 (13)
+St10: 5,7
+S ::= E .
+E ::= E . - T
+ <-> => St13 (8)
+St11: 6,10,12,14
 E ::= . E - T
 E ::= . T
 T ::= . n
 T ::= . ( E )
- <(> => S5 (15)
- <E> => S10 (7)
- <T> => S4 (11)
- <n> => S3 (13)
-S7: 5,7
-S ::= E .
+ <(> => St4 (15)
+ <E> => St12 (7)
+ <T> => St1 (11)
+ <n> => St3 (13)
+St12: 7
 E ::= E . - T
- <-> => S11 (8)
-S8: 3
-S' ::= S $ .
-S9: 16
-T ::= ( E . )
- <)> => S13 (17)
-S10: 7
-E ::= E . - T
- <-> => S11 (8)
-S11: 8
+ <-> => St13 (8)
+St13: 8
 E ::= E - . T
- empty => S12 (12,14)
- <T> => S14 (9)
-S12: 12,14
-T ::= . n
-T ::= . ( E )
- <(> => S5 (15)
- <n> => S3 (13)
-S13: 17
-T ::= ( E ) .
-S14: 9
+ empty => St2 (12,14)
+ <T> => St14 (9)
+St14: 9
 E ::= E - T .
 EOS
 
