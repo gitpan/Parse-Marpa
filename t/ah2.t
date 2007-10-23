@@ -226,162 +226,119 @@ EOS
 
 my $parse = new Parse::Marpa::Parse($g);
 
-is( $parse->show_status(), <<'EOS', "Aycock/Horspool Parse Status before parse" );
-Current Earley Set: 0
+my $set0_new = <<'EOS';
 Earley Set 0
-0,0
-1,0
+St10,0
+St3,0
 EOS
+
+my $set1_at_0 = <<'EOS';
+Earley Set 1
+St7,0 [p=St3,0; v=a]
+EOS
+
+my $set1_at_1 = <<'EOS';
+St12,0 [p=St3,0; c=St7,0]
+St1,1
+St11,0 [p=St10,0; c=St12,0] [p=St10,0; c=St14,0]
+St14,0 [p=St3,0; c=St12,0] [p=St3,0; c=St6,0]
+St6,0 [p=St3,0; c=St12,0]
+EOS
+
+my $set2_at_1 = <<'EOS';
+Earley Set 2
+St7,1 [p=St1,1; v=a]
+EOS
+
+my $set2_at_2 = <<'EOS';
+St9,0 [p=St12,0; c=St7,1]
+St4,1 [p=St1,1; c=St7,1]
+St2,2
+St6,0 [p=St3,0; c=St9,0]
+St13,0 [p=St12,0; c=St4,1] [p=St12,0; c=St6,1]
+St5,0 [p=St12,0; c=St4,1]
+St6,1 [p=St1,1; c=St4,1]
+St14,0 [p=St3,0; c=St6,0] [p=St3,0; c=St5,0]
+St11,0 [p=St10,0; c=St13,0] [p=St10,0; c=St14,0]
+EOS
+
+my $set3_at_2 = <<'EOS';
+Earley Set 3
+St7,2 [p=St2,2; v=a]
+EOS
+
+my $set3_at_3 = <<'EOS';
+St9,1 [p=St4,1; c=St7,2]
+St8,2 [p=St2,2; c=St7,2]
+St0,3
+St5,0 [p=St12,0; c=St9,1]
+St6,1 [p=St1,1; c=St9,1]
+St5,1 [p=St4,1; c=St8,2]
+St14,0 [p=St3,0; c=St5,0]
+St13,0 [p=St12,0; c=St6,1] [p=St12,0; c=St5,1]
+St11,0 [p=St10,0; c=St14,0] [p=St10,0; c=St13,0]
+EOS
+
+my $set4_at_3 = <<'EOS';
+Earley Set 4
+St7,3 [p=St0,3; v=a]
+EOS
+
+my $set4_at_4 = <<'EOS';
+St9,2 [p=St8,2; c=St7,3]
+St5,1 [p=St4,1; c=St9,2]
+St13,0 [p=St12,0; c=St5,1]
+St11,0 [p=St10,0; c=St13,0]
+EOS
+
+my $sets_new = $set0_new;
+my $sets_at_0 = $sets_new . $set1_at_0;
+my $sets_at_1 = $sets_at_0 . $set1_at_1 . $set2_at_1;
+my $sets_at_2 = $sets_at_1 . $set2_at_2 . $set3_at_2;
+my $sets_at_3 = $sets_at_2 . $set3_at_3 . $set4_at_3;
+my $sets_at_4 = $sets_at_3 . $set4_at_4;
+
+is( $parse->show_status(1),
+    "Current Earley Set: 0\n" .  $sets_new,
+    "Aycock/Horspool Parse Status before parse" );
 
 my $a = $g->get_symbol("a");
 $parse->token([$a, "a", 1]);
 
-is( $parse->show_status(), <<'EOS', "Aycock/Horspool Parse Status at 0" );
-Current Earley Set: 1
-Earley Set 0
-0,0
-1,0
-Earley Set 1
-5,0 [p=1,0; v=a]
-EOS
+is( $parse->show_status(1),
+    "Current Earley Set: 1\n" .  $sets_at_0,
+    "Aycock/Horspool Parse Status at 0" );
 
 $parse->token([$a, "a", 1]);
 
-is( $parse->show_status(), <<'EOS', "Aycock/Horspool Parse Status at 1" );
-Current Earley Set: 2
-Earley Set 0
-0,0
-1,0
-Earley Set 1
-5,0 [p=1,0; v=a]
-3,0 [p=1,0; c=5,0]
-4,1
-2,0 [p=0,0; c=3,0] [p=0,0; c=7,0]
-7,0 [p=1,0; c=3,0] [p=1,0; c=6,0]
-6,0 [p=1,0; c=3,0]
-Earley Set 2
-5,1 [p=4,1; v=a]
-EOS
+is( $parse->show_status(1),
+    "Current Earley Set: 2\n" .  $sets_at_1,
+    "Aycock/Horspool Parse Status at 1" );
 
 $parse->token([$a, "a", 1]);
 
-is( $parse->show_status(), <<'EOS', "Aycock/Horspool Parse Status at 2" );
-Current Earley Set: 3
-Earley Set 0
-0,0
-1,0
-Earley Set 1
-5,0 [p=1,0; v=a]
-3,0 [p=1,0; c=5,0]
-4,1
-2,0 [p=0,0; c=3,0] [p=0,0; c=7,0]
-7,0 [p=1,0; c=3,0] [p=1,0; c=6,0]
-6,0 [p=1,0; c=3,0]
-Earley Set 2
-5,1 [p=4,1; v=a]
-8,0 [p=3,0; c=5,1]
-11,1 [p=4,1; c=5,1]
-12,2
-6,0 [p=1,0; c=8,0]
-10,0 [p=3,0; c=11,1] [p=3,0; c=6,1]
-9,0 [p=3,0; c=11,1]
-6,1 [p=4,1; c=11,1]
-7,0 [p=1,0; c=6,0] [p=1,0; c=9,0]
-2,0 [p=0,0; c=10,0] [p=0,0; c=7,0]
-Earley Set 3
-5,2 [p=12,2; v=a]
-EOS
+is( $parse->show_status(1),
+    "Current Earley Set: 3\n" .  $sets_at_2,
+    "Aycock/Horspool Parse Status at 2" );
 
 $parse->token([$a, "a", 1]);
 
-is( $parse->show_status(), <<'EOS', "Aycock/Horspool Parse Status at 3" );
-Current Earley Set: 4
-Earley Set 0
-0,0
-1,0
-Earley Set 1
-5,0 [p=1,0; v=a]
-3,0 [p=1,0; c=5,0]
-4,1
-2,0 [p=0,0; c=3,0] [p=0,0; c=7,0]
-7,0 [p=1,0; c=3,0] [p=1,0; c=6,0]
-6,0 [p=1,0; c=3,0]
-Earley Set 2
-5,1 [p=4,1; v=a]
-8,0 [p=3,0; c=5,1]
-11,1 [p=4,1; c=5,1]
-12,2
-6,0 [p=1,0; c=8,0]
-10,0 [p=3,0; c=11,1] [p=3,0; c=6,1]
-9,0 [p=3,0; c=11,1]
-6,1 [p=4,1; c=11,1]
-7,0 [p=1,0; c=6,0] [p=1,0; c=9,0]
-2,0 [p=0,0; c=10,0] [p=0,0; c=7,0]
-Earley Set 3
-5,2 [p=12,2; v=a]
-8,1 [p=11,1; c=5,2]
-13,2 [p=12,2; c=5,2]
-14,3
-9,0 [p=3,0; c=8,1]
-6,1 [p=4,1; c=8,1]
-9,1 [p=11,1; c=13,2]
-7,0 [p=1,0; c=9,0]
-10,0 [p=3,0; c=6,1] [p=3,0; c=9,1]
-2,0 [p=0,0; c=7,0] [p=0,0; c=10,0]
-Earley Set 4
-5,3 [p=14,3; v=a]
-EOS
+is( $parse->show_status(1),
+    "Current Earley Set: 4\n" .  $sets_at_3,
+    "Aycock/Horspool Parse Status at 3" );
 
 $parse->token();
 
-is( $parse->show_status(), <<'EOS', "Aycock/Horspool Parse Status at 4" );
-Current Earley Set: 5
-Earley Set 0
-0,0
-1,0
-Earley Set 1
-5,0 [p=1,0; v=a]
-3,0 [p=1,0; c=5,0]
-4,1
-2,0 [p=0,0; c=3,0] [p=0,0; c=7,0]
-7,0 [p=1,0; c=3,0] [p=1,0; c=6,0]
-6,0 [p=1,0; c=3,0]
-Earley Set 2
-5,1 [p=4,1; v=a]
-8,0 [p=3,0; c=5,1]
-11,1 [p=4,1; c=5,1]
-12,2
-6,0 [p=1,0; c=8,0]
-10,0 [p=3,0; c=11,1] [p=3,0; c=6,1]
-9,0 [p=3,0; c=11,1]
-6,1 [p=4,1; c=11,1]
-7,0 [p=1,0; c=6,0] [p=1,0; c=9,0]
-2,0 [p=0,0; c=10,0] [p=0,0; c=7,0]
-Earley Set 3
-5,2 [p=12,2; v=a]
-8,1 [p=11,1; c=5,2]
-13,2 [p=12,2; c=5,2]
-14,3
-9,0 [p=3,0; c=8,1]
-6,1 [p=4,1; c=8,1]
-9,1 [p=11,1; c=13,2]
-7,0 [p=1,0; c=9,0]
-10,0 [p=3,0; c=6,1] [p=3,0; c=9,1]
-2,0 [p=0,0; c=7,0] [p=0,0; c=10,0]
-Earley Set 4
-5,3 [p=14,3; v=a]
-8,2 [p=13,2; c=5,3]
-9,1 [p=11,1; c=8,2]
-10,0 [p=3,0; c=9,1]
-2,0 [p=0,0; c=10,0]
-EOS
+is( $parse->show_status(1),
+    "Current Earley Set: 5\n" .  $sets_at_4,
+    "Aycock/Horspool Parse Status at 4" );
 
 SKIP: {
     skip "Not debugged yet", 1;
 
     my $evaluator = new Parse::Marpa::Evaluator($parse);
     if ($evaluator) {
-        is( $evaluator->show_ii_evaluator(), <<'EOS', "Aycock/Horspool Evaluator Tree" );
+        is( $evaluator->show_evaluator(1), <<'EOS', "Aycock/Horspool Evaluator Tree" );
 EOS
     } else {
         fail("Valid parse in evaluator");
