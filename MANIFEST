@@ -11,3 +11,4 @@ t/gj.t
 t/hu.t
 t/pod.t
 t/weaken.t
+t/equation.t

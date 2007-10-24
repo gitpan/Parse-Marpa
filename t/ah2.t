@@ -7,7 +7,7 @@
 use strict;
 use warnings;
 
-use Test::More tests => 16;
+use Test::More tests => 20;
 
 BEGIN {
 	use_ok( 'Parse::Marpa' );
@@ -228,67 +228,67 @@ my $parse = new Parse::Marpa::Parse($g);
 
 my $set0_new = <<'EOS';
 Earley Set 0
-St10,0
-St3,0
+0:St10,0
+0:St3,0
 EOS
 
 my $set1_at_0 = <<'EOS';
 Earley Set 1
-St7,0 [p=St3,0; v=a]
+1:St7,0 [p=0:St3,0; v=a]
 EOS
 
 my $set1_at_1 = <<'EOS';
-St12,0 [p=St3,0; c=St7,0]
-St1,1
-St11,0 [p=St10,0; c=St12,0] [p=St10,0; c=St14,0]
-St14,0 [p=St3,0; c=St12,0] [p=St3,0; c=St6,0]
-St6,0 [p=St3,0; c=St12,0]
+1:St12,0 [p=0:St3,0; c=1:St7,0]
+1:St1,1
+1:St11,0 [p=0:St10,0; c=1:St12,0] [p=0:St10,0; c=1:St14,0]
+1:St14,0 [p=0:St3,0; c=1:St12,0] [p=0:St3,0; c=1:St6,0]
+1:St6,0 [p=0:St3,0; c=1:St12,0]
 EOS
 
 my $set2_at_1 = <<'EOS';
 Earley Set 2
-St7,1 [p=St1,1; v=a]
+2:St7,1 [p=1:St1,1; v=a]
 EOS
 
 my $set2_at_2 = <<'EOS';
-St9,0 [p=St12,0; c=St7,1]
-St4,1 [p=St1,1; c=St7,1]
-St2,2
-St6,0 [p=St3,0; c=St9,0]
-St13,0 [p=St12,0; c=St4,1] [p=St12,0; c=St6,1]
-St5,0 [p=St12,0; c=St4,1]
-St6,1 [p=St1,1; c=St4,1]
-St14,0 [p=St3,0; c=St6,0] [p=St3,0; c=St5,0]
-St11,0 [p=St10,0; c=St13,0] [p=St10,0; c=St14,0]
+2:St9,0 [p=1:St12,0; c=2:St7,1]
+2:St4,1 [p=1:St1,1; c=2:St7,1]
+2:St2,2
+2:St6,0 [p=0:St3,0; c=2:St9,0]
+2:St13,0 [p=1:St12,0; c=2:St4,1] [p=1:St12,0; c=2:St6,1]
+2:St5,0 [p=1:St12,0; c=2:St4,1]
+2:St6,1 [p=1:St1,1; c=2:St4,1]
+2:St14,0 [p=0:St3,0; c=2:St6,0] [p=0:St3,0; c=2:St5,0]
+2:St11,0 [p=0:St10,0; c=2:St13,0] [p=0:St10,0; c=2:St14,0]
 EOS
 
 my $set3_at_2 = <<'EOS';
 Earley Set 3
-St7,2 [p=St2,2; v=a]
+3:St7,2 [p=2:St2,2; v=a]
 EOS
 
 my $set3_at_3 = <<'EOS';
-St9,1 [p=St4,1; c=St7,2]
-St8,2 [p=St2,2; c=St7,2]
-St0,3
-St5,0 [p=St12,0; c=St9,1]
-St6,1 [p=St1,1; c=St9,1]
-St5,1 [p=St4,1; c=St8,2]
-St14,0 [p=St3,0; c=St5,0]
-St13,0 [p=St12,0; c=St6,1] [p=St12,0; c=St5,1]
-St11,0 [p=St10,0; c=St14,0] [p=St10,0; c=St13,0]
+3:St9,1 [p=2:St4,1; c=3:St7,2]
+3:St8,2 [p=2:St2,2; c=3:St7,2]
+3:St0,3
+3:St5,0 [p=1:St12,0; c=3:St9,1]
+3:St6,1 [p=1:St1,1; c=3:St9,1]
+3:St5,1 [p=2:St4,1; c=3:St8,2]
+3:St14,0 [p=0:St3,0; c=3:St5,0]
+3:St13,0 [p=1:St12,0; c=3:St6,1] [p=1:St12,0; c=3:St5,1]
+3:St11,0 [p=0:St10,0; c=3:St14,0] [p=0:St10,0; c=3:St13,0]
 EOS
 
 my $set4_at_3 = <<'EOS';
 Earley Set 4
-St7,3 [p=St0,3; v=a]
+4:St7,3 [p=3:St0,3; v=a]
 EOS
 
 my $set4_at_4 = <<'EOS';
-St9,2 [p=St8,2; c=St7,3]
-St5,1 [p=St4,1; c=St9,2]
-St13,0 [p=St12,0; c=St5,1]
-St11,0 [p=St10,0; c=St13,0]
+4:St9,2 [p=3:St8,2; c=4:St7,3]
+4:St5,1 [p=2:St4,1; c=4:St9,2]
+4:St13,0 [p=1:St12,0; c=4:St5,1]
+4:St11,0 [p=0:St10,0; c=4:St13,0]
 EOS
 
 my $sets_new = $set0_new;
@@ -333,19 +333,23 @@ is( $parse->show_status(1),
     "Current Earley Set: 5\n" .  $sets_at_4,
     "Aycock/Horspool Parse Status at 4" );
 
-SKIP: {
-    skip "Not debugged yet", 1;
+# SKIP: {
+    # skip "Not debugged yet", 1;
 
-    my $evaluator = new Parse::Marpa::Evaluator($parse);
-    if ($evaluator) {
-        is( $evaluator->show_evaluator(1), <<'EOS', "Aycock/Horspool Evaluator Tree" );
-EOS
-    } else {
-        fail("Valid parse in evaluator");
-        diag("No valid parse in evaluator");
+TODO: {
+    local $TODO  = "Not debugged";
+    for my $end_set (0 .. 4) {
+        my $evaluator = new Parse::Marpa::Evaluator($parse, $end_set);
+        if ($evaluator) {
+            is( $evaluator->show_evaluator(1), '', "Aycock/Horspool Evaluator Tree" );
+        } else {
+            fail("Valid parse in evaluator");
+            diag("No valid parse in evaluator");
+        }
     }
-
 }
+
+# }
 
 # Local Variables:
 #   mode: cperl

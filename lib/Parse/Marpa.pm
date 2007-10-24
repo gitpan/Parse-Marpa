@@ -25,7 +25,7 @@ use strict;
 use Carp;
 use Scalar::Util qw(weaken);
 
-our $VERSION = '0.001_022';
+our $VERSION = '0.001_023';
 $VERSION = eval $VERSION;
 
 =begin Apology:
@@ -101,9 +101,11 @@ use constant INPUT_REACHABLE => 6;    # reachable from input symbol?
 use constant NULLING         => 7;    # always matches null?
 use constant START           => 8;    # is one of the start symbols?
 use constant REGEX           => 9;    # regex, for terminals; undef otherwise
-use constant NULL_ALIAS      => 10
-    ;  # for a non-nulling symbol, ref of a its nulling alias, if there is one
-       # otherwise undef
+use constant NULL_ALIAS      => 10;   # for a non-nulling symbol,
+                                      # ref of a its nulling alias,
+                                      # if there is one
+                                      # otherwise undef
+use constant TERMINAL        => 11;   # terminal?
 
 package Parse::Marpa::Rule;
 
@@ -201,20 +203,20 @@ sub new {
         = ( [], {}, [], {}, {}, $academic );
     bless( $self, $class );
 
-    _add_user_rules( $self, $rules );
-    _nullable($self);
-    _nulling($self);
-    _input_reachable($self);
-    _set_start( $self, $start );
-    _start_reachable($self);
+    add_user_rules( $self, $rules );
+    nullable($self);
+    nulling($self);
+    input_reachable($self);
+    set_start( $self, $start );
+    start_reachable($self);
     if ($academic) {
-        _setup_academic_grammar($self);
+        setup_academic_grammar($self);
     }
     else {
-        _rewrite_as_CHAF($self);
+        rewrite_as_CHAF($self);
     }
-    _create_NFA($self);
-    _create_SDFA($self);
+    create_NFA($self);
+    create_SDFA($self);
 
     $self;
 }
@@ -497,32 +499,46 @@ one underscore, but not two, are reserved for internal uses
 
 =cut
 
-sub _canonical_name {
+sub canonical_name {
     my $name = shift;
     $name =~ /]$/ ? $name . "_" : $name;
 }
 
-sub _add_terminal {
+sub add_terminal {
     my $grammar = shift;
     my $name    = shift;
     my $regex   = shift;
-    my ( $symbol, $symbols ) =
-        @{$grammar}[ Parse::Marpa::Grammar::SYMBOL_HASH,
-        Parse::Marpa::Grammar::SYMBOLS ];
-
-    if ( $symbol->{$name} ) {
-        croak("Attempt to add duplicate terminal: $name");
-    }
+    my ( $symbol_hash, $symbols )
+        = @{$grammar}[
+            Parse::Marpa::Grammar::SYMBOL_HASH,
+            Parse::Marpa::Grammar::SYMBOLS
+        ];
 
     if ( "" =~ $regex ) {
         croak("Attempt to add nullable terminal: $name");
     }
 
-    my $symbol_count = @$symbols;
-    $name = _canonical_name($name);
-    if ( exists $symbol->{$name} ) {
-        croak("attempt to redefine symbol $name as a terminal");
+    # I allow redefinition of a LHS symbol as a terminal
+    # I need to test that this works, or unallow it
+    $name = canonical_name($name);
+    my $symbol = $symbol_hash->{$name};
+    if ( defined $symbol) {
+
+        if ($symbol->[ Parse::Marpa::Symbol::TERMINAL ]) {
+            croak("Attempt to add duplicate terminal: $name");
+        }
+
+        @{$symbol}[
+            Parse::Marpa::Symbol::INPUT_REACHABLE,
+            Parse::Marpa::Symbol::NULLING,
+            Parse::Marpa::Symbol::REGEX,
+            Parse::Marpa::Symbol::TERMINAL
+        ] = (1, 0, $regex, 1);
+
+        return;
     }
+
+    my $symbol_count = @$symbols;
     my $new_symbol = [];
     @{$new_symbol}[
         Parse::Marpa::Symbol::ID,
@@ -530,18 +546,18 @@ sub _add_terminal {
         Parse::Marpa::Symbol::LHS,
         Parse::Marpa::Symbol::RHS,
         Parse::Marpa::Symbol::NULLABLE,
-        Parse::Marpa::Symbol::START_REACHABLE,
         Parse::Marpa::Symbol::INPUT_REACHABLE,
         Parse::Marpa::Symbol::NULLING,
-        Parse::Marpa::Symbol::REGEX
+        Parse::Marpa::Symbol::REGEX,
+        Parse::Marpa::Symbol::TERMINAL
         ]
-        = ( $symbol_count, $name, [], [], 0, undef, 1, 0, $regex );
+        = ( $symbol_count, $name, [], [], 0, 1, 0, $regex, 1 );
 
     push( @$symbols, $new_symbol );
-    weaken( $symbol->{$name} = $new_symbol );
+    weaken( $symbol_hash->{$name} = $new_symbol );
 }
 
-sub _assign_symbol {
+sub assign_symbol {
     my $grammar = shift;
     my $name    = shift;
     my ( $symbol, $symbols ) =
@@ -562,25 +578,25 @@ sub _assign_symbol {
     $ret;
 }
 
-sub _assign_user_symbol {
+sub assign_user_symbol {
     my $self = shift;
     my $name = shift;
-    _assign_symbol( $self, _canonical_name($name) );
+    assign_symbol( $self, canonical_name($name) );
 }
 
-sub _add_user_rule {
+sub add_user_rule {
     my $self      = shift;
     my $lhs_name  = shift;
     my $rhs_names = shift;
 
-    _add_rule(
+    add_rule(
         $self,
-        _assign_symbol( $self, _canonical_name($lhs_name) ),
-        [ map { _assign_symbol( $self, _canonical_name($_) ); } @$rhs_names ]
+        assign_symbol( $self, canonical_name($lhs_name) ),
+        [ map { assign_symbol( $self, canonical_name($_) ); } @$rhs_names ]
     );
 }
 
-sub _add_rule {
+sub add_rule {
     my $grammar = shift;
     my $lhs     = shift;
     my $rhs     = shift;
@@ -637,7 +653,7 @@ sub _add_rule {
 }
 
 # add one or more rules
-sub _add_user_rules {
+sub add_user_rules {
     my $self  = shift;
     my $rules = shift;
 
@@ -648,14 +664,14 @@ sub _add_user_rules {
         elsif ( 2 == @$rule ) {
             my ( $term, $regex ) = @$rule;
             if ( ref $regex eq "Regexp" ) {
-                _add_terminal( $self, $term, $regex );
+                add_terminal( $self, $term, $regex );
                 next rule;
             }
 
             # fall through if not a terminal definition
         }
 
-        _add_user_rule(
+        add_user_rule(
             $self,
             $rule->[0],
             (   $#$rule > 0
@@ -666,7 +682,7 @@ sub _add_user_rules {
     }
 }
 
-sub _set_start {
+sub set_start {
     my $grammar    = shift;
     my $start_name = shift;
 
@@ -678,9 +694,13 @@ sub _set_start {
     if ( not scalar @{ $start->[Parse::Marpa::Symbol::LHS] } ) {
         croak( "start symbol " . $start_name . " not on LHS of any rule\n" );
     }
-    if ( scalar @{ $start->[Parse::Marpa::Symbol::RHS] } ) {
-        croak( "start symbol " . $start_name . " on RHS\n" );
-    }
+
+    # I think I'll allow the start symbol to be on the RHS of a production.
+    # After all, another start symbol will be created in the CHAF rewrite.
+    # if ( scalar @{ $start->[Parse::Marpa::Symbol::RHS] } ) {
+        # croak( "start symbol " . $start_name . " on RHS\n" );
+    # }
+
     if ( not $start->[Parse::Marpa::Symbol::INPUT_REACHABLE] ) {
         croak( "start symbol " . $start_name . " not input reachable\n" );
     }
@@ -688,7 +708,7 @@ sub _set_start {
 }
 
 # return list of rules reachable from the start symbol;
-sub _start_reachable {
+sub start_reachable {
     my $grammar = shift;
     my $start   = $grammar->[Parse::Marpa::Grammar::START];
 
@@ -736,7 +756,7 @@ sub _start_reachable {
 
 }
 
-sub _input_reachable {
+sub input_reachable {
     my $grammar = shift;
 
     my ( $rules, $symbols ) =
@@ -892,7 +912,7 @@ sub _input_reachable {
 
 }
 
-sub _nulling {
+sub nulling {
     my $grammar = shift;
 
     my ( $rules, $symbols ) =
@@ -1019,7 +1039,7 @@ sub _nulling {
 
 }
 
-sub _nullable {
+sub nullable {
     my $grammar = shift;
     my ( $rules, $symbols ) =
         @{$grammar}[ Parse::Marpa::Grammar::RULES,
@@ -1149,7 +1169,7 @@ sub _nullable {
 
 }
 
-sub _create_NFA {
+sub create_NFA {
     my $grammar = shift;
     my ( $rules, $symbols, $symbol_hash, $start, $academic ) = @{$grammar}[
         Parse::Marpa::Grammar::RULES,       Parse::Marpa::Grammar::SYMBOLS,
@@ -1268,7 +1288,7 @@ sub _create_NFA {
 # left to be set elsewhere.
 #
 
-sub _assign_SDFA_kernel_state {
+sub assign_SDFA_kernel_state {
     my $grammar       = shift;
     my $kernel_states = shift;
     my ( $NFA_states, $SDFA_by_name, $SDFA ) = @{$grammar}[
@@ -1443,7 +1463,7 @@ sub _assign_SDFA_kernel_state {
     $kernel_SDFA_state;
 }
 
-sub _create_SDFA {
+sub create_SDFA {
     my $grammar = shift;
     my ( $symbol, $NFA, $start ) = @{$grammar}[
         Parse::Marpa::Grammar::SYMBOLS, Parse::Marpa::Grammar::NFA,
@@ -1460,7 +1480,7 @@ sub _create_SDFA {
         carp("Empty NFA, cannot create SDFA");
         return;
     }
-    _assign_SDFA_kernel_state( $grammar, $initial_NFA_states );
+    assign_SDFA_kernel_state( $grammar, $initial_NFA_states );
 
     while ( $next_state_id < scalar @$SDFA ) {
 
@@ -1487,7 +1507,7 @@ sub _create_SDFA {
         while ( my ( $symbol, $to_states ) = each(%$NFA_to_states_by_symbol) )
         {
             $SDFA_state->[Parse::Marpa::SDFA::TRANSITION]->{$symbol} =
-                _assign_SDFA_kernel_state( $grammar, $to_states );
+                assign_SDFA_kernel_state( $grammar, $to_states );
         }
     }
 
@@ -1527,7 +1547,7 @@ sub _create_SDFA {
     }    # STATE
 }
 
-sub _setup_academic_grammar {
+sub setup_academic_grammar {
     my $grammar = shift;
     my $rules   = $grammar->[Parse::Marpa::Grammar::RULES];
 
@@ -1538,7 +1558,7 @@ sub _setup_academic_grammar {
 }
 
 # given a nullable symbol, create a nulling alias and make the first symbol non-nullable
-sub _alias_symbol {
+sub alias_symbol {
     my $grammar         = shift;
     my $nullable_symbol = shift;
     my ( $symbol, $symbols ) =
@@ -1595,7 +1615,7 @@ that the semantics of the original grammar are not affected.
 =cut
 
 # rewrite as Chomsky-Horspool-Aycock Form
-sub _rewrite_as_CHAF {
+sub rewrite_as_CHAF {
     my $grammar = shift;
     my ( $rules, $symbols, $start ) = @{$grammar}[
         Parse::Marpa::Grammar::RULES, Parse::Marpa::Grammar::SYMBOLS,
@@ -1627,7 +1647,7 @@ sub _rewrite_as_CHAF {
         next SYMBOL if $nulling;
         next SYMBOL unless $nullable;
 
-        _alias_symbol( $grammar, $symbol );
+        alias_symbol( $grammar, $symbol );
     }
 
     # mark, or create as needed, the useful rules
@@ -1733,7 +1753,7 @@ sub _rewrite_as_CHAF {
                 if ( $proper_nullable1 < $last_nonnullable ) {
                     $subp_end = $proper_nullable1;
                     spice( @$proper_nullables, 0, 2 );
-                    $next_subp_lhs = _assign_symbol( $grammar,
+                    $next_subp_lhs = assign_symbol( $grammar,
                               $lhs->[Parse::Marpa::Symbol::NAME] . "[" 
                             . $rule_id . ":"
                             . ( $subp_end + 1 )
@@ -1755,7 +1775,7 @@ sub _rewrite_as_CHAF {
                 # subproduction is nullable
                 $subp_end = $proper_nullable1 - 1;
                 shift @$proper_nullables;
-                $next_subp_lhs = _assign_symbol( $grammar,
+                $next_subp_lhs = assign_symbol( $grammar,
                           $lhs->[Parse::Marpa::Symbol::NAME] . "[" 
                         . $rule_id . ":"
                         . ( $subp_end + 1 )
@@ -1767,7 +1787,7 @@ sub _rewrite_as_CHAF {
                     Parse::Marpa::Symbol::NULLING
                     ]
                     = ( 1, 1, 1, 0 );
-                _alias_symbol( $grammar, $next_subp_lhs );
+                alias_symbol( $grammar, $next_subp_lhs );
                 $subp_factor0_rhs =
                     [ @{$rhs}[ $subp_start .. $subp_end ], $next_subp_lhs ];
 
@@ -1819,7 +1839,7 @@ sub _rewrite_as_CHAF {
             }    # FACTOR
 
             for my $factor_rhs (@$factored_rhs) {
-                my $new_rule = _add_rule( $grammar, $subp_lhs, $factor_rhs );
+                my $new_rule = add_rule( $grammar, $subp_lhs, $factor_rhs );
                 @{$new_rule}[
                     Parse::Marpa::Rule::USEFUL,
                     Parse::Marpa::Rule::START_REACHABLE,
@@ -1844,7 +1864,7 @@ sub _rewrite_as_CHAF {
     my $old_start       = $start;
     my $input_reachable = $old_start->[Parse::Marpa::Symbol::INPUT_REACHABLE];
     $start =
-        _assign_symbol( $grammar,
+        assign_symbol( $grammar,
         $start->[Parse::Marpa::Symbol::NAME] . "[']" );
     @{$start}[
         Parse::Marpa::Symbol::INPUT_REACHABLE,
@@ -1854,7 +1874,7 @@ sub _rewrite_as_CHAF {
         = ( $input_reachable, 1, 1 );
 
     # Create a new start rule
-    my $new_start_rule = _add_rule( $grammar, $start, [$old_start] );
+    my $new_start_rule = add_rule( $grammar, $start, [$old_start] );
     @{$new_start_rule}[
         Parse::Marpa::Rule::INPUT_REACHABLE,
         Parse::Marpa::Rule::START_REACHABLE,
@@ -1863,9 +1883,9 @@ sub _rewrite_as_CHAF {
         = ( $input_reachable, 1, 1 );
 
     if ( $old_start->[Parse::Marpa::Symbol::NULL_ALIAS] ) {
-        my $start_alias = _alias_symbol( $grammar, $start );
+        my $start_alias = alias_symbol( $grammar, $start );
         @{$start_alias}[Parse::Marpa::Symbol::START] = 1;
-        my $new_start_rule = _add_rule( $grammar, $start_alias, [] );
+        my $new_start_rule = add_rule( $grammar, $start_alias, [] );
 
         # Nulling rules are not considered useful, but the top-level one is an exception
         @{$new_start_rule}[
@@ -1888,6 +1908,7 @@ use constant STATE  => 0;  # the SDFA state
 use constant PARENT => 1;  # the number of the Earley set with the parent item
 use constant TOKENS => 2;  # a list of the links from token scanning
 use constant LINKS  => 3;  # a list of the links from the completer step
+use constant SET    => 4;  # the set this item is in, for debugging
 
 package Parse::Marpa::Parse;
 
@@ -1931,8 +1952,9 @@ sub new {
         Parse::Marpa::Earley_item::STATE,
         Parse::Marpa::Earley_item::PARENT,
         Parse::Marpa::Earley_item::TOKENS,
-        Parse::Marpa::Earley_item::LINKS
-    ] = ( $SDFA0, 0, [], [] );
+        Parse::Marpa::Earley_item::LINKS,
+        Parse::Marpa::Earley_item::SET
+    ] = ( $SDFA0, 0, [], [], 0 );
     push( @$earley_set, $item );
     $earley_hash->{$key} = $item;
 
@@ -1944,8 +1966,9 @@ sub new {
             Parse::Marpa::Earley_item::STATE,
             Parse::Marpa::Earley_item::PARENT,
             Parse::Marpa::Earley_item::TOKENS,
-            Parse::Marpa::Earley_item::LINKS
-        ] = ( $resetting_state, 0, [], [] );
+            Parse::Marpa::Earley_item::LINKS,
+            Parse::Marpa::Earley_item::SET
+        ] = ( $resetting_state, 0, [], [], 0 );
         push( @$earley_set, $item );
         $earley_hash->{$key} = $item;
     }
@@ -1960,15 +1983,17 @@ sub new {
 sub brief_earley_item {
     my $item = shift;
     my $ii = shift;
-    my ( $state, $parent ) = @{$item}[
+    my ( $state, $parent, $set ) = @{$item}[
         Parse::Marpa::Earley_item::STATE,
-        Parse::Marpa::Earley_item::PARENT
+        Parse::Marpa::Earley_item::PARENT,
+        Parse::Marpa::Earley_item::SET
     ];
     my ($id, $tag) = @{$state}[
         Parse::Marpa::SDFA::ID,
         Parse::Marpa::SDFA::TAG
     ];
-    my $text = ($ii and defined $tag) ? "St" . $tag : $id;
+    my $text = $set . ":";
+    $text .= ($ii and defined $tag) ? "St" . $tag : $id;
     $text .= "," . $parent;
 }
 
@@ -2109,9 +2134,10 @@ sub token {
                     Parse::Marpa::Earley_item::STATE,
                     Parse::Marpa::Earley_item::PARENT,
                     Parse::Marpa::Earley_item::LINKS,
-                    Parse::Marpa::Earley_item::TOKENS
+                    Parse::Marpa::Earley_item::TOKENS,
+                    Parse::Marpa::Earley_item::SET
                     ]
-                    = ( $kernel_state, $parent, [], [] );
+                    = ( $kernel_state, $parent, [], [], $target_ix );
                 $target_earley_hash->{$key} = $target_earley_item;
                 push( @$target_earley_set, $target_earley_item );
             }
@@ -2131,9 +2157,10 @@ sub token {
                     Parse::Marpa::Earley_item::STATE,
                     Parse::Marpa::Earley_item::PARENT,
                     Parse::Marpa::Earley_item::LINKS,
-                    Parse::Marpa::Earley_item::TOKENS
+                    Parse::Marpa::Earley_item::TOKENS,
+                    Parse::Marpa::Earley_item::SET
                 ]
-                    = ( $resetting_state, $parent, [], [] );
+                    = ( $resetting_state, $parent, [], [], $target_ix );
                 $target_earley_hash->{$key} = $new_earley_item;
                 push( @$target_earley_set, $new_earley_item );
             }
@@ -2166,9 +2193,10 @@ sub token {
                         Parse::Marpa::Earley_item::STATE,
                         Parse::Marpa::Earley_item::PARENT,
                         Parse::Marpa::Earley_item::LINKS,
-                        Parse::Marpa::Earley_item::TOKENS
+                        Parse::Marpa::Earley_item::TOKENS,,
+                        Parse::Marpa::Earley_item::SET
                         ]
-                        = ( $kernel_state, $grandparent, [], [] );
+                        = ( $kernel_state, $grandparent, [], [], $current_set );
                     $earley_hash->{$key} = $target_earley_item;
                     push( @$earley_set, $target_earley_item );
                 }
@@ -2189,9 +2217,10 @@ sub token {
                         Parse::Marpa::Earley_item::STATE,
                         Parse::Marpa::Earley_item::PARENT,
                         Parse::Marpa::Earley_item::LINKS,
-                        Parse::Marpa::Earley_item::TOKENS
+                        Parse::Marpa::Earley_item::TOKENS,
+                        Parse::Marpa::Earley_item::SET
                         ]
-                        = ( $resetting_state, $current_set, [], []);
+                        = ( $resetting_state, $current_set, [], [], $current_set);
                     $earley_hash->{$key} = $new_earley_item;
                     push( @$earley_set, $new_earley_item );
                 }
@@ -2242,7 +2271,7 @@ use constant NO_OP        => -1; # Don't pop values, don't push result
 package Parse::Marpa::Evaluator;
 
 use constant PARSE       => 0;
-use constant CURRENT_SET => 1;
+use constant END_SET     => 1;
 use constant TREE        => 2;
 use constant LAST_NODE   => 3;
 use constant LAST_TAG    => 4;
@@ -2250,6 +2279,7 @@ use constant LAST_TAG    => 4;
 sub new {
     my $class    = shift;
     my $parse    = shift;
+    my $end_set  = shift;
     my $evaluator = [];
     my $tag = 0;
     bless $evaluator, $class;
@@ -2264,17 +2294,20 @@ sub new {
         Parse::Marpa::Parse::EARLEY_SETS
     ];
 
-    my $tree       = [];
-    @{$evaluator}[TREE, PARSE, CURRENT_SET]
-        = ($tree, $parse, $current_set);
-
     # variables for the loop over the target earley set,
     # and to be set in it.
-    my $last_complete_set = $current_set - 1;
-    if ($last_complete_set < 0) {
-        $last_complete_set = 0;
+    unless (defined $end_set) {
+        $end_set = $current_set - 1;
+        if ($end_set < 0) {
+            $end_set = 0;
+        }
     }
-    my $earley_set = $earley_sets->[$last_complete_set];
+
+    my $tree       = [];
+    @{$evaluator}[TREE, PARSE, END_SET]
+        = ($tree, $parse, $end_set);
+
+    my $earley_set = $earley_sets->[$end_set];
     my $earley_item;
     my $start_rule;
     my ( $state, $parent );
@@ -2290,8 +2323,6 @@ sub new {
     }
 
     return unless $start_rule;
-
-    my $work_stack = [];
 
     my ( $links, $values ) = @{$earley_item}[
         Parse::Marpa::Earley_item::LINKS,
@@ -2315,13 +2346,13 @@ sub new {
         = (
             [$start_rule], 0,
             $links, 0,
-            ($nulling ? [ "" ] : $values), 0,
+            ($nulling ? [ [ undef, ""  ] ] : $values), 0,
             $rhs_length, $rhs_length,
             $earley_item,
             $tag++
         );
 
-    push( @$work_stack, $node );
+    my $work_stack = [ $node ];
 
     # while there is work to do
     WORK_NODE: for ( ;; ) {
@@ -2347,6 +2378,7 @@ sub new {
         # Follow the predecessor links
         my $rhs         = $rules->[$rule_choice]->[Parse::Marpa::Rule::RHS];
         my $symbol_item = $earley_item;
+        my $next_work_entry = @$work_stack;
 
         # for all the symbols, in reverse order
         # since this is how the links
@@ -2371,12 +2403,12 @@ sub new {
                     $child_number,
                     [], 0,
                     [], 0,
-                    [ "" ], 0,
+                    [ [ undef, "" ] ], 0,
                     0, 0,
                     $symbol_item,
                     $tag++
                 );
-                push(@$work_stack, $new_node);
+                $work_stack -> [ $next_work_entry + $child_number ] = $new_node;
                 next SYMBOL;
             }
 
@@ -2385,6 +2417,9 @@ sub new {
                     Parse::Marpa::Earley_item::LINKS,
                     Parse::Marpa::Earley_item::TOKENS,
                 ];
+
+            my $next_symbol_item;
+
             # set up the child links -- I don't separate terminals from non-terminals,
             # so a node can have both a child node and token values
             my $child_rules = [];
@@ -2393,7 +2428,7 @@ sub new {
             my $child_rhs_length;
             my $child_item;
             if (@$links) {
-                 ($symbol_item, $child_item) = @{$links->[0] };
+                 ($next_symbol_item, $child_item) = @{$links->[0] };
                  $child_rules
                      = $child_item
                          -> [ Parse::Marpa::Earley_item::STATE ]
@@ -2409,9 +2444,10 @@ sub new {
  
 
             # If it has token values, the predecessor link comes from the token
+            # Note that if this is a nulling item, it will be undef, in which
+            # case we keep the old symbol_item
             if  (@$values) {
-                $symbol_item = $values->[0]->[0];
-
+                $next_symbol_item = $values->[0]->[0];
             }
 
             @{$new_node}[
@@ -2434,7 +2470,9 @@ sub new {
                 $tag++
             );
 
-            push(@$work_stack, $new_node);
+            $work_stack -> [ $next_work_entry + $child_number ] = $new_node;
+
+            $symbol_item = $next_symbol_item if defined $next_symbol_item;
 
         }    # SYMBOL
 
@@ -2449,7 +2487,7 @@ sub show_value {
     return "undef" unless defined $value;
     if ($ii) {
         my $type  = ref $value;
-        return $type if defined $type;
+        return $type if $type;
     }
     return "$value";
 }
@@ -2497,11 +2535,18 @@ sub show_node {
     $text .= "\n";
     $text .= "   rule "  . $rule_choice . " in "
         . join(",", map { Parse::Marpa::brief_rule($_) } @$rules) . "\n";
-    $text .= "   link "  . $link_choice . " in " . join(",", map {
-            " [p=" . Parse::Marpa::Parse::brief_earley_item( $_->[0], $ii ) .
-            "; c=" . Parse::Marpa::Parse::brief_earley_item( $_->[1], $ii ) . "]"
+    $text .= "   link "  . $link_choice . " in " . join(", ", map {
+            " <p=" . Parse::Marpa::Parse::brief_earley_item( $_->[0], $ii ) .
+            "; c=" . Parse::Marpa::Parse::brief_earley_item( $_->[1], $ii ) . ">"
         } @$links) . "\n";
-    $text .= "   value " . $value_choice . " in " . join(",", map { show_value($_, $ii) } @$values) . "\n";
+    $text .= "   value " . $value_choice . " in "
+        . join(", ", map {
+                my $predecessor = $_->[0];
+                "<"
+                . ($predecessor ? "p=" . Parse::Marpa::Parse::brief_earley_item( $predecessor, $ii ) : "nulling")
+                . "; v=" . show_value($_->[1], $ii)
+                . ">"
+         } @$values) . "\n";
     $text .= "   item=" . Parse::Marpa::Parse::brief_earley_item( $earley_item, $ii ) . "\n";
 }
 
@@ -2518,13 +2563,15 @@ sub show_tree {
 sub show_evaluator {
     my $evaluator = shift;
     my $ii = shift;
-    my ($tree, $parse) = @{$evaluator}[
+    my ($tree, $parse, $end_set) = @{$evaluator}[
         Parse::Marpa::Evaluator::TREE,
-        Parse::Marpa::Evaluator::PARSE
+        Parse::Marpa::Evaluator::PARSE,
+        Parse::Marpa::Evaluator::END_SET
     ];
     my $grammar = $parse->[ Parse::Marpa::Parse::GRAMMAR ];
+    my $text = "Evaluator, End Set = $end_set\n";
     Parse::Marpa::tag_SDFA($grammar);
-    show_tree($tree, $ii);
+    $text .= show_tree($tree, $ii);
 }
 
 =head1 NAME
