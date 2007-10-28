@@ -7,7 +7,7 @@
 use strict;
 use warnings;
 
-use Test::More tests => 20;
+use Test::More tests => 15;
 
 BEGIN {
 	use_ok( 'Parse::Marpa' );
@@ -234,7 +234,7 @@ EOS
 
 my $set1_at_0 = <<'EOS';
 Earley Set 1
-1:St7,0 [p=0:St3,0; v=a]
+1:St7,0 [p=0:St3,0; t=a]
 EOS
 
 my $set1_at_1 = <<'EOS';
@@ -247,7 +247,7 @@ EOS
 
 my $set2_at_1 = <<'EOS';
 Earley Set 2
-2:St7,1 [p=1:St1,1; v=a]
+2:St7,1 [p=1:St1,1; t=a]
 EOS
 
 my $set2_at_2 = <<'EOS';
@@ -264,7 +264,7 @@ EOS
 
 my $set3_at_2 = <<'EOS';
 Earley Set 3
-3:St7,2 [p=2:St2,2; v=a]
+3:St7,2 [p=2:St2,2; t=a]
 EOS
 
 my $set3_at_3 = <<'EOS';
@@ -281,7 +281,7 @@ EOS
 
 my $set4_at_3 = <<'EOS';
 Earley Set 4
-4:St7,3 [p=3:St0,3; v=a]
+4:St7,3 [p=3:St0,3; t=a]
 EOS
 
 my $set4_at_4 = <<'EOS';
@@ -333,22 +333,17 @@ is( $parse->show_status(1),
     "Current Earley Set: 5\n" .  $sets_at_4,
     "Aycock/Horspool Parse Status at 4" );
 
-# SKIP: {
-    # skip "Not debugged yet", 1;
-
-TODO: {
-    local $TODO  = "Not debugged";
-    for my $end_set (0 .. 4) {
-        my $evaluator = new Parse::Marpa::Evaluator($parse, $end_set);
-        if ($evaluator) {
-            is( $evaluator->show_evaluator(1), '', "Aycock/Horspool Evaluator Tree" );
-        } else {
-            fail("Valid parse in evaluator");
-            diag("No valid parse in evaluator");
-        }
-    }
-}
-
+# TODO: {
+    # local $TODO  = "Not debugged";
+    # for my $end_set (0 .. 4) {
+        # my $evaluator = new Parse::Marpa::Evaluator($parse, $end_set);
+        # if ($evaluator) {
+            # is( $evaluator->show_evaluator(1), '', "Aycock/Horspool Evaluator Tree" );
+        # } else {
+            # fail("Valid parse in evaluator");
+            # diag("No valid parse in evaluator");
+        # }
+    # }
 # }
 
 # Local Variables:

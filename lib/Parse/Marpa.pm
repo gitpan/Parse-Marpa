@@ -25,7 +25,7 @@ use strict;
 use Carp;
 use Scalar::Util qw(weaken);
 
-our $VERSION = '0.001_023';
+our $VERSION = '0.001_024';
 $VERSION = eval $VERSION;
 
 =begin Apology:
@@ -123,9 +123,9 @@ package Parse::Marpa::NFA;
 
 use constant ID   => 0;
 use constant NAME => 1;
-use constant ITEM => 2;               # an LR(0) item
-use constant TRANSITION =>
-    3;    # the transitions, as a hash from symbol name to NFA states
+use constant ITEM => 2;          # an LR(0) item
+use constant TRANSITION => 3;    # the transitions, as a hash
+                                 # from symbol name to NFA states
 
 package Parse::Marpa::SDFA;
 
@@ -135,7 +135,8 @@ use constant NFA_STATES     => 2;    # in an SDFA: an array of NFA states
 use constant TRANSITION     => 3;    # the transitions, as a hash
                                      # from symbol name to SDFA states
 use constant COMPLETE_LHS   => 4;    # an array of the lhs's of complete rules
-use constant COMPLETE_RULES => 5;    # an array of the complete rules
+use constant COMPLETE_RULES => 5;    # an array of lists of the complete rules,
+                                     # indexed by lhs
 use constant START_RULE     => 6;    # the start rule
 use constant TAG            => 7;    # implementation-independant tag
 
@@ -1516,7 +1517,7 @@ sub create_SDFA {
     # be maximum one per state)
     STATE: for my $state (@$SDFA) {
         my $lhs_list       = [];
-        my $complete_rules = {};
+        my $complete_rules = [];
         my $start_rule     = undef;
         $#$lhs_list = @$symbol;
         my $NFA_states = $state->[Parse::Marpa::SDFA::NFA_STATES];
@@ -1529,13 +1530,12 @@ sub create_SDFA {
             my ( $lhs, $rhs ) =
                 @{$rule}[ Parse::Marpa::Rule::LHS, Parse::Marpa::Rule::RHS ];
             if ( $position >= @$rhs ) {
-                my ($lhs_id, $lhs_name, $lhs_is_start) = @{$lhs}[
+                my ($lhs_id, $lhs_is_start) = @{$lhs}[
                     Parse::Marpa::Symbol::ID,
-                    Parse::Marpa::Symbol::NAME,
                     Parse::Marpa::Symbol::START
                 ];
                 $lhs_list->[ $lhs_id ] = 1;
-                push( @{$complete_rules->{$lhs_name}}, $rule );
+                push( @{$complete_rules->[$lhs_id]}, $rule );
                 $start_rule = $rule if $lhs_is_start;
             }
         }    # NFA_state
@@ -1904,11 +1904,18 @@ package Parse::Marpa::Earley_item;
 # Note that these are Earley items as modified by Aycock & Horspool, with SDFA states instead of
 # LR(0) items.
 #
-use constant STATE  => 0;  # the SDFA state
-use constant PARENT => 1;  # the number of the Earley set with the parent item
-use constant TOKENS => 2;  # a list of the links from token scanning
-use constant LINKS  => 3;  # a list of the links from the completer step
-use constant SET    => 4;  # the set this item is in, for debugging
+use constant STATE             => 0;   # the SDFA state
+use constant PARENT            => 1;   # the number of the Earley set with the parent item
+use constant TOKENS            => 2;   # a list of the links from token scanning
+use constant LINKS             => 3;   # a list of the links from the completer step
+use constant SET               => 4;   # the set this item is in, for debugging
+                       # these next elements are for iterating over the parses
+use constant RULES             => 5;   # current list of rules
+use constant RULE_CHOICE       => 6;   # current choice of rule
+use constant LINK_CHOICE       => 7;   # current choice of link
+use constant TOKEN_CHOICE      => 8;   # current choice of token
+use constant VALUE             => 9;   # current value
+use constant SYMBOL            => 10;  # current symbol
 
 package Parse::Marpa::Parse;
 
@@ -1916,8 +1923,8 @@ package Parse::Marpa::Parse;
 use constant GRAMMAR     => 0;    # the grammar used
 use constant CURRENT_SET => 1;    # index of the first incomplete Earley set
 use constant EARLEY_SETS => 2;    # the array of the Earley sets
-use constant EARLEY_HASH =>
-    3;    # the array of hashes used to build the Earley sets
+use constant EARLEY_HASH => 3;    # the array of hashes used
+                                  # to build the Earley sets
 
 # implementation dependent constant, used below in unpack
 use constant J_LENGTH => ( length pack( "J", 0, 0 ) );
@@ -2001,15 +2008,24 @@ sub show_earley_item {
     my $item = shift;
     my $ii = shift;
     my $text = brief_earley_item($item, $ii);
-    my ( $tokens, $links ) = @{$item}[
+    my ( $tokens, $links,
+        $rules, $rule_choice, $link_choice, $token_choice,
+        $value, $symbol
+    ) = @{$item}[
         Parse::Marpa::Earley_item::TOKENS,
-        Parse::Marpa::Earley_item::LINKS
+        Parse::Marpa::Earley_item::LINKS,
+        Parse::Marpa::Earley_item::RULES,
+        Parse::Marpa::Earley_item::RULE_CHOICE,
+        Parse::Marpa::Earley_item::LINK_CHOICE,
+        Parse::Marpa::Earley_item::TOKEN_CHOICE,
+        Parse::Marpa::Earley_item::VALUE,
+        Parse::Marpa::Earley_item::SYMBOL,
     ];
-    for my $value (@$tokens) {
+    for my $token (@$tokens) {
         $text
             .= " [p="
-            . brief_earley_item( $value->[0], $ii ) . "; v="
-            . $value->[1] . "]";
+            . brief_earley_item( $token->[0], $ii ) . "; t="
+            . $token->[1] . "]";
     }
     for my $link (@$links) {
         $text
@@ -2017,6 +2033,14 @@ sub show_earley_item {
             . brief_earley_item( $link->[0], $ii ) . "; c="
             . brief_earley_item( $link->[1], $ii ) . "]";
     }
+    my @choices;
+    push(@choices, "rule choice: $rule_choice") if defined $rule_choice;
+    push(@choices, "link choice: $link_choice") if defined $link_choice;
+    push(@choices, "token choice: $token_choice") if defined $token_choice;
+    push(@choices, "value: " . show_value($value, $ii)) if defined $value;
+    push(@choices, "symbol: " . $symbol->[ Parse::Marpa::Symbol::NAME ])
+        if defined $symbol;
+    $text .= "\n  " . join("; ", @choices) if @choices;
     $text;
 }
 
@@ -2115,6 +2139,16 @@ sub token {
                         . $length );
             }
 
+            # Make sure it's an allowed terminal symbol.
+            # TODO: Must remember to be sure that
+            # nulling symbols, and internal symbols
+            # (including the start symbols) are never terminals
+            unless ( $token->[ Parse::Marpa::Symbol::TERMINAL ] ) {
+                croack(   "Non-terminal "
+                        . $token->[Parse::Marpa::Symbol::NAME]
+                        . " supplies as token");
+            }
+
             # compute goto(kernel_state, token_name)
             my $kernel_state =
                 $SDFA->[ $state->[Parse::Marpa::SDFA::ID] ]
@@ -2150,7 +2184,7 @@ sub token {
             my $resetting_state =
                 $kernel_state->[Parse::Marpa::SDFA::TRANSITION]->{""};
             next ALTERNATIVE unless defined $resetting_state;
-            $key = pack( "JJ", $resetting_state, $parent );
+            $key = pack( "JJ", $resetting_state, $target_ix );
             unless ( exists $target_earley_hash->{$key} ) {
                 my $new_earley_item;
                 @{$new_earley_item}[
@@ -2160,7 +2194,7 @@ sub token {
                     Parse::Marpa::Earley_item::TOKENS,
                     Parse::Marpa::Earley_item::SET
                 ]
-                    = ( $resetting_state, $parent, [], [], $target_ix );
+                    = ( $resetting_state, $target_ix, [], [], $target_ix );
                 $target_earley_hash->{$key} = $new_earley_item;
                 push( @$target_earley_set, $new_earley_item );
             }
@@ -2193,7 +2227,7 @@ sub token {
                         Parse::Marpa::Earley_item::STATE,
                         Parse::Marpa::Earley_item::PARENT,
                         Parse::Marpa::Earley_item::LINKS,
-                        Parse::Marpa::Earley_item::TOKENS,,
+                        Parse::Marpa::Earley_item::TOKENS,
                         Parse::Marpa::Earley_item::SET
                         ]
                         = ( $kernel_state, $grandparent, [], [], $current_set );
@@ -2240,54 +2274,15 @@ sub token {
     @{$parse}[CURRENT_SET]++;
 }
 
-package Parse::Marpa::Node;
-
-use constant PARENT_NODE  => 0;
-use constant CHILD_NUMBER => 1;
-use constant RULES        => 2;
-use constant RULE_CHOICE  => 3;
-use constant LINKS        => 4;
-use constant LINK_CHOICE  => 5;
-use constant VALUES       => 6;
-use constant VALUE_CHOICE => 7;
-use constant RHS_LENGTH   => 8;
-use constant RHS_BUILT    => 9;
-use constant CLOSURE      => 10;
-use constant VALUE        => 11;
-use constant ACTION       => 12;
-use constant TAG          => 13;
-use constant EARLEY_ITEM  => 14;
-
-# Non-negative ACTION is number (possibly 0) of values on the
-# stack to pop before calling CLOSURE.  Negative numbers are
-# special.
-
-# No provision for TAG rollover.  It shouldn't happen often,
-# we'll probably reach other resource limits first, and tags
-# are only used for debug
-
-use constant NO_OP        => -1; # Don't pop values, don't push result
-
-package Parse::Marpa::Evaluator;
-
-use constant PARSE       => 0;
-use constant END_SET     => 1;
-use constant TREE        => 2;
-use constant LAST_NODE   => 3;
-use constant LAST_TAG    => 4;
-
-sub new {
-    my $class    = shift;
+sub initial {
     my $parse    = shift;
     my $end_set  = shift;
-    my $evaluator = [];
-    my $tag = 0;
-    bless $evaluator, $class;
 
-    croak("No parse supplied for new $class") unless defined $parse;
+    croak("No parse supplied") unless defined $parse;
     my $parse_class = ref $parse;
-    croak("Don't recognize parse() parse arg has wrong class: $parse_class")
-        unless $parse_class eq "Parse::Marpa::Parse";
+    my $right_class = "Parse::Marpa::Parse";
+    croak("Don't parse argument is class: $parse_class; should be: $right_class")
+        unless $parse_class eq $right_class;
 
     my ( $grammar, $current_set, $earley_sets ) = @{$parse}[
         Parse::Marpa::Parse::GRAMMAR, Parse::Marpa::Parse::CURRENT_SET,
@@ -2303,182 +2298,101 @@ sub new {
         }
     }
 
-    my $tree       = [];
-    @{$evaluator}[TREE, PARSE, END_SET]
-        = ($tree, $parse, $end_set);
-
     my $earley_set = $earley_sets->[$end_set];
-    my $earley_item;
+
+    # The start rule, if not nulling, must be a pure links rule
+    # (no tokens) because I don't allow tokens to be recognized
+    # for the start symbol
+
+    my $current_item;
     my $start_rule;
-    my ( $state, $parent );
 
+    # mark start items with LHS?
     EARLEY_ITEM: for (my $ix = 0; $ix <= $#$earley_set; $ix++) {
-        $earley_item = $earley_set->[$ix];
-        ( $state, $parent ) =
-            @{$earley_item}[Parse::Marpa::Earley_item::STATE];
-
+        $current_item = $earley_set->[$ix];
+        my $state = $current_item->[ Parse::Marpa::Earley_item::STATE ];
         $start_rule = $state->[Parse::Marpa::SDFA::START_RULE];
-
         last EARLEY_ITEM if $start_rule;
     }
 
     return unless $start_rule;
 
-    my ( $links, $values ) = @{$earley_item}[
-        Parse::Marpa::Earley_item::LINKS,
-        Parse::Marpa::Earley_item::TOKENS,
+    my  $lhs = $start_rule->[ Parse::Marpa::Rule::LHS ];
+
+    if ($lhs->[ Parse::Marpa::Symbol::NULLING ]) {
+         $current_item->[ Parse::Marpa::Earley_item::VALUE ] = "";
+    }
+
+    $current_item->[ Parse::Marpa::Earley_item::VALUE ]
+        = initialize_children($current_item, $lhs);
+
+}
+
+sub initialize_children {
+    my $item = shift;
+    my $symbol = shift;
+
+    my $symbol_id = $symbol->[ Parse::Marpa::Symbol::ID ];
+
+    # Ignore any pre-set values
+
+    my ($state) = @{$item}[
+        Parse::Marpa::Earley_item::STATE,
     ];
-    my ( $nulling, $rhs ) =
-        @{$start_rule}[ Parse::Marpa::Rule::NULLING,
-        Parse::Marpa::Rule::RHS ];
-    my $rhs_length = @$rhs;
 
-    my $node;
-    @{$node}[
-        # undef PARENT_NODE and CHILD_NUMBER
-        Parse::Marpa::Node::RULES,       Parse::Marpa::Node::RULE_CHOICE,
-        Parse::Marpa::Node::LINKS,       Parse::Marpa::Node::LINK_CHOICE,
-        Parse::Marpa::Node::VALUES,      Parse::Marpa::Node::VALUE_CHOICE,
-        Parse::Marpa::Node::RHS_LENGTH,  Parse::Marpa::Node::RHS_BUILT,
-        Parse::Marpa::Node::EARLEY_ITEM,
-        Parse::Marpa::Node::TAG
-        ]
-        = (
-            [$start_rule], 0,
-            $links, 0,
-            ($nulling ? [ [ undef, ""  ] ] : $values), 0,
-            $rhs_length, $rhs_length,
-            $earley_item,
-            $tag++
-        );
+    my $rules = $state->[ Parse::Marpa::SDFA::COMPLETE_RULES ] -> [ $symbol_id ];
+    my $rule = $rules->[0];
+    @{$item}[
+        Parse::Marpa::Earley_item::RULES,
+        Parse::Marpa::Earley_item::RULE_CHOICE
+    ] = ( $rules, 0);
+    my ($rhs) = @{$rule}[ Parse::Marpa::Rule::RHS ];
 
-    my $work_stack = [ $node ];
+    my @v; # to store values in
 
-    # while there is work to do
-    WORK_NODE: for ( ;; ) {
+    CHILD: for (my $child_number = $#$rhs; $child_number >= 0; $child_number--) {
 
-        my $tree_top = pop @$work_stack;
-        last WORK_NODE unless $tree_top;
-        push(@$tree, $tree_top);
+        my $child_symbol = $rhs->[ $child_number ];
 
-        my ($rules,      $rule_choice,
-            $links,      $link_choice,
-            $values,     $value_choice,
-            $earley_item
-            ) = @{$tree_top}[
-                Parse::Marpa::Node::RULES, Parse::Marpa::Node::RULE_CHOICE,
-                Parse::Marpa::Node::LINKS, Parse::Marpa::Node::LINK_CHOICE,
-                Parse::Marpa::Node::VALUES, Parse::Marpa::Node::VALUE_CHOICE,
-                Parse::Marpa::Node::EARLEY_ITEM
-            ];
+        if ($child_symbol->[ Parse::Marpa::Symbol::NULLING ])
+        {
+           $v[ $child_number ] = "";
+           next CHILD;
+        }
 
-        # if this node is being treated as a token ...
-        next WORK_NODE if $value_choice < @$values;
+        my ($tokens, $links) = @{$item}[
+            Parse::Marpa::Earley_item::TOKENS,
+            Parse::Marpa::Earley_item::LINKS,
+        ];
 
-        # Follow the predecessor links
-        my $rhs         = $rules->[$rule_choice]->[Parse::Marpa::Rule::RHS];
-        my $symbol_item = $earley_item;
-        my $next_work_entry = @$work_stack;
+        if (@$tokens) {
+            my ($predecessor, $value) = @{$tokens->[0]};
+            @{$item}[
+                Parse::Marpa::Earley_item::TOKEN_CHOICE,
+                Parse::Marpa::Earley_item::VALUE,
+            ] = (0, \$value);
+            $v[ $child_number ] = $value;
+            my $item = $predecessor;
+            next CHILD;
+        }
 
-        # for all the symbols, in reverse order
-        # since this is how the links
-        # run, from a production to its predecessor
-        SYMBOL: for (my $child_number = $#$rhs; $child_number >= 0 ; $child_number-- ) {
+        # We've eliminated nulling symbols and symbols caused by tokens,
+        # so we have to have a symbol caused by a completion
 
-            my $new_node;
+        my ($predecessor, $cause) = @{$links->[0]};
+        my $value = initialize_children($cause, $child_symbol);
+        @{$item}[
+            Parse::Marpa::Earley_item::RULE_CHOICE,
+            Parse::Marpa::Earley_item::LINK_CHOICE,
+            Parse::Marpa::Earley_item::VALUE,
+        ] = (0, \$value);
+        $v[ $child_number ] = $value;
+        my $item = $predecessor;
 
-            my $symbol = $rhs->[$child_number];
-            if ( $symbol->[Parse::Marpa::Symbol::NULLING] ) {
-                @{$new_node}[
-                    Parse::Marpa::Node::PARENT_NODE,
-                    Parse::Marpa::Node::CHILD_NUMBER,
-                    Parse::Marpa::Node::RULES, Parse::Marpa::Node::RULE_CHOICE,
-                    Parse::Marpa::Node::LINKS, Parse::Marpa::Node::LINK_CHOICE,
-                    Parse::Marpa::Node::VALUES, Parse::Marpa::Node::VALUE_CHOICE,
-                    Parse::Marpa::Node::RHS_LENGTH, Parse::Marpa::Node::RHS_BUILT,
-                    Parse::Marpa::Node::EARLEY_ITEM,
-                    Parse::Marpa::Node::TAG
-                ] = (
-                    $tree_top,
-                    $child_number,
-                    [], 0,
-                    [], 0,
-                    [ [ undef, "" ] ], 0,
-                    0, 0,
-                    $symbol_item,
-                    $tag++
-                );
-                $work_stack -> [ $next_work_entry + $child_number ] = $new_node;
-                next SYMBOL;
-            }
+    }
 
-            my ($links, $value)
-                = @{$symbol_item}[
-                    Parse::Marpa::Earley_item::LINKS,
-                    Parse::Marpa::Earley_item::TOKENS,
-                ];
+    my $result = "[" . join(";", @v) . "]";
 
-            my $next_symbol_item;
-
-            # set up the child links -- I don't separate terminals from non-terminals,
-            # so a node can have both a child node and token values
-            my $child_rules = [];
-            my $child_links = [];
-            my $child_values = [];
-            my $child_rhs_length;
-            my $child_item;
-            if (@$links) {
-                 ($next_symbol_item, $child_item) = @{$links->[0] };
-                 $child_rules
-                     = $child_item
-                         -> [ Parse::Marpa::Earley_item::STATE ]
-                         -> [ Parse::Marpa::SDFA::COMPLETE_RULES ]
-                         -> {$symbol->[ Parse::Marpa::Symbol::NAME ]};
-                 $child_rhs_length = @{$child_rules->[0]->[ Parse::Marpa::Rule::RHS ]};
-                 ($child_links, $child_values) = @{$child_item}[
-                     Parse::Marpa::Earley_item::LINKS,
-                     Parse::Marpa::Earley_item::TOKENS
-                 ];
-            }
-
- 
-
-            # If it has token values, the predecessor link comes from the token
-            # Note that if this is a nulling item, it will be undef, in which
-            # case we keep the old symbol_item
-            if  (@$values) {
-                $next_symbol_item = $values->[0]->[0];
-            }
-
-            @{$new_node}[
-                Parse::Marpa::Node::PARENT_NODE,
-                Parse::Marpa::Node::CHILD_NUMBER,
-                Parse::Marpa::Node::RULES, Parse::Marpa::Node::RULE_CHOICE,
-                Parse::Marpa::Node::LINKS, Parse::Marpa::Node::LINK_CHOICE,
-                Parse::Marpa::Node::VALUES, Parse::Marpa::Node::VALUE_CHOICE,
-                Parse::Marpa::Node::RHS_LENGTH, Parse::Marpa::Node::RHS_BUILT,
-                Parse::Marpa::Node::EARLEY_ITEM,
-                Parse::Marpa::Node::TAG
-            ] = (
-                $tree_top,
-                $child_number,
-                $child_rules, 0,
-                $child_links, 0,
-                $child_values, 0,
-                $child_rhs_length, $child_rhs_length,
-                $child_item,
-                $tag++
-            );
-
-            $work_stack -> [ $next_work_entry + $child_number ] = $new_node;
-
-            $symbol_item = $next_symbol_item if defined $next_symbol_item;
-
-        }    # SYMBOL
-
-    }    # WORK_NODE
-
-    $evaluator;
 }
 
 sub show_value {
@@ -2492,87 +2406,6 @@ sub show_value {
     return "$value";
 }
 
-sub show_node {
-    my $node = shift;
-    my $ii = shift;
-    my (
-        $parent_node, $child_number, $rhs_length, $rhs_built, $closure, $value, $action, $tag,
-        $rules, $rule_choice,
-        $links, $link_choice,
-        $values, $value_choice,
-        $earley_item
-    ) = @{$node}[
-        Parse::Marpa::Node::PARENT_NODE,
-        Parse::Marpa::Node::CHILD_NUMBER,
-        Parse::Marpa::Node::RHS_LENGTH,
-        Parse::Marpa::Node::RHS_BUILT,
-        Parse::Marpa::Node::CLOSURE,
-        Parse::Marpa::Node::VALUE,
-        Parse::Marpa::Node::ACTION,
-        Parse::Marpa::Node::TAG,
-        Parse::Marpa::Node::RULES,
-        Parse::Marpa::Node::RULE_CHOICE,
-        Parse::Marpa::Node::LINKS,
-        Parse::Marpa::Node::LINK_CHOICE,
-        Parse::Marpa::Node::VALUES,
-        Parse::Marpa::Node::VALUE_CHOICE,
-        Parse::Marpa::Node::EARLEY_ITEM
-    ];
-    my $text;
-    $text .= defined $tag ? ("Node " . $tag) : "Untagged node";
-    $text .= "; parent=" . $parent_node->[ Parse::Marpa::Node::TAG ]
-        if defined $parent_node;
-    $text .= "; child #" . $child_number
-        if defined $child_number;
-    $text .= "; rhs length,built=" . $rhs_length . "," . $rhs_built
-        if defined $rhs_length;
-    $text .= "; closure=" . show_value($closure, $ii)
-        if defined $closure;
-    $text .= "; value=" . show_value($value, $ii)
-        if defined $value;
-    $text .= "; action=" . $action
-        if defined $action;
-    $text .= "\n";
-    $text .= "   rule "  . $rule_choice . " in "
-        . join(",", map { Parse::Marpa::brief_rule($_) } @$rules) . "\n";
-    $text .= "   link "  . $link_choice . " in " . join(", ", map {
-            " <p=" . Parse::Marpa::Parse::brief_earley_item( $_->[0], $ii ) .
-            "; c=" . Parse::Marpa::Parse::brief_earley_item( $_->[1], $ii ) . ">"
-        } @$links) . "\n";
-    $text .= "   value " . $value_choice . " in "
-        . join(", ", map {
-                my $predecessor = $_->[0];
-                "<"
-                . ($predecessor ? "p=" . Parse::Marpa::Parse::brief_earley_item( $predecessor, $ii ) : "nulling")
-                . "; v=" . show_value($_->[1], $ii)
-                . ">"
-         } @$values) . "\n";
-    $text .= "   item=" . Parse::Marpa::Parse::brief_earley_item( $earley_item, $ii ) . "\n";
-}
-
-sub show_tree {
-    my $tree = shift;
-    my $ii = shift;
-    my $text = "";
-    for my $node (@$tree) {
-        $text .= show_node($node, $ii);
-    }
-    $text;
-}
-
-sub show_evaluator {
-    my $evaluator = shift;
-    my $ii = shift;
-    my ($tree, $parse, $end_set) = @{$evaluator}[
-        Parse::Marpa::Evaluator::TREE,
-        Parse::Marpa::Evaluator::PARSE,
-        Parse::Marpa::Evaluator::END_SET
-    ];
-    my $grammar = $parse->[ Parse::Marpa::Parse::GRAMMAR ];
-    my $text = "Evaluator, End Set = $end_set\n";
-    Parse::Marpa::tag_SDFA($grammar);
-    $text .= show_tree($tree, $ii);
-}
 
 =head1 NAME
 

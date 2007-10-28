@@ -5,7 +5,7 @@
 use strict;
 use warnings;
 
-use Test::More tests => 2;
+use Test::More tests => 1;
 
 BEGIN {
 	use_ok( 'Parse::Marpa' );
@@ -37,18 +37,18 @@ $parse->token();
 print $g->show_rules(), "\n";
 print $g->show_ii_SDFA(), "\n";
 
-print $parse->show_status(1);
+# print $parse->show_status(1);
 
 TODO: {
     local $TODO = "Not yet debugged";
-my $evaluator = new Parse::Marpa::Evaluator($parse);
-if ($evaluator) {
-    is( $evaluator->show_evaluator(1), '', "Aycock/Horspool Evaluator Tree" );
-} else {
-    fail("Valid parse in evaluator");
-    diag("No valid parse in evaluator");
-}
-
+    $parse->initial();
+    print $parse->show_status(1);
+    # if ($evaluator) {
+        # is( $evaluator->show_evaluator(1), '', "Aycock/Horspool Evaluator Tree" );
+    # } else {
+        # fail("Valid parse in evaluator");
+        # diag("No valid parse in evaluator");
+    # }
 }
 
 # Local Variables:
