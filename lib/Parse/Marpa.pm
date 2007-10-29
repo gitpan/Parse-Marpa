@@ -25,7 +25,7 @@ use strict;
 use Carp;
 use Scalar::Util qw(weaken);
 
-our $VERSION = '0.001_024';
+our $VERSION = '0.001_025';
 $VERSION = eval $VERSION;
 
 =begin Apology:
@@ -109,15 +109,17 @@ use constant TERMINAL        => 11;   # terminal?
 
 package Parse::Marpa::Rule;
 
-use constant ID              => 0;
-use constant NAME            => 1;
-use constant LHS             => 2;    # ref of the left hand symbol
-use constant RHS             => 3;    # array of symbol refs
-use constant NULLABLE        => 4;    # can match null?
-use constant START_REACHABLE => 5;    # reachable from start symbol?
-use constant INPUT_REACHABLE => 6;    # reachable from input symbol?
-use constant NULLING         => 7;    # always matches null?
-use constant USEFUL          => 8;    # use this rule in NFA?
+use constant ID                       => 0;
+use constant NAME                     => 1;
+use constant LHS                      => 2;    # ref of the left hand symbol
+use constant RHS                      => 3;    # array of symbol refs
+use constant NULLABLE                 => 4;    # can match null?
+use constant START_REACHABLE          => 5;    # reachable from start symbol?
+use constant INPUT_REACHABLE          => 6;    # reachable from input symbol?
+use constant NULLING                  => 7;    # always matches null?
+use constant USEFUL                   => 8;    # use this rule in NFA?
+use constant ORIGINAL_CLOSURE         => 9;    # closure assigned when rule created
+use constant CLOSURE                  => 10;   # closure to use
 
 package Parse::Marpa::NFA;
 
@@ -192,8 +194,8 @@ sub new {
     croak("No rules specified")        unless defined $rules;
     croak("No start symbol specified") unless defined $start;
 
-    my $self = [];
-    @{$self}[
+    my $grammar = [];
+    @{$grammar}[
         Parse::Marpa::Grammar::SYMBOLS,
         Parse::Marpa::Grammar::SYMBOL_HASH,
         Parse::Marpa::Grammar::RULES,
@@ -202,24 +204,33 @@ sub new {
         Parse::Marpa::Grammar::ACADEMIC
         ]
         = ( [], {}, [], {}, {}, $academic );
-    bless( $self, $class );
+    bless( $grammar, $class );
 
-    add_user_rules( $self, $rules );
-    nullable($self);
-    nulling($self);
-    input_reachable($self);
-    set_start( $self, $start );
-    start_reachable($self);
+    add_user_rules( $grammar, $rules );
+    compile( $grammar, $start )
+}
+
+sub compile {
+    my $grammar = shift;
+    my $start = shift;
+
+    my $academic = $grammar->[ Parse::Marpa::Grammar::ACADEMIC ];
+
+    nullable($grammar);
+    nulling($grammar);
+    input_reachable($grammar);
+    set_start( $grammar, $start );
+    start_reachable($grammar);
     if ($academic) {
-        setup_academic_grammar($self);
+        setup_academic_grammar($grammar);
     }
     else {
-        rewrite_as_CHAF($self);
+        rewrite_as_CHAF($grammar);
     }
-    create_NFA($self);
-    create_SDFA($self);
+    create_NFA($grammar);
+    create_SDFA($grammar);
 
-    $self;
+    $grammar;
 }
 
 # Viewing Methods (for debugging)
@@ -589,11 +600,13 @@ sub add_user_rule {
     my $self      = shift;
     my $lhs_name  = shift;
     my $rhs_names = shift;
+    my $closure   = shift;
 
     add_rule(
         $self,
         assign_symbol( $self, canonical_name($lhs_name) ),
-        [ map { assign_symbol( $self, canonical_name($_) ); } @$rhs_names ]
+        [ map { assign_symbol( $self, canonical_name($_) ); } @$rhs_names ],
+        $closure
     );
 }
 
@@ -601,6 +614,7 @@ sub add_rule {
     my $grammar = shift;
     my $lhs     = shift;
     my $rhs     = shift;
+    my $closure = shift;
 
     my ( $rule, $rules ) =
         @{$grammar}[ Parse::Marpa::Grammar::RULE_HASH,
@@ -614,13 +628,14 @@ sub add_rule {
         Parse::Marpa::Rule::LHS,
         Parse::Marpa::Rule::RHS,
         Parse::Marpa::Rule::NULLABLE,
-        Parse::Marpa::Rule::START_REACHABLE,
         Parse::Marpa::Rule::INPUT_REACHABLE,
-        Parse::Marpa::Rule::NULLING
+        Parse::Marpa::Rule::NULLING,
+        Parse::Marpa::Rule::ORIGINAL_CLOSURE
         ]
         = (
         $rule_count, "rule $rule_count",
-        $lhs, $rhs, $nulling, undef, $nulling, $nulling
+        $lhs, $rhs, $nulling, $nulling, $nulling,
+        $closure
         );
 
     # Don't allow the same rule twice
@@ -655,31 +670,22 @@ sub add_rule {
 
 # add one or more rules
 sub add_user_rules {
-    my $self  = shift;
+    my $grammar  = shift;
     my $rules = shift;
 
     rule: for my $rule (@$rules) {
-        if ( 0 == @$rule ) {
-            croak("empty rule");
+        my $arg_count = @$rule;
+        if ( $arg_count > 3 or $arg_count < 1) {
+            croak("rule must have from 1 to 3 arguments");
         }
-        elsif ( 2 == @$rule ) {
-            my ( $term, $regex ) = @$rule;
-            if ( ref $regex eq "Regexp" ) {
-                add_terminal( $self, $term, $regex );
-                next rule;
-            }
-
-            # fall through if not a terminal definition
+        my ($lhs, $rhs, $closure) = @$rule;
+        $rhs = [] unless defined $rhs;
+        if ( ref $rhs eq "Regexp" ) {
+            add_terminal( $grammar, $lhs, $rhs );
+            next rule;
         }
 
-        add_user_rule(
-            $self,
-            $rule->[0],
-            (   $#$rule > 0
-                ? [ @{$rule}[ 1 .. $#$rule ] ]
-                : []
-            )
-        );
+        add_user_rule( $grammar, $lhs, $rhs, $closure);
     }
 }
 
@@ -1905,19 +1911,25 @@ package Parse::Marpa::Earley_item;
 # LR(0) items.
 #
 use constant STATE             => 0;   # the SDFA state
-use constant PARENT            => 1;   # the number of the Earley set with the parent item
+use constant PARENT            => 1;   # the number of the Earley set with the parent item(s)
 use constant TOKENS            => 2;   # a list of the links from token scanning
 use constant LINKS             => 3;   # a list of the links from the completer step
 use constant SET               => 4;   # the set this item is in, for debugging
                        # these next elements are for iterating over the parses
-use constant RULES             => 5;   # current list of rules
-use constant RULE_CHOICE       => 6;   # current choice of rule
-use constant LINK_CHOICE       => 7;   # current choice of link
-use constant TOKEN_CHOICE      => 8;   # current choice of token
-use constant VALUE             => 9;   # current value
-use constant SYMBOL            => 10;  # current symbol
+use constant SYMBOL            => 5;   # current symbol
+use constant RULES             => 6;   # current list of rules
+use constant RULE_CHOICE       => 7;   # current choice of rule
+use constant LINK_CHOICE       => 8;   # current choice of link
+use constant TOKEN_CHOICE      => 9;   # current choice of token
+use constant VALUE             => 10;  # current value
+use constant PREDECESSOR       => 11;  # the predecessor link, if we have a value
+use constant SUCCESSOR         => 12;  # the predecessor link, in reverse
+use constant EFFECT            => 13;  # the cause link, in reverse
+                                       # or the "parent" item
 
 package Parse::Marpa::Parse;
+
+use Scalar::Util qw(weaken);
 
 # Elements of the PARSE structure
 use constant GRAMMAR     => 0;    # the grammar used
@@ -1925,6 +1937,9 @@ use constant CURRENT_SET => 1;    # index of the first incomplete Earley set
 use constant EARLEY_SETS => 2;    # the array of the Earley sets
 use constant EARLEY_HASH => 3;    # the array of hashes used
                                   # to build the Earley sets
+use constant LAST_SET    => 4;    # the set being taken as the end of
+                                  # parse for an evaluation
+use constant START_ITEM  => 5;    # the start item for the current evaluation
 
 # implementation dependent constant, used below in unpack
 use constant J_LENGTH => ( length pack( "J", 0, 0 ) );
@@ -2037,10 +2052,10 @@ sub show_earley_item {
     push(@choices, "rule choice: $rule_choice") if defined $rule_choice;
     push(@choices, "link choice: $link_choice") if defined $link_choice;
     push(@choices, "token choice: $token_choice") if defined $token_choice;
-    push(@choices, "value: " . show_value($value, $ii)) if defined $value;
     push(@choices, "symbol: " . $symbol->[ Parse::Marpa::Symbol::NAME ])
         if defined $symbol;
     $text .= "\n  " . join("; ", @choices) if @choices;
+    $text .= "\n  value: " . show_value($value, $ii) if defined $value;
     $text;
 }
 
@@ -2278,6 +2293,9 @@ sub initial {
     my $parse    = shift;
     my $end_set  = shift;
 
+    # TODO: At some point I may need to ensure that evaluation notations are
+    # cleared, rather than just assume it.
+
     croak("No parse supplied") unless defined $parse;
     my $parse_class = ref $parse;
     my $right_class = "Parse::Marpa::Parse";
@@ -2285,7 +2303,8 @@ sub initial {
         unless $parse_class eq $right_class;
 
     my ( $grammar, $current_set, $earley_sets ) = @{$parse}[
-        Parse::Marpa::Parse::GRAMMAR, Parse::Marpa::Parse::CURRENT_SET,
+        Parse::Marpa::Parse::GRAMMAR,
+        Parse::Marpa::Parse::CURRENT_SET,
         Parse::Marpa::Parse::EARLEY_SETS
     ];
 
@@ -2317,6 +2336,11 @@ sub initial {
 
     return unless $start_rule;
 
+    @{$parse}[
+        Parse::Marpa::Parse::START_ITEM,
+        Parse::Marpa::Parse::LAST_SET,
+    ] = ( $current_item, $end_set );
+
     my  $lhs = $start_rule->[ Parse::Marpa::Rule::LHS ];
 
     if ($lhs->[ Parse::Marpa::Symbol::NULLING ]) {
@@ -2324,7 +2348,7 @@ sub initial {
     }
 
     $current_item->[ Parse::Marpa::Earley_item::VALUE ]
-        = initialize_children($current_item, $lhs);
+        = \(initialize_children($current_item, $lhs));
 
 }
 
@@ -2333,8 +2357,6 @@ sub initialize_children {
     my $symbol = shift;
 
     my $symbol_id = $symbol->[ Parse::Marpa::Symbol::ID ];
-
-    # Ignore any pre-set values
 
     my ($state) = @{$item}[
         Parse::Marpa::Earley_item::STATE,
@@ -2360,19 +2382,30 @@ sub initialize_children {
            next CHILD;
         }
 
-        my ($tokens, $links) = @{$item}[
-            Parse::Marpa::Earley_item::TOKENS,
-            Parse::Marpa::Earley_item::LINKS,
-        ];
+        my ($tokens, $links, $previous_value, $previous_predecessor)
+            = @{$item}[
+                Parse::Marpa::Earley_item::TOKENS,
+                Parse::Marpa::Earley_item::LINKS,
+                Parse::Marpa::Earley_item::VALUE,
+                Parse::Marpa::Earley_item::PREDECESSOR,
+            ];
+
+        if (defined $previous_value) {
+            $v[ $child_number ] = $previous_value;
+            $item = $previous_predecessor;
+            next CHILD;
+        }
 
         if (@$tokens) {
             my ($predecessor, $value) = @{$tokens->[0]};
             @{$item}[
                 Parse::Marpa::Earley_item::TOKEN_CHOICE,
                 Parse::Marpa::Earley_item::VALUE,
-            ] = (0, \$value);
+                Parse::Marpa::Earley_item::PREDECESSOR,
+            ] = (0, \$value, $predecessor);
             $v[ $child_number ] = $value;
-            my $item = $predecessor;
+            weaken($predecessor->[Parse::Marpa::Earley_item::SUCCESSOR] = $item);
+            $item = $predecessor;
             next CHILD;
         }
 
@@ -2380,14 +2413,16 @@ sub initialize_children {
         # so we have to have a symbol caused by a completion
 
         my ($predecessor, $cause) = @{$links->[0]};
+        weaken($cause->[ Parse::Marpa::Earley_item::EFFECT ] = $item);
         my $value = initialize_children($cause, $child_symbol);
         @{$item}[
-            Parse::Marpa::Earley_item::RULE_CHOICE,
             Parse::Marpa::Earley_item::LINK_CHOICE,
             Parse::Marpa::Earley_item::VALUE,
-        ] = (0, \$value);
+            Parse::Marpa::Earley_item::PREDECESSOR,
+        ] = (0, \$value, $predecessor);
         $v[ $child_number ] = $value;
-        my $item = $predecessor;
+        weaken($predecessor->[Parse::Marpa::Earley_item::SUCCESSOR] = $item);
+        $item = $predecessor;
 
     }
 
@@ -2395,10 +2430,44 @@ sub initialize_children {
 
 }
 
+# TODO Add check to ensure that the argument is an evaluated parse.
+sub next {
+    my $parse = shift;
+
+    my ( $start_item, $last_set )
+        = @{$parse}[
+            Parse::Marpa::Parse::START_ITEM,
+            Parse::Marpa::Parse::LAST_SET,
+        ];
+
+    # find the "bottom left corner item", by following predecessors,
+    # and causes when there is no predecessor
+
+    my $item = $start_item;
+    ITEM: for (;;) {
+        my $predecessor = $item->[ Parse::Marpa::Earley_item::PREDECESSOR ];
+
+        # undefine the values as we go along
+        $item->[ Parse::Marpa::Earley_item::VALUE ] = undef;
+        if (defined $predecessor) {
+            $item = $predecessor;
+            next ITEM;
+        }
+        my ($link_choice, $links)
+            = @{$item}[
+                Parse::Marpa::Earley_item::LINK_CHOICE,
+                Parse::Marpa::Earley_item::LINKS
+            ];
+        last ITEM unless defined $link_choice;
+        $item = $links->[$link_choice]->[1];
+    }
+}
+
 sub show_value {
-    my $value = shift;
+    my $value_ref = shift;
     my $ii = shift;
-    return "undef" unless defined $value;
+    return "none" unless defined $value_ref;
+    my $value = $$value_ref;
     if ($ii) {
         my $type  = ref $value;
         return $type if $type;
@@ -2434,8 +2503,7 @@ Jeffrey Kegler
 
 =head1 DEPENDENCIES
 
-According to C<perlvar>, Marpa is compatible with Perl 5.6.0.
-As of this writing, it's only been tested on Perl 5.8.8.
+Requires Perl 5.8.
 
 =head1 BUGS
 
@@ -2451,100 +2519,18 @@ You can find documentation for this module with the perldoc command.
 
     perldoc Parse::Marpa
 
-=head1 THE ALGORITHM
+=head1 ACKNOWLEDGMENTS
 
-Marpa is essentially the parser described in John Aycock and R.
+Marpa is, with minor improvements,
+the parser described in John Aycock and R.
 Nigel Horspool's "Practical Earley Parsing", I<The Computer Journal>,
 Vol. 45, No. 6, 2002, pp. 620-630.  This combined LR(0) with Jay
-Earley's parsing algorithm.  I've made some improvements.
+Earley's parsing algorithm.
 
-First, Aycock and Horspool's algorithm rewrites the original grammar
-into NNF (Nihilist Normal Form).  Earley's original algorithms had
-serious issues with nullable symbols and productions, and NNF fixes
-most of them.  (A nullable symbol or production is one which could
-eventually parse out to the empty string.) Importantly, NNF also
-allows complete and easy mapping of the semantics of the original
-grammar to its NNF rewrite, so that NNF and the whole rewrite process
-can be made invisible to the user.
-
-My problem with NNF grammar is that the rewritten grammar is
-exponentially larger than the original in the theoretical worst
-case, and I just don't like exponential explosion, even as a
-theoretical possibility in pre-processing.  Furthermore, I think
-that in some cases likely to arise in practice (Perl 6 "rules" with
-significant whitespace, for example), the size explosion, while not
-exponential, is linear with a very large multiplier.
-
-My solution was is Chomsky-Horspool-Aycock Form (CHAF).  This is
-Horspool and Aycock's NNF, but with the further restriction that
-no more than two nullable symbols may appear in any production.
-(In the literature, the discovery that any context-free grammar can
-be rewritten into productions of at most a small fixed size is
-credited to Noam Chomsky.) The shortened CHAF production maps back
-to the original grammar, so that like NNF, the CHAF rewrite can be
-made invisible to the user.  With CHAF, the theoretical worst
-behavior is linear, and in those difficult cases likely to arise
-in practice the multiplier is smaller.
-
-Second, I've extended the scanning step of Earley's algorithm, and
-introduced the "earleme" (named after Jay Earley).  Previous
-implementations required the Earley grammar's input to be broken
-up into tokens, presumably by lexical analysis of the input using
-DFA's (deterministic finite automata, which are the equivalent of
-regular expressions).  Requiring that the first level of analysis
-be performed by a DFA hobbles a general parser like Earley's.
-
-Marpa loosens the restriction, by allowing the scanning phase of
-Earley's algorithm to add items not just to the current Earley set
-and the next one, but to any later Earley set.  Since items can be
-scanned onto several different Earley sets, so that the input to
-the Earley scanning step no longer has to be deterministic.  Several
-alternative scans of the input can be put into the Earley sets, and
-the power of Earley's algorithm harnessed to deal with the
-indeterminism.
-
-In the new Marpa scanner, each scanned item has a length in "earlemes",
-call it C<l>.  If the current Earley set is C<i>, a newly scanned
-Earley item is added to Earley set C<l+i>.  The B<earleme> is the
-distance measured in Earley sets, and an implementation can sync
-earlemes up with any measure that's convenient.  For example, the
-distance in earlemes may be the length of a string, as measured
-either in ASCII characters, or UNICODE graphemes.  Another
-implementation may define the earleme length as the distance in a
-token stream, measured in tokens.
-
-=head1 WHY CALL IT MARPA? or BLATANT PLUG
-
-This translator is named after the great Tibetan translator, Marpa.
-At Marpa's time (the 11th century A.D.), Indian Buddhism was at its
-height, and a generation of Tibetans translators were devoting
-themselves to obtaining its texts and translating them from Sanskrit.
-Marpa was their major figure, so much so that today he is known as
-Marpa Lotsawa, or "Marpa the Translator".
-
-In those days, the job of translator was not for the indoors type.
-"Translation" required studying with the Buddhist teachers who had
-the texts and could explain them.  That meant travel from Tibet to
-India.  From Marpa's home in the Lhotrak Valley, the easiest way
-to reach India was 15,000 foot Khala Chela Pass.  Even to reach
-Khala Chela's relatively easy, three-mile high summit, Marpa had
-to cross two hundred miles of Tibet, most of them difficult and all
-of them lawless.  From Khala Chela downhill to the great Buddhist
-center of Nalanda University was four hundred miles, but Tibetans
-would stop for years or months in Nepal, getting used to the low
-altitudes.
-
-Tibetans had learned the hard way not to go straight to Nalanda.
-Almost no germs live in the cold, thin air of Tibet, and Tibetans
-arriving directly in the lowlands had no immunities.  Whole expeditions
-had died from disease within weeks of arrival on the hot plains.
-
-Marpa plays a significant role in my novel, B<The God Proof>, which
-centers around Kurt GE<ouml>del's proof of God's existence.  Yes,
-I<that> Kurt GE<ouml>del, and yes, he really did worked out a God
-Proof (it's in his I<Collected Works>, Vol. 3, pp. 403-404).  B<The
-God Proof> is available at Amazon:
-L<http://www.amazon.com/God-Proof-Jeffrey-Kegler/dp/1434807355>.
+In writing the Pure Perl version of Marpa, I benefited from studying
+the work of Francois Desarmenien (C<Parse::Yapp>), 
+Damian Conway (C<Parse::RecDescent>) and
+Graham Barr (C<Scalar::Util>).
 
 =head1 COPYRIGHT & LICENSE
 

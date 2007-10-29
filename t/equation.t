@@ -14,8 +14,8 @@ BEGIN {
 my $g = new Parse::Marpa(
     start => "E",
     rules => [
-	[qw/E E Op E/],
-	[qw/E Number/],
+	[ "E", [qw/E Op E/] ],
+	[ "E", [qw/Number/] ],
 	[ "Number" => qr/\d+/],
 	[ "Op" => qr/[-+*] /],
     ],
@@ -25,13 +25,13 @@ my $parse = new Parse::Marpa::Parse($g);
 
 my $op = $g->get_symbol("Op");
 my $number = $g->get_symbol("Number");
-$parse->token([$number, 1, 1]);
+$parse->token([$number, 2, 1]);
 $parse->token([$op, "-", 1]);
-$parse->token([$number, 3, 1]);
+$parse->token([$number, 0, 1]);
 $parse->token([$op, "*", 1]);
-$parse->token([$number, 5, 1]);
+$parse->token([$number, 3, 1]);
 $parse->token([$op, "+", 1]);
-$parse->token([$number, 7, 1]);
+$parse->token([$number, 1, 1]);
 $parse->token();
 
 print $g->show_rules(), "\n";

@@ -3,6 +3,8 @@ MANIFEST
 META.yml # Will be created by "make dist"
 Makefile.PL
 README
+ALGORITHM.pod
+WHY_CALL_IT_MARPA.pod
 lib/Parse/Marpa.pm
 t/00-load.t
 t/ah.t

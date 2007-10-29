@@ -15,8 +15,12 @@ BEGIN {
 
 my $g = new Parse::Marpa(
     start => "S",
-    rules => [   [ "a" => qr/a/ ], [qw/S A A A A/], [qw/A a/],
-        [qw/A E/], [qw/E/],
+    rules => [
+        [ "a" => qr/a/ ],
+        [ "S", [qw/A A A A/] ],
+        [ "A", [qw/a/] ],
+        [ "A", [qw/E/] ],
+        [ "E" ],
     ],
 );
 
@@ -333,8 +337,10 @@ is( $parse->show_status(1),
     "Current Earley Set: 5\n" .  $sets_at_4,
     "Aycock/Horspool Parse Status at 4" );
 
-# TODO: {
-    # local $TODO  = "Not debugged";
+TODO: {
+    local $TODO  = "Not debugged";
+    $parse->initial();
+    print $parse->show_status(1);
     # for my $end_set (0 .. 4) {
         # my $evaluator = new Parse::Marpa::Evaluator($parse, $end_set);
         # if ($evaluator) {
@@ -344,7 +350,7 @@ is( $parse->show_status(1),
             # diag("No valid parse in evaluator");
         # }
     # }
-# }
+}
 
 # Local Variables:
 #   mode: cperl

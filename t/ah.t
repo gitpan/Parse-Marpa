@@ -14,8 +14,13 @@ BEGIN {
 
 my $g = new Parse::Marpa(
     start => "S'",
-    rules => [   [ "a" => qr/a/ ], [qw/S' S/], [qw/S A A A A/], [qw/A a/],
-        [qw/A E/], [qw/E/],
+    rules => [  
+        [ "a" => qr/a/ ],
+        [ "S'", [qw/S/] ],
+        [ "S",  [qw/A A A A/] ],
+        [ "A",  [qw/a/] ],
+        [ "A",  [qw/E/] ],
+        [ "E" ],
     ],
     academic => 1,
 );

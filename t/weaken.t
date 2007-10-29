@@ -17,10 +17,10 @@ my $test = sub {
         start => "S",
         rules => [
             [ "a" => qr/a/ ],
-            [ qw/S A A A A/ ],
-            [ qw/A a/ ],
-            [ qw/A E/ ],
-            [ qw/E/ ],
+            [ "S", [qw/A A A A/] ],
+            [ "A", [qw/a/] ],
+            [ "A", [qw/E/] ],
+            [ "E" ],
         ],
     );
     my $a = $g->get_symbol("a");
@@ -30,6 +30,7 @@ my $test = sub {
     $parse->token([$a, "a", 1]);
     $parse->token([$a, "a", 1]);
     $parse->token();
+    $parse->initial();
     [ $g, $parse ];
 };
 
