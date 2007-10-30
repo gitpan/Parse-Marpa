@@ -25,7 +25,7 @@ use strict;
 use Carp;
 use Scalar::Util qw(weaken);
 
-our $VERSION = '0.001_025';
+our $VERSION = '0.001_026';
 $VERSION = eval $VERSION;
 
 =begin Apology:
@@ -120,6 +120,12 @@ use constant NULLING                  => 7;    # always matches null?
 use constant USEFUL                   => 8;    # use this rule in NFA?
 use constant ORIGINAL_CLOSURE         => 9;    # closure assigned when rule created
 use constant CLOSURE                  => 10;   # closure to use
+use constant TYPE                     => 11;   # rule types
+
+use constant CHAF_HEAD                => 1; # first segment of a CHAF rewrite
+use constant CHAF_PIECE               => 2; # middle segment of a CHAF rewrite
+use constant CHAF_TAIL                => 3; # last segment of a CHAF rewrite
+use constant NORMAL                   => 4; # any other rule
 
 package Parse::Marpa::NFA;
 
@@ -1915,7 +1921,7 @@ use constant PARENT            => 1;   # the number of the Earley set with the p
 use constant TOKENS            => 2;   # a list of the links from token scanning
 use constant LINKS             => 3;   # a list of the links from the completer step
 use constant SET               => 4;   # the set this item is in, for debugging
-                       # these next elements are for iterating over the parses
+                       # these next elements are "notations" for iterating over the parses
 use constant SYMBOL            => 5;   # current symbol
 use constant RULES             => 6;   # current list of rules
 use constant RULE_CHOICE       => 7;   # current choice of rule
@@ -1926,6 +1932,8 @@ use constant PREDECESSOR       => 11;  # the predecessor link, if we have a valu
 use constant SUCCESSOR         => 12;  # the predecessor link, in reverse
 use constant EFFECT            => 13;  # the cause link, in reverse
                                        # or the "parent" item
+
+use constant FIRST_NOTATION_FIELD   => SYMBOL;
 
 package Parse::Marpa::Parse;
 
@@ -2089,6 +2097,18 @@ sub show_status {
         @{$parse}[ CURRENT_SET, EARLEY_SETS ];
     my $text = "Current Earley Set: " . $current_set . "\n";
     $text .= show_earley_set_list($earley_set_list, $ii);
+}
+
+sub clear_notations {
+    my $parse = shift;
+    my ( $current_set, $earley_set_list ) =
+        @{$parse}[ CURRENT_SET, EARLEY_SETS ];
+    for my $earley_set (@$earley_set_list) {
+        for my $earley_item (@$earley_set) {
+            splice(@$earley_item,
+                Parse::Marpa::Earley_item::FIRST_NOTATION_FIELD);
+        }
+    }
 }
 
 # Mutator methods
@@ -2344,7 +2364,13 @@ sub initial {
     my  $lhs = $start_rule->[ Parse::Marpa::Rule::LHS ];
 
     if ($lhs->[ Parse::Marpa::Symbol::NULLING ]) {
-         $current_item->[ Parse::Marpa::Earley_item::VALUE ] = "";
+         @{$current_item}[
+             Parse::Marpa::Earley_item::VALUE,
+             Parse::Marpa::Earley_item::TOKEN_CHOICE,
+             Parse::Marpa::Earley_item::LINK_CHOICE,
+             Parse::Marpa::Earley_item::RULE_CHOICE,
+             Parse::Marpa::Earley_item::RULES,
+         ] = (\(""), 0, 0, 0, []);
     }
 
     $current_item->[ Parse::Marpa::Earley_item::VALUE ]
@@ -2362,12 +2388,9 @@ sub initialize_children {
         Parse::Marpa::Earley_item::STATE,
     ];
 
-    my $rules = $state->[ Parse::Marpa::SDFA::COMPLETE_RULES ] -> [ $symbol_id ];
-    my $rule = $rules->[0];
-    @{$item}[
-        Parse::Marpa::Earley_item::RULES,
-        Parse::Marpa::Earley_item::RULE_CHOICE
-    ] = ( $rules, 0);
+    my $child_rules = $state->[ Parse::Marpa::SDFA::COMPLETE_RULES ] -> [ $symbol_id ];
+    my $child_rule_choice = 0;
+    my $rule = $child_rules->[0];
     my ($rhs) = @{$rule}[ Parse::Marpa::Rule::RHS ];
 
     my @v; # to store values in
@@ -2391,18 +2414,26 @@ sub initialize_children {
             ];
 
         if (defined $previous_value) {
-            $v[ $child_number ] = $previous_value;
+            $v[ $child_number ] = $$previous_value;
             $item = $previous_predecessor;
             next CHILD;
+        }
+
+        unless (defined $child_rules) {
+            $child_rules = [];
+            $child_rule_choice = 0;
         }
 
         if (@$tokens) {
             my ($predecessor, $value) = @{$tokens->[0]};
             @{$item}[
                 Parse::Marpa::Earley_item::TOKEN_CHOICE,
+                Parse::Marpa::Earley_item::LINK_CHOICE,
+                Parse::Marpa::Earley_item::RULE_CHOICE,
+                Parse::Marpa::Earley_item::RULES,
                 Parse::Marpa::Earley_item::VALUE,
                 Parse::Marpa::Earley_item::PREDECESSOR,
-            ] = (0, \$value, $predecessor);
+            ] = (0, -1, $child_rule_choice, $child_rules, \$value, $predecessor);
             $v[ $child_number ] = $value;
             weaken($predecessor->[Parse::Marpa::Earley_item::SUCCESSOR] = $item);
             $item = $predecessor;
@@ -2416,18 +2447,34 @@ sub initialize_children {
         weaken($cause->[ Parse::Marpa::Earley_item::EFFECT ] = $item);
         my $value = initialize_children($cause, $child_symbol);
         @{$item}[
+            Parse::Marpa::Earley_item::TOKEN_CHOICE,
             Parse::Marpa::Earley_item::LINK_CHOICE,
+            Parse::Marpa::Earley_item::RULE_CHOICE,
+            Parse::Marpa::Earley_item::RULES,
             Parse::Marpa::Earley_item::VALUE,
             Parse::Marpa::Earley_item::PREDECESSOR,
-        ] = (0, \$value, $predecessor);
+        ] = (0, 0, $child_rule_choice, $child_rules, \$value, $predecessor);
         $v[ $child_number ] = $value;
         weaken($predecessor->[Parse::Marpa::Earley_item::SUCCESSOR] = $item);
         $item = $predecessor;
 
     }
 
-    my $result = "[" . join(";", @v) . "]";
+    my $v_count = scalar @v;
+    my $result =
+        $v_count <= 0 ? "" :
+        $v_count == 1 ? $v[0] :
+        "(" . join(";", @v) . ")";
 
+}
+
+sub value {
+    my $parse = shift;
+
+    my $start_item
+        = $parse->[ Parse::Marpa::Parse::START_ITEM ];
+    return unless defined $start_item;
+    return ${$start_item->[ Parse::Marpa::Earley_item::VALUE ]};
 }
 
 # TODO Add check to ensure that the argument is an evaluated parse.
@@ -2490,12 +2537,8 @@ Pre-alpha Version
 
 Earley's general parsing algorithm, with LR(0) precomputation
 
-    use Parse::Marpa;
-
-    my $foo = Parse::Marpa->new();
+    TO DO
     ...
-
-=head1 METHODS
 
 =head1 AUTHOR
 
@@ -2518,6 +2561,29 @@ your bug as I make changes.
 You can find documentation for this module with the perldoc command.
 
     perldoc Parse::Marpa
+
+    
+You can also look for information at:
+
+=over 4
+
+=item * AnnoCPAN: Annotated CPAN documentation
+
+L<http://annocpan.org/dist/Parse-Marpa>
+
+=item * CPAN Ratings
+
+L<http://cpanratings.perl.org/d/Parse-Marpa>
+
+=item * RT: CPAN's request tracker
+
+L<http://rt.cpan.org/NoAuth/Bugs.html?Dist=Parse-Marpa>
+
+=item * Search CPAN
+
+L<http://search.cpan.org/dist/Parse-Marpa>
+
+=back
 
 =head1 ACKNOWLEDGMENTS
 

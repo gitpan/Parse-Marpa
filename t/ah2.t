@@ -7,7 +7,7 @@
 use strict;
 use warnings;
 
-use Test::More tests => 15;
+use Test::More tests => 16;
 
 BEGIN {
 	use_ok( 'Parse::Marpa' );
@@ -337,20 +337,57 @@ is( $parse->show_status(1),
     "Current Earley Set: 5\n" .  $sets_at_4,
     "Aycock/Horspool Parse Status at 4" );
 
-TODO: {
-    local $TODO  = "Not debugged";
-    $parse->initial();
-    print $parse->show_status(1);
-    # for my $end_set (0 .. 4) {
-        # my $evaluator = new Parse::Marpa::Evaluator($parse, $end_set);
-        # if ($evaluator) {
-            # is( $evaluator->show_evaluator(1), '', "Aycock/Horspool Evaluator Tree" );
-        # } else {
-            # fail("Valid parse in evaluator");
-            # diag("No valid parse in evaluator");
-        # }
-    # }
+# from Tye McQueen's Algorithm::Loops
+sub NextPermute(\@)
+{
+    my( $vals )= @_;
+    my $last= $#{$vals};
+    return !1   if  $last < 1;
+    # Find last item not in reverse-sorted order:
+    my $i= $last-1;
+    $i--   while  0 <= $i  &&  $vals->[$i] ge $vals->[$i+1];
+    # If complete reverse sort, we are done!
+    if(  -1 == $i  ) {
+        # Reset to starting/sorted order:
+        @$vals= reverse @$vals;
+        return !1;
+    }
+    # Re-sort the reversely-sorted tail of the list:
+    @{$vals}[$i+1..$last]= reverse @{$vals}[$i+1..$last]
+        if  $vals->[$i+1] gt $vals->[$last];
+    # Find next item that will make us "greater":
+    my $j= $i+1;
+    $j++  while  $vals->[$i] ge $vals->[$j];
+    # Swap:
+    @{$vals}[$i,$j]= @{$vals}[$j,$i];
+    return 1;
 }
+
+# TODO: {
+    # local $TODO  = "Not debugged";
+    my @a = sort (0, 1, 2, 3, 4);
+    my @answer = ("", qw[(a;) (a;(a;)) (;(a;(a;a))) (a;(a;(a;a)))]);
+    PERMUTATION: for (;;) {
+        for my $i (@a) {
+            $parse->initial($i);
+            my $result = $parse->value();
+            if ($answer[$i] ne $result) {
+                diag( "got $result, expected "
+                    . $answer[$i]
+                    . " for $i in ("
+                    . join(",", @a)
+                    . ")\n"
+                );
+                fail("Parse permutation failed");
+            }
+        }
+        $parse->clear_notations();
+        if (not NextPermute(@a)) {
+            pass("All parse permutations succeeded");
+            last PERMUTATION;
+        }
+    }
+# }
 
 # Local Variables:
 #   mode: cperl

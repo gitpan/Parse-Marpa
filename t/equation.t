@@ -5,7 +5,7 @@
 use strict;
 use warnings;
 
-use Test::More tests => 1;
+use Test::More tests => 4;
 
 BEGIN {
 	use_ok( 'Parse::Marpa' );
@@ -34,22 +34,47 @@ $parse->token([$op, "+", 1]);
 $parse->token([$number, 1, 1]);
 $parse->token();
 
-print $g->show_rules(), "\n";
-print $g->show_ii_SDFA(), "\n";
+# print $g->show_rules(), "\n";
+is( $g->show_rules(), <<'END_RULES', "Ambiguous Equation Rules" );
+0: E -> E Op E
+1: E -> Number
+2: E['] -> E
+END_RULES
+
+# print $g->show_ii_SDFA(), "\n";
+is( $g->show_ii_SDFA(), <<'END_SDFA', "Ambiguous Equation SDFA" );
+St0: 1,5
+E ::= . E Op E
+E ::= . Number
+ <E> => St1 (2)
+ <Number> => St4 (6)
+St1: 2
+E ::= E . Op E
+ <Op> => St2 (3)
+St2: 3
+E ::= E Op . E
+ empty => St0 (1,5)
+ <E> => St3 (4)
+St3: 4
+E ::= E Op E .
+St4: 6
+E ::= Number .
+St5: 7
+E['] ::= . E
+ empty => St0 (1,5)
+ <E> => St6 (8)
+St6: 8
+E['] ::= E .
+END_SDFA
 
 # print $parse->show_status(1);
 
-TODO: {
-    local $TODO = "Not yet debugged";
+# TODO: {
+    # local $TODO = "Not yet debugged";
     $parse->initial();
-    print $parse->show_status(1);
-    # if ($evaluator) {
-        # is( $evaluator->show_evaluator(1), '', "Aycock/Horspool Evaluator Tree" );
-    # } else {
-        # fail("Valid parse in evaluator");
-        # diag("No valid parse in evaluator");
-    # }
-}
+    # print $parse->show_status(1);
+    is($parse->value(), "(((2;-;0);*;3);+;1)", "Ambiguous Equation Value");
+# }
 
 # Local Variables:
 #   mode: cperl
