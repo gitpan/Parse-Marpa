@@ -1,6 +1,11 @@
 Parse::Marpa
 
-This module was tested with Perl v5.8.8.
+Pre-alpha Version!!!
+
+Right now all the versions of Parse::Marpa are pre-alpha
+developer's versions.  Nothing useful will be found here, and the
+documentation is also inchoate.  Those not developing this module,
+please wait for at least a released, beta version.
 
 INSTALLATION
 
