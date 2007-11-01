@@ -19,6 +19,12 @@ my $g = new Parse::Marpa(
 	[ "Number" => qr/\d+/],
 	[ "Op" => qr/[-+*] /],
     ],
+    default_closure => sub {
+         my $v_count = scalar @Parse::Marpa::v;
+         return "" if $v_count <= 0;
+         return $Parse::Marpa::v[0] if $v_count == 1;
+         "(" . join(";", @Parse::Marpa::v) . ")";
+    },
 );
 
 my $parse = new Parse::Marpa::Parse($g);

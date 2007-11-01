@@ -25,7 +25,7 @@ use strict;
 use Carp;
 use Scalar::Util qw(weaken);
 
-our $VERSION = '0.001_027';
+our $VERSION = '0.001_028';
 $VERSION = eval $VERSION;
 
 =begin Apology:
@@ -169,10 +169,22 @@ use constant ACADEMIC        => 9;     # true if this is a textbook grammar,
                                        # for checking the NFA and SDFA, and NOT
                                        # for actual Earley parsing
 use constant DEFAULT_NULL_VALUE => 10; # default value for nulling symbols
+use constant DEFAULT_CLOSURE => 11; # closure for rules without one
 
 package Parse::Marpa;
 
+our @v;
+
 # Constructor
+
+our $default_default_closure = sub { "" };
+
+our $chaf_stub = sub {
+         my $v_count = scalar @Parse::Marpa::v;
+         return "" if $v_count <= 0;
+         return $Parse::Marpa::v[0] if $v_count == 1;
+         "(" . join(";", @Parse::Marpa::v) . ")";
+    };
 
 sub new {
     my $class = shift;
@@ -186,12 +198,14 @@ sub new {
     # parse with this grammar.  It's only useful to test the NFA and SDFA logic
     my $academic = 0;
     my $default_null_value = "";
+    my $default_closure = $default_default_closure;
 
     my %arg_logic = (
         "rules"    => sub { $rules    = $_[0] },
         "start"    => sub { $start    = $_[0] },
         "academic" => sub { $academic = $_[0] },
         "default_null_value" => sub { $default_null_value = $_[0] },
+        "default_closure" => sub { $default_closure = $_[0] },
     );
 
     while ( my ( $arg, $value ) = each %args ) {
@@ -213,8 +227,12 @@ sub new {
         Parse::Marpa::Grammar::SDFA_BY_NAME,
         Parse::Marpa::Grammar::ACADEMIC,
         Parse::Marpa::Grammar::DEFAULT_NULL_VALUE,
-        ]
-        = ( [], {}, [], {}, {}, $academic, $default_null_value );
+        Parse::Marpa::Grammar::DEFAULT_CLOSURE,
+        ] = ( [], {}, [], {}, {},
+            $academic,
+            $default_null_value,
+            $default_closure,
+        );
     bless( $grammar, $class );
 
     add_user_rules( $grammar, $rules );
@@ -232,6 +250,7 @@ sub compile {
     input_reachable($grammar);
     set_start( $grammar, $start );
     start_reachable($grammar);
+    set_closures($grammar);
     if ($academic) {
         setup_academic_grammar($grammar);
     }
@@ -650,7 +669,8 @@ sub add_rule {
         ]
         = (
         $rule_count, "rule $rule_count",
-        $lhs, $rhs, $nulling, $nulling, $nulling,
+        $lhs, $rhs,
+        $nulling, $nulling, $nulling,
         $closure
         );
 
@@ -711,6 +731,23 @@ sub add_user_rules {
         }
 
         add_user_rule( $grammar, $lhs, $rhs, $closure);
+    }
+}
+
+sub set_closures {
+    my $grammar    = shift;
+    my (
+        $rules,
+        $default_closure,
+    ) = @{$grammar}[
+        Parse::Marpa::Grammar::RULES,
+        Parse::Marpa::Grammar::DEFAULT_CLOSURE,
+    ];
+
+    for my $rule (@$rules) {
+        my $closure = $rule->[ Parse::Marpa::Rule::ORIGINAL_CLOSURE ];
+        $closure ||= $default_closure;
+        $rule->[ Parse::Marpa::Rule::CLOSURE ] = $closure;
     }
 }
 
@@ -1890,9 +1927,12 @@ sub rewrite_as_CHAF {
                     Parse::Marpa::Rule::START_REACHABLE,
                     Parse::Marpa::Rule::INPUT_REACHABLE,
                     Parse::Marpa::Rule::NULLABLE,
-                    Parse::Marpa::Rule::NULLING
-                    ]
-                    = ( 1, 1, 1, 0, 0 );
+                    Parse::Marpa::Rule::NULLING,
+                    Parse::Marpa::Rule::CLOSURE,
+                    ] = (
+                        1, 1, 1, 0, 0,
+                        $Parse::Marpa::chaf_stub
+                    );
             }
 
             # no more
@@ -1923,9 +1963,10 @@ sub rewrite_as_CHAF {
     @{$new_start_rule}[
         Parse::Marpa::Rule::INPUT_REACHABLE,
         Parse::Marpa::Rule::START_REACHABLE,
-        Parse::Marpa::Rule::USEFUL
+        Parse::Marpa::Rule::USEFUL,
+        Parse::Marpa::Rule::CLOSURE,
         ]
-        = ( $input_reachable, 1, 1 );
+        = ( $input_reachable, 1, 1, $Parse::Marpa::chaf_stub );
 
     if ( $old_start->[Parse::Marpa::Symbol::NULL_ALIAS] ) {
         my $start_alias = alias_symbol( $grammar, $start );
@@ -1937,8 +1978,9 @@ sub rewrite_as_CHAF {
             Parse::Marpa::Rule::INPUT_REACHABLE,
             Parse::Marpa::Rule::START_REACHABLE,
             Parse::Marpa::Rule::USEFUL,
+            Parse::Marpa::Rule::CLOSURE,
             ]
-            = ( $input_reachable, 1, 1, 1 );
+            = ( $input_reachable, 1, 1, $Parse::Marpa::default_default_closure );
     }
     $grammar->[Parse::Marpa::Grammar::START] = $start;
 }
@@ -2427,7 +2469,7 @@ sub initialize_children {
     my $rule = $child_rules->[0];
     my ($rhs) = @{$rule}[ Parse::Marpa::Rule::RHS ];
 
-    my @v; # to store values in
+    local(@Parse::Marpa::v) = (); # to store values in
 
     CHILD: for (my $child_number = $#$rhs; $child_number >= 0; $child_number--) {
 
@@ -2495,11 +2537,7 @@ sub initialize_children {
 
     }
 
-    my $v_count = scalar @v;
-    my $result =
-        $v_count <= 0 ? "" :
-        $v_count == 1 ? $v[0] :
-        "(" . join(";", @v) . ")";
+    $rule->[ Parse::Marpa::Rule::CLOSURE ]->();
 
 }
 
@@ -2560,7 +2598,7 @@ sub show_value {
 
 =head1 NAME
 
-Parse::Marpa - Earley's Algorithm, with improvements
+Parse::Marpa - Jay Earley's general parsing algorithm with LR(0) precomputation
 
 =head1 VERSION
 
@@ -2575,8 +2613,6 @@ for at least a released, beta version.
 =cut
 
 =head1 SYNOPSIS
-
-Earley's general parsing algorithm, with LR(0) precomputation
 
     TO DO
     ...
@@ -2602,7 +2638,6 @@ your bug as I make changes.
 You can find documentation for this module with the perldoc command.
 
     perldoc Parse::Marpa
-
     
 You can also look for information at:
 
@@ -2628,11 +2663,19 @@ L<http://search.cpan.org/dist/Parse-Marpa>
 
 =head1 ACKNOWLEDGMENTS
 
-Marpa is, with minor improvements,
+Marpa is, with minor changes,
 the parser described in John Aycock and R.
-Nigel Horspool's "Practical Earley Parsing", I<The Computer Journal>,
-Vol. 45, No. 6, 2002, pp. 620-630.  This combined LR(0) with Jay
-Earley's parsing algorithm.
+Nigel Horspool's "Practical Earley Parsing",
+I<The Computer Journal>,
+Vol. 45, No. 6, 2002, pp. 620-630.
+Aycock and Horspool's work, in turn,
+builds on the general parsing algorithm
+discovered by Jay Earley,
+and described in his
+"An efficient context-free parsing algorithm",
+I<Communications of the
+Association for Computing Machinery>,
+13:2:94-102, 1970.
 
 In writing the Pure Perl version of Marpa, I benefited from studying
 the work of Francois Desarmenien (C<Parse::Yapp>), 

@@ -1,18 +1,46 @@
+=head1 NAME
+
+Parse::Marpa::ALGORITHM - Description of Parse::Marpa's Algorithm
+
 =head1 THE ALGORITHM
 
 Marpa is essentially the parser described in John Aycock and R.
 Nigel Horspool's "Practical Earley Parsing", I<The Computer Journal>,
-Vol. 45, No. 6, 2002, pp. 620-630.  This combined LR(0) with Jay
-Earley's parsing algorithm.  I've made some improvements.
+Vol. 45, No. 6, 2002, pp. 620-630.  This combines LR(0) with Jay
+Earley's parsing algorithm.  His most accessible paper
+is J. Earley, "An efficient context-free parsing algorithm",
+I<Communications of the Association for Computing Machinery>,
+13:2:94-102, 1970.
 
-First, Aycock and Horspool's algorithm rewrites the original grammar
-into NNF (Nihilist Normal Form).  Earley's original algorithms had
-serious issues with nullable symbols and productions, and NNF fixes
-most of them.  (A nullable symbol or production is one which could
-eventually parse out to the empty string.) Importantly, NNF also
-allows complete and easy mapping of the semantics of the original
-grammar to its NNF rewrite, so that NNF and the whole rewrite process
-can be made invisible to the user.
+The Aycock and Horspool paper is on the web
+(L<http://www.cs.uvic.ca/~nigelh/Publications/PracticalEarleyParsing.pdf>),
+unlike Earley's, and
+it summarizes Earley's very nicely.  It is B<not>, however, easy
+reading.  I have a degree in the subject, and have been following
+this particular topic on and off for years.  I'd also unsuccessfully
+attempted to work out many of the same problems myself, which
+gives me some advantage in understanding the issues that Aycock and
+Horspool solved.  Nonetheless I found the Aycock and Horspool paper
+very difficult going.
+
+The rest of this document describes only my improvements to the
+work of Aycock, Horspool and Earley, and does not repeat the details
+of the algorithm described in their papers and elsewhere.  I focus
+on my improvements because they have not been documented previously.
+I hope the reader does not allow this to confuse him into thinking
+most of the algorithm in Marpa is mine.  That's not correct.  The
+major part of the algorithm, and not a few of the implementation
+ideas, are due to Aycock, Horspool and Earley.
+
+My first improvement was to Aycock and Horspool's internal rewriting
+of the grammar.  Aycock and Horspool call their rewriting
+NNF (Nihilist Normal Form).  Earley's original
+algorithms had serious issues with nullable symbols and productions,
+and NNF fixes most of them.  (A nullable symbol or production is
+one which could eventually parse out to the empty string.) Importantly,
+NNF also allows complete and easy mapping of the semantics of the
+original grammar to its NNF rewrite, so that NNF and the whole
+rewrite process can be made invisible to the user.
 
 My problem with NNF grammar is that the rewritten grammar is
 exponentially larger than the original in the theoretical worst
@@ -33,12 +61,14 @@ made invisible to the user.  With CHAF, the theoretical worst
 behavior is linear, and in those difficult cases likely to arise
 in practice the multiplier is smaller.
 
-Second, I've extended the scanning step of Earley's algorithm, and
-introduced the "earleme" (named after Jay Earley).  Previous
+My second improvement was to extend
+the scanning step of Earley's algorithm, and to
+introduce the "earleme" (named after Jay Earley).  Previous
 implementations required the Earley grammar's input to be broken
 up into tokens, presumably by lexical analysis of the input using
 DFA's (deterministic finite automata, which are the equivalent of
-regular expressions).  Requiring that the first level of analysis
+regular expressions when that term is used in the strictest sense).
+Requiring that the first level of analysis
 be performed by a DFA hobbles a general parser like Earley's.
 
 Marpa loosens the restriction, by allowing the scanning phase of

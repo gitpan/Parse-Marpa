@@ -1,4 +1,8 @@
-=head1 WHY CALL IT MARPA? or BLATANT PLUG
+=head1 NAME
+
+Parse::Marpa::WHY - Why call this parser "Marpa"?
+
+=head1 WHY CALL IT MARPA?
 
 Marpa is the name of the greatest of the Tibetan "translators".  In
 that time (we're talking the 11th century AD) Indian Buddhism was
@@ -22,6 +26,8 @@ germs live in the cold, thin air of Tibet, and Tibetans arriving
 directly in the lowlands had no immunities.  Tibetans had learned
 the hard way not to go straight to Nalanda.  Whole expeditions had
 died from disease within weeks of arrival on the hot plains.
+
+=head1 BLATANT PLUG
 
 There's more about Marpa in my new novel, B<The God Proof>, in which
 his studies, travels and adventures are a major subplot.  B<The God

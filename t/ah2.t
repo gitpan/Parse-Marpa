@@ -22,6 +22,12 @@ my $g = new Parse::Marpa(
         [ "A", [qw/E/] ],
         [ "E" ],
     ],
+    default_closure => sub {
+         my $v_count = scalar @Parse::Marpa::v;
+         return "" if $v_count <= 0;
+         return $Parse::Marpa::v[0] if $v_count == 1;
+         "(" . join(";", @Parse::Marpa::v) . ")";
+    },
 );
 
 is( $g->show_rules(), <<'EOS', "Aycock/Horspool Rules" );
@@ -365,12 +371,15 @@ sub NextPermute(\@)
 
 # TODO: {
     # local $TODO  = "Not debugged";
+    my $failure_count = 0;
+    my $total_count = 0;
     my @a = sort (0, 1, 2, 3, 4);
     my @answer = ("", qw[(a;) (a;(a;)) (;(a;(a;a))) (a;(a;(a;a)))]);
     PERMUTATION: for (;;) {
         for my $i (@a) {
             $parse->initial($i);
             my $result = $parse->value();
+            $total_count++;
             if ($answer[$i] ne $result) {
                 diag( "got $result, expected "
                     . $answer[$i]
@@ -378,15 +387,15 @@ sub NextPermute(\@)
                     . join(",", @a)
                     . ")\n"
                 );
-                fail("Parse permutation failed");
+                $failure_count++;
             }
         }
         $parse->clear_notations();
         if (not NextPermute(@a)) {
-            pass("All parse permutations succeeded");
             last PERMUTATION;
         }
     }
+    ok(!$failure_count, "$failure_count of $total_count parse permutations failed");
 # }
 
 # Local Variables:
