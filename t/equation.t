@@ -1,6 +1,6 @@
 #!perl
 
-# An amibguous equation
+# An ambiguous equation
 
 use strict;
 use warnings;
@@ -11,11 +11,38 @@ BEGIN {
 	use_ok( 'Parse::Marpa' );
 }
 
+# The inefficiency (at least some of it) is deliberate.
+# Passing up a duples of [ string, value ] and then
+# assembling a final string at the top would be better
+# than assembling the string then taking it
+# apart at each step.  But I wanted to test having
+# a start symbol that appears repeatedly on the RHS.
+
 my $g = new Parse::Marpa(
     start => "E",
     rules => [
-	[ "E", [qw/E Op E/] ],
-	[ "E", [qw/Number/] ],
+	[ "E", [qw/E Op E/], sub {
+            my ($right_string, $right_value)
+                = ($Parse::Marpa::v[2] =~ /^(.*)==(.*)$/);
+            my ($left_string, $left_value)
+                = ($Parse::Marpa::v[0] =~ /^(.*)==(.*)$/);
+            my $op = $Parse::Marpa::v[1];
+            my $value;
+            if ($op eq "+") {
+               $value = $left_value + $right_value;
+            } elsif ($op eq "*") {
+               $value = $left_value * $right_value;
+            } elsif ($op eq "-") {
+               $value = $left_value - $right_value;
+            } else {
+               croak("Unknown op: $op");
+            }
+            "(" . $left_string . $op . $right_string . ")==" . $value;
+        } ],
+	[ "E", [qw/Number/], sub {
+           my $v0 = pop @Parse::Marpa::v;
+           $v0 . "==" . $v0;
+        } ],
 	[ "Number" => qr/\d+/],
 	[ "Op" => qr/[-+*] /],
     ],
@@ -79,7 +106,7 @@ END_SDFA
     # local $TODO = "Not yet debugged";
     $parse->initial();
     # print $parse->show_status(1);
-    is($parse->value(), "(((2;-;0);*;3);+;1)", "Ambiguous Equation Value");
+    is($parse->value(), "(((2-0)*3)+1)==7", "Ambiguous Equation Value");
 # }
 
 # Local Variables:

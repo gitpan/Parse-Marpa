@@ -25,7 +25,7 @@ use strict;
 use Carp;
 use Scalar::Util qw(weaken);
 
-our $VERSION = '0.001_029';
+our $VERSION = '0.001_030';
 $VERSION = eval $VERSION;
 
 =begin Apology:
@@ -1651,10 +1651,11 @@ sub alias_symbol {
             Parse::Marpa::Grammar::SYMBOLS,
             Parse::Marpa::Grammar::DEFAULT_NULL_VALUE,
         ];
-    my ( $start_reachable, $input_reachable, $name ) = @{$nullable_symbol}[
+    my ( $start_reachable, $input_reachable, $name, $null_value ) = @{$nullable_symbol}[
         Parse::Marpa::Symbol::START_REACHABLE,
         Parse::Marpa::Symbol::INPUT_REACHABLE,
-        Parse::Marpa::Symbol::NAME
+        Parse::Marpa::Symbol::NAME,
+        Parse::Marpa::Symbol::NULL_VALUE,
     ];
 
     # create the new, nulling symbol
@@ -1675,7 +1676,7 @@ sub alias_symbol {
         = (
         $symbol_count, $alias_name, [], [], $start_reachable,
         $input_reachable, 1, 1,
-        $default_null_value
+        $null_value
         );
     push( @$symbols, $alias );
     weaken( $symbol->{$alias_name} = $alias );
@@ -1706,9 +1707,10 @@ that the semantics of the original grammar are not affected.
 # rewrite as Chomsky-Horspool-Aycock Form
 sub rewrite_as_CHAF {
     my $grammar = shift;
-    my ( $rules, $symbols, $start ) = @{$grammar}[
-        Parse::Marpa::Grammar::RULES, Parse::Marpa::Grammar::SYMBOLS,
-        Parse::Marpa::Grammar::START
+    my ( $rules, $symbols, $old_start_symbol ) = @{$grammar}[
+        Parse::Marpa::Grammar::RULES,
+        Parse::Marpa::Grammar::SYMBOLS,
+        Parse::Marpa::Grammar::START,
     ];
 
     # add null aliases to symbols which need them
@@ -1780,12 +1782,16 @@ sub rewrite_as_CHAF {
 
         my $last_nonnullable = -1;
         my $proper_nullables = [];
+        my $rhs_null_value = [];
+        $#$rhs_null_value = $#$rhs;
         RHS_SYMBOL: for ( my $ix = 0; $ix <= $#$rhs; $ix++ ) {
             my $symbol = $rhs->[$ix];
-            my ( $null_alias, $nulling ) = @{$symbol}[
+            my ( $null_alias, $nulling, $null_value ) = @{$symbol}[
                 Parse::Marpa::Symbol::NULL_ALIAS,
                 Parse::Marpa::Symbol::NULLING,
+                Parse::Marpa::Symbol::NULL_VALUE,
             ];
+            $rhs_null_value->[$ix] = $null_value;
             next RHS_SYMBOL if $nulling;
             if ($null_alias) {
                 push( @$proper_nullables, $ix );
@@ -1877,8 +1883,12 @@ sub rewrite_as_CHAF {
                     Parse::Marpa::Symbol::START_REACHABLE,
                     Parse::Marpa::Symbol::INPUT_REACHABLE,
                     Parse::Marpa::Symbol::NULLING,
+                    Parse::Marpa::Symbol::NULL_VALUE,
                     ]
-                    = ( 1, 1, 1, 0 );
+                    = (
+                        1, 1, 1, 0,
+                        [ @{$rhs_null_value}[ ($subp_end+1) .. $#$rhs_null_value] ],
+                    );
                 alias_symbol( $grammar, $next_subp_lhs );
                 $subp_factor0_rhs =
                     [ @{$rhs}[ $subp_start .. $subp_end ], $next_subp_lhs ];
@@ -1938,32 +1948,29 @@ sub rewrite_as_CHAF {
                 # figure out which closure to use
                 # if the LHS is the not LHS of the original rule, we have a
                 # special CHAF header
-                my $chaf_head = ($subp_lhs != $lhs);
+                my $has_chaf_head = ($subp_lhs != $lhs);
 
                 # if a CHAF LHS was created for the next subproduction,
                 # there is a CHAF continuation for this subproduction.
                 # It applies to this factor if there is one of the first two
                 # factors of more than two.
-                my $chaf_continues = ($next_subp_lhs and @$factored_rhs > 2 and $ix < 2);
+                my $has_chaf_tail = $next_subp_lhs;
 
-                if ($chaf_head and not $chaf_continues) {
+                if ($has_chaf_head and not $has_chaf_tail) {
                     $chaf_closure = sub {
                         [ @Parse::Marpa::v ];
                     }
-                } elsif ($chaf_head and $chaf_continues) {
+                } elsif ($has_chaf_head and $has_chaf_tail) {
                     $chaf_closure = sub {
                         my $tail = pop @Parse::Marpa::v;
                         [ @Parse::Marpa::v, @$tail ];
                     }
-                } elsif ($chaf_continues) {
+                } elsif ($has_chaf_tail) {
                     $chaf_closure = sub {
                         my $original
                             = $Parse::Marpa::rule->[ Parse::Marpa::Rule::ORIGINAL_RULE ];
-                        my $rhs = $original->[ Parse::Marpa::Rule::RHS ];
                         my $tail = pop @Parse::Marpa::v;
                         push(@Parse::Marpa::v, @$tail);
-                        my $missing = @$rhs - @Parse::Marpa::v;
-                        push(@Parse::Marpa::v, ("")x$missing);
                         $original->[ Parse::Marpa::Rule::CLOSURE ]->();
                     }
                 }
@@ -1995,20 +2002,23 @@ sub rewrite_as_CHAF {
     }    # RULE
 
     # Create a new start symbol
-    my $old_start       = $start;
-    my $input_reachable = $old_start->[Parse::Marpa::Symbol::INPUT_REACHABLE];
-    $start =
+    my ($input_reachable, $null_value) = @{$old_start_symbol}[
+        Parse::Marpa::Symbol::INPUT_REACHABLE,
+        Parse::Marpa::Symbol::NULL_VALUE,
+    ];
+    my $new_start_symbol =
         assign_symbol( $grammar,
-        $start->[Parse::Marpa::Symbol::NAME] . "[']" );
-    @{$start}[
+        $old_start_symbol->[Parse::Marpa::Symbol::NAME] . "[']" );
+    @{$new_start_symbol}[
         Parse::Marpa::Symbol::INPUT_REACHABLE,
         Parse::Marpa::Symbol::START_REACHABLE,
-        Parse::Marpa::Symbol::START
+        Parse::Marpa::Symbol::START,
+        Parse::Marpa::Symbol::NULL_VALUE,
         ]
-        = ( $input_reachable, 1, 1 );
+        = ( $input_reachable, 1, 1, $null_value );
 
     # Create a new start rule
-    my $new_start_rule = add_rule( $grammar, $start, [$old_start] );
+    my $new_start_rule = add_rule( $grammar, $new_start_symbol, [$old_start_symbol] );
     @{$new_start_rule}[
         Parse::Marpa::Rule::INPUT_REACHABLE,
         Parse::Marpa::Rule::START_REACHABLE,
@@ -2019,21 +2029,23 @@ sub rewrite_as_CHAF {
 
     # If we created a null alias for the original start symobl, we need
     # to create a nulling start rule
-    if ( $old_start->[Parse::Marpa::Symbol::NULL_ALIAS] ) {
-        my $start_alias = alias_symbol( $grammar, $start );
-        @{$start_alias}[Parse::Marpa::Symbol::START] = 1;
-        my $new_start_rule = add_rule( $grammar, $start_alias, [] );
+    my $old_start_alias = $old_start_symbol->[Parse::Marpa::Symbol::NULL_ALIAS];
+    if ( $old_start_alias ) {
+        my $new_start_alias = alias_symbol( $grammar, $new_start_symbol );
+        @{$new_start_alias}[
+            Parse::Marpa::Symbol::START,
+        ] = ( 1 );
+        my $new_start_rule = add_rule( $grammar, $new_start_alias, [] );
 
         # Nulling rules are not considered useful, but the top-level one is an exception
         @{$new_start_rule}[
             Parse::Marpa::Rule::INPUT_REACHABLE,
             Parse::Marpa::Rule::START_REACHABLE,
             Parse::Marpa::Rule::USEFUL,
-            Parse::Marpa::Rule::CLOSURE,
             ]
-            = ( $input_reachable, 1, 1, $Parse::Marpa::default_default_closure );
+            = ( $input_reachable, 1, 1, );
     }
-    $grammar->[Parse::Marpa::Grammar::START] = $start;
+    $grammar->[Parse::Marpa::Grammar::START] = $new_start_symbol;
 }
 
 package Parse::Marpa::Earley_item;
@@ -2503,6 +2515,7 @@ sub initial {
              Parse::Marpa::Earley_item::RULE_CHOICE,
              Parse::Marpa::Earley_item::RULES,
          ] = (\$null_value, 0, 0, 0, []);
+         return;
     }
 
     $current_item->[ Parse::Marpa::Earley_item::VALUE ]

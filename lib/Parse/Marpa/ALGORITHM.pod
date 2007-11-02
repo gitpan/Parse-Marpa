@@ -50,7 +50,7 @@ that in some cases likely to arise in practice (Perl 6 "rules" with
 significant whitespace, for example), the size explosion, while not
 exponential, is linear with a very large multiplier.
 
-My solution was is Chomsky-Horspool-Aycock Form (CHAF).  This is
+My solution is Chomsky-Horspool-Aycock Form (CHAF).  This is
 Horspool and Aycock's NNF, but with the further restriction that
 no more than two nullable symbols may appear in any production.
 (In the literature, the discovery that any context-free grammar can

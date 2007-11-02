@@ -374,7 +374,7 @@ sub NextPermute(\@)
     my $failure_count = 0;
     my $total_count = 0;
     my @a = sort (0, 1, 2, 3, 4);
-    my @answer = ("", qw[(a;) (a;a;;) (;a;a;a) (a;a;a;a)]);
+    my @answer = ("", qw[(a;;;) (a;a;;) (;a;a;a) (a;a;a;a)]);
     PERMUTATION: for (;;) {
         for my $i (@a) {
             $parse->initial($i);
