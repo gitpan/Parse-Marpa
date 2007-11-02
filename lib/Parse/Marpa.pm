@@ -25,7 +25,7 @@ use strict;
 use Carp;
 use Scalar::Util qw(weaken);
 
-our $VERSION = '0.001_028';
+our $VERSION = '0.001_029';
 $VERSION = eval $VERSION;
 
 =begin Apology:
@@ -95,18 +95,18 @@ use constant LHS             => 2;    # rules with this as the lhs,
                                       # as a ref to an array of rule refs
 use constant RHS             => 3;    # rules with this in the rhs,
                                       # as a ref to an array of rule refs
-use constant NULLABLE        => 4;    # can match null?
-use constant START_REACHABLE => 5;    # reachable from start symbol?
-use constant INPUT_REACHABLE => 6;    # reachable from input symbol?
-use constant NULL_VALUE      => 7;    # ref to value of nulling symbol,
-                                      # otherwise undef
-use constant START           => 8;    # is one of the start symbols?
-use constant REGEX           => 9;    # regex, for terminals; undef otherwise
-use constant NULL_ALIAS      => 10;   # for a non-nulling symbol,
+use constant START_REACHABLE => 4;    # reachable from start symbol?
+use constant INPUT_REACHABLE => 5;    # reachable from input symbol?
+use constant START           => 6;    # is one of the start symbols?
+use constant REGEX           => 7;    # regex, for terminals; undef otherwise
+use constant NULLING         => 8;    # always is null?
+use constant NULLABLE        => 9;    # can match null?
+use constant NULL_VALUE      => 10;    # value when null
+use constant NULL_ALIAS      => 11;   # for a non-nulling symbol,
                                       # ref of a its nulling alias,
                                       # if there is one
                                       # otherwise undef
-use constant TERMINAL        => 11;   # terminal?
+use constant TERMINAL        => 12;   # terminal?
 
 package Parse::Marpa::Rule;
 
@@ -121,12 +121,7 @@ use constant NULLING                  => 7;    # always matches null?
 use constant USEFUL                   => 8;    # use this rule in NFA?
 use constant ORIGINAL_CLOSURE         => 9;    # closure assigned when rule created
 use constant CLOSURE                  => 10;   # closure to use
-use constant TYPE                     => 11;   # rule types
-
-use constant CHAF_HEAD                => 1; # first segment of a CHAF rewrite
-use constant CHAF_PIECE               => 2; # middle segment of a CHAF rewrite
-use constant CHAF_TAIL                => 3; # last segment of a CHAF rewrite
-use constant NORMAL                   => 4; # any other rule
+use constant ORIGINAL_RULE            => 11;   # for a rewritten rule, the original
 
 package Parse::Marpa::NFA;
 
@@ -174,6 +169,7 @@ use constant DEFAULT_CLOSURE => 11; # closure for rules without one
 package Parse::Marpa;
 
 our @v;
+our $rule;
 
 # Constructor
 
@@ -284,7 +280,7 @@ sub show_symbol {
         $text .= " !downreach";
     }
     if ( $symbol->[Parse::Marpa::Symbol::NULLABLE] ) { $text .= " nullable"; }
-    if ( $symbol->[Parse::Marpa::Symbol::NULL_VALUE] )  { $text .= " nulling"; }
+    if ( $symbol->[Parse::Marpa::Symbol::NULLING] )  { $text .= " nulling"; }
     $text .= "\n";
 }
 
@@ -303,7 +299,7 @@ sub show_nulling_symbols {
     my $symbols = $grammar->[Parse::Marpa::Grammar::SYMBOLS];
     join( " ",
         sort map { $_->[Parse::Marpa::Symbol::NAME] }
-            grep { $_->[Parse::Marpa::Symbol::NULL_VALUE] } @$symbols );
+            grep { $_->[Parse::Marpa::Symbol::NULLING] } @$symbols );
 }
 
 sub show_nullable_symbols {
@@ -550,10 +546,11 @@ sub add_terminal {
     my $grammar = shift;
     my $name    = shift;
     my $regex   = shift;
-    my ( $symbol_hash, $symbols )
+    my ( $symbol_hash, $symbols, $default_null_value )
         = @{$grammar}[
             Parse::Marpa::Grammar::SYMBOL_HASH,
-            Parse::Marpa::Grammar::SYMBOLS
+            Parse::Marpa::Grammar::SYMBOLS,
+            Parse::Marpa::Grammar::DEFAULT_NULL_VALUE,
         ];
 
     if ( "" =~ $regex ) {
@@ -572,9 +569,9 @@ sub add_terminal {
 
         @{$symbol}[
             Parse::Marpa::Symbol::INPUT_REACHABLE,
-            Parse::Marpa::Symbol::NULL_VALUE,
+            Parse::Marpa::Symbol::NULLING,
             Parse::Marpa::Symbol::REGEX,
-            Parse::Marpa::Symbol::TERMINAL
+            Parse::Marpa::Symbol::TERMINAL,
         ] = (1, 0, $regex, 1);
 
         return;
@@ -589,13 +586,17 @@ sub add_terminal {
         Parse::Marpa::Symbol::RHS,
         Parse::Marpa::Symbol::NULLABLE,
         Parse::Marpa::Symbol::INPUT_REACHABLE,
+        Parse::Marpa::Symbol::NULLING,
         Parse::Marpa::Symbol::NULL_VALUE,
         Parse::Marpa::Symbol::REGEX,
-        Parse::Marpa::Symbol::TERMINAL
-        ] = (
-            $symbol_count, $name, [], [],
-            0, 1, 0, $regex, 1
-        );
+        Parse::Marpa::Symbol::TERMINAL,
+    ] = (
+        $symbol_count, $name, [], [],
+        0, 1, 0,
+        $default_null_value,
+        $regex,
+        1,
+    );
 
     push( @$symbols, $new_symbol );
     weaken( $symbol_hash->{$name} = $new_symbol );
@@ -604,22 +605,29 @@ sub add_terminal {
 sub assign_symbol {
     my $grammar = shift;
     my $name    = shift;
-    my ( $symbol, $symbols ) =
-        @{$grammar}[ Parse::Marpa::Grammar::SYMBOL_HASH,
-        Parse::Marpa::Grammar::SYMBOLS ];
+    my (
+        $symbol_hash, $symbols, $default_null_value,
+    ) = @{$grammar}[
+        Parse::Marpa::Grammar::SYMBOL_HASH,
+        Parse::Marpa::Grammar::SYMBOLS,
+        Parse::Marpa::Grammar::DEFAULT_NULL_VALUE,
+    ];
 
     my $symbol_count = @$symbols;
-    my $ret          = $symbol->{$name};
-    if ( not defined $ret ) {
-        @{$ret}[
-            Parse::Marpa::Rule::ID,  Parse::Marpa::Rule::NAME,
-            Parse::Marpa::Rule::LHS, Parse::Marpa::Rule::RHS
-            ]
-            = ( $symbol_count, $name, [], [] );
-        push( @$symbols, $ret );
-        weaken( $symbol->{$name} = $ret );
+    my $symbol       = $symbol_hash->{$name};
+    if ( not defined $symbol ) {
+        @{$symbol}[
+            Parse::Marpa::Symbol::ID,  Parse::Marpa::Symbol::NAME,
+            Parse::Marpa::Symbol::LHS, Parse::Marpa::Symbol::RHS,
+            Parse::Marpa::Symbol::NULL_VALUE,
+        ] = (
+            $symbol_count, $name, [], [],
+            $default_null_value,
+        );
+        push( @$symbols, $symbol );
+        weaken( $symbol_hash->{$name} = $symbol );
     }
-    $ret;
+    $symbol;
 }
 
 sub assign_user_symbol {
@@ -638,7 +646,7 @@ sub add_user_rule {
         $self,
         assign_symbol( $self, canonical_name($lhs_name) ),
         [ map { assign_symbol( $self, canonical_name($_) ); } @$rhs_names ],
-        $closure
+        $closure,
     );
 }
 
@@ -648,11 +656,10 @@ sub add_rule {
     my $rhs     = shift;
     my $closure = shift;
 
-    my ( $rule, $rules, $default_null_value ) =
+    my ( $rule, $rules ) =
         @{$grammar}[
             Parse::Marpa::Grammar::RULE_HASH,
             Parse::Marpa::Grammar::RULES,
-            Parse::Marpa::Grammar::DEFAULT_NULL_VALUE,
         ];
     my $rule_count = @$rules;
     my $new_rule   = [];
@@ -681,10 +688,8 @@ sub add_rule {
 
     # if this is a nulling rule with a closure,
     # we get the null_value of the lhs from that
-    if ($nulling) {
-        $lhs->[ Parse::Marpa::Symbol::NULL_VALUE ]
-            = $closure ? \($closure->())
-            : \$default_null_value;
+    if ($nulling and $closure) {
+        $lhs->[ Parse::Marpa::Symbol::NULL_VALUE ] = $closure->();
     }
 
     $rule->{$rule_key} = $new_rule;
@@ -1005,7 +1010,7 @@ sub nulling {
 
     for my $symbol_id (
         map  { $_->[ Parse::Marpa::Symbol::ID ] }
-        grep { $_->[ Parse::Marpa::Symbol::NULL_VALUE ] } @$symbols
+        grep { $_->[ Parse::Marpa::Symbol::NULLING ] } @$symbols
     ) {
         $symbol_work_set->[$symbol_id] = 1;
     }
@@ -1024,7 +1029,7 @@ sub nulling {
             my $lhs_symbol = $work_rule->[Parse::Marpa::Rule::LHS];
 
             # no work to do -- this symbol already is marked one way or the other
-            next RULE if defined $lhs_symbol->[Parse::Marpa::Symbol::NULL_VALUE];
+            next RULE if defined $lhs_symbol->[Parse::Marpa::Symbol::NULLING];
 
             # assume nulling until we hit an unmarked or non-nulling symbol
             my $symbol_nulling = \$default_null_value;
@@ -1054,7 +1059,7 @@ sub nulling {
             # if this pass found the symbol nulling or non-nulling
             #  mark the symbol
             if ( defined $symbol_nulling ) {
-                $lhs_symbol->[Parse::Marpa::Symbol::NULL_VALUE] = $symbol_nulling;
+                $lhs_symbol->[Parse::Marpa::Symbol::NULLING] = $symbol_nulling;
                 $work_to_do++;
 
                 $symbol_work_set->[ $lhs_symbol->[Parse::Marpa::Symbol::ID] ]
@@ -1085,7 +1090,7 @@ sub nulling {
                 for my $rhs_symbol ( @{ $rule->[Parse::Marpa::Rule::RHS] } )
                 {
                     my $nulling =
-                        $rhs_symbol->[Parse::Marpa::Symbol::NULL_VALUE];
+                        $rhs_symbol->[Parse::Marpa::Symbol::NULLING];
 
                     # unmarked rule, change the assumption for rule to undef,
                     # but keep scanning for non-nulling
@@ -1134,7 +1139,7 @@ sub nullable {
         map  { $_->[Parse::Marpa::Symbol::ID] }
         grep {
             $_->[Parse::Marpa::Symbol::NULLABLE]
-            or $_->[Parse::Marpa::Symbol::NULL_VALUE]
+            or $_->[Parse::Marpa::Symbol::NULLING]
         } @$symbols
         )
     {
@@ -1447,7 +1452,7 @@ sub assign_SDFA_kernel_state {
         my $rhs = $rule->[Parse::Marpa::Rule::RHS];
         if ( $position < @$rhs ) {
             my $next_symbol = $rhs->[$position];
-            next NFA_ID if $next_symbol->[Parse::Marpa::Symbol::NULL_VALUE];
+            next NFA_ID if $next_symbol->[Parse::Marpa::Symbol::NULLING];
         }
         push( @$NFA_ids, $NFA_id );
     }
@@ -1510,7 +1515,7 @@ sub assign_SDFA_kernel_state {
         my $rhs = $rule->[Parse::Marpa::Rule::RHS];
         if ( $position < @$rhs ) {
             my $next_symbol = $rhs->[$position];
-            next NFA_ID if $next_symbol->[Parse::Marpa::Symbol::NULL_VALUE];
+            next NFA_ID if $next_symbol->[Parse::Marpa::Symbol::NULLING];
         }
         push( @$NFA_ids, $NFA_id );
     }
@@ -1664,11 +1669,13 @@ sub alias_symbol {
         Parse::Marpa::Symbol::START_REACHABLE,
         Parse::Marpa::Symbol::INPUT_REACHABLE,
         Parse::Marpa::Symbol::NULLABLE,
+        Parse::Marpa::Symbol::NULLING,
         Parse::Marpa::Symbol::NULL_VALUE,
         ]
         = (
         $symbol_count, $alias_name, [], [], $start_reachable,
-        $input_reachable, 1, \$default_null_value
+        $input_reachable, 1, 1,
+        $default_null_value
         );
     push( @$symbols, $alias );
     weaken( $symbol->{$alias_name} = $alias );
@@ -1708,25 +1715,26 @@ sub rewrite_as_CHAF {
     my $symbol_count = @$symbols;
     SYMBOL: for ( my $ix = 0; $ix < $symbol_count; $ix++ ) {
         my $symbol = $symbols->[$ix];
-        my ( $input_reachable, $start_reachable, $null_value, $nullable,
+        my ( $input_reachable, $start_reachable, $nulling, $nullable,
             $null_alias )
             = @{$symbol}[
             Parse::Marpa::Symbol::INPUT_REACHABLE,
             Parse::Marpa::Symbol::START_REACHABLE,
-            Parse::Marpa::Symbol::NULL_VALUE,
+            Parse::Marpa::Symbol::NULLING,
             Parse::Marpa::Symbol::NULLABLE,
             Parse::Marpa::Symbol::NULL_ALIAS
             ];
 
-        # aliases are added at the end -- stop the iteration once we reach them
-        last SYMBOL if $null_alias;
+        # not necessary is the symbol already has a null
+        # alias
+        next SYMBOL if $null_alias;
 
-        #  we don't both with unreachable symbols
+        #  we don't bother with unreachable symbols
         next SYMBOL unless $input_reachable;
         next SYMBOL unless $start_reachable;
 
         # look for proper nullable symbols
-        next SYMBOL if $null_value;
+        next SYMBOL if $nulling;
         next SYMBOL unless $nullable;
 
         alias_symbol( $grammar, $symbol );
@@ -1774,11 +1782,11 @@ sub rewrite_as_CHAF {
         my $proper_nullables = [];
         RHS_SYMBOL: for ( my $ix = 0; $ix <= $#$rhs; $ix++ ) {
             my $symbol = $rhs->[$ix];
-            my ( $null_alias, $null_value ) = @{$symbol}[
+            my ( $null_alias, $nulling ) = @{$symbol}[
                 Parse::Marpa::Symbol::NULL_ALIAS,
-                Parse::Marpa::Symbol::NULL_VALUE,
+                Parse::Marpa::Symbol::NULLING,
             ];
-            next RHS_SYMBOL if $null_value;
+            next RHS_SYMBOL if $nulling;
             if ($null_alias) {
                 push( @$proper_nullables, $ix );
                 next RHS_SYMBOL;
@@ -1832,9 +1840,10 @@ sub rewrite_as_CHAF {
                 }
 
                 # the following subproduction is non-nullable
+                # this code apparently not yet (1 Nov 2007) tried !!!
                 if ( $proper_nullable1 < $last_nonnullable ) {
                     $subp_end = $proper_nullable1;
-                    spice( @$proper_nullables, 0, 2 );
+                    splice( @$proper_nullables, 0, 2 );
                     $next_subp_lhs = assign_symbol( $grammar,
                               $lhs->[Parse::Marpa::Symbol::NAME] . "[" 
                             . $rule_id . ":"
@@ -1844,13 +1853,14 @@ sub rewrite_as_CHAF {
                         Parse::Marpa::Symbol::NULLABLE,
                         Parse::Marpa::Symbol::START_REACHABLE,
                         Parse::Marpa::Symbol::INPUT_REACHABLE,
-                        Parse::Marpa::Symbol::NULL_VALUE,
+                        Parse::Marpa::Symbol::NULLING,
                         ]
                         = ( 0, 1, 1, 0 );
                     $subp_factor0_rhs = [
                         @{$rhs}[ $subp_start .. $subp_end ],
                         $next_subp_lhs
                     ];
+                    last SETUP_SUBPRODUCTION;
                 }
 
                 # if we got this far we have 3 or more proper nullables, and the next
@@ -1866,7 +1876,7 @@ sub rewrite_as_CHAF {
                     Parse::Marpa::Symbol::NULLABLE,
                     Parse::Marpa::Symbol::START_REACHABLE,
                     Parse::Marpa::Symbol::INPUT_REACHABLE,
-                    Parse::Marpa::Symbol::NULL_VALUE,
+                    Parse::Marpa::Symbol::NULLING,
                     ]
                     = ( 1, 1, 1, 0 );
                 alias_symbol( $grammar, $next_subp_lhs );
@@ -1920,7 +1930,44 @@ sub rewrite_as_CHAF {
 
             }    # FACTOR
 
-            for my $factor_rhs (@$factored_rhs) {
+            for (my $ix = 0; $ix <= $#$factored_rhs; $ix++) {
+                my $factor_rhs = $factored_rhs->[$ix];
+
+                my $chaf_closure = $Parse::Marpa::chaf_stub;
+
+                # figure out which closure to use
+                # if the LHS is the not LHS of the original rule, we have a
+                # special CHAF header
+                my $chaf_head = ($subp_lhs != $lhs);
+
+                # if a CHAF LHS was created for the next subproduction,
+                # there is a CHAF continuation for this subproduction.
+                # It applies to this factor if there is one of the first two
+                # factors of more than two.
+                my $chaf_continues = ($next_subp_lhs and @$factored_rhs > 2 and $ix < 2);
+
+                if ($chaf_head and not $chaf_continues) {
+                    $chaf_closure = sub {
+                        [ @Parse::Marpa::v ];
+                    }
+                } elsif ($chaf_head and $chaf_continues) {
+                    $chaf_closure = sub {
+                        my $tail = pop @Parse::Marpa::v;
+                        [ @Parse::Marpa::v, @$tail ];
+                    }
+                } elsif ($chaf_continues) {
+                    $chaf_closure = sub {
+                        my $original
+                            = $Parse::Marpa::rule->[ Parse::Marpa::Rule::ORIGINAL_RULE ];
+                        my $rhs = $original->[ Parse::Marpa::Rule::RHS ];
+                        my $tail = pop @Parse::Marpa::v;
+                        push(@Parse::Marpa::v, @$tail);
+                        my $missing = @$rhs - @Parse::Marpa::v;
+                        push(@Parse::Marpa::v, ("")x$missing);
+                        $original->[ Parse::Marpa::Rule::CLOSURE ]->();
+                    }
+                }
+
                 my $new_rule = add_rule( $grammar, $subp_lhs, $factor_rhs );
                 @{$new_rule}[
                     Parse::Marpa::Rule::USEFUL,
@@ -1929,9 +1976,11 @@ sub rewrite_as_CHAF {
                     Parse::Marpa::Rule::NULLABLE,
                     Parse::Marpa::Rule::NULLING,
                     Parse::Marpa::Rule::CLOSURE,
+                    Parse::Marpa::Rule::ORIGINAL_RULE,
                     ] = (
                         1, 1, 1, 0, 0,
-                        $Parse::Marpa::chaf_stub
+                        $chaf_closure,
+                        $rule
                     );
             }
 
@@ -1968,6 +2017,8 @@ sub rewrite_as_CHAF {
         ]
         = ( $input_reachable, 1, 1, $Parse::Marpa::chaf_stub );
 
+    # If we created a null alias for the original start symobl, we need
+    # to create a nulling start rule
     if ( $old_start->[Parse::Marpa::Symbol::NULL_ALIAS] ) {
         my $start_alias = alias_symbol( $grammar, $start );
         @{$start_alias}[Parse::Marpa::Symbol::START] = 1;
@@ -2437,16 +2488,21 @@ sub initial {
     ] = ( $current_item, $end_set );
 
     my  $lhs = $start_rule->[ Parse::Marpa::Rule::LHS ];
-    my $null_value_ref = $lhs->[ Parse::Marpa::Symbol::NULL_VALUE ];
+    my (
+        $nulling, $null_value
+    ) = @{$lhs}[
+        Parse::Marpa::Symbol::NULLING,
+        Parse::Marpa::Symbol::NULL_VALUE
+    ];
 
-    if (defined $null_value_ref) {
+    if ($nulling) {
          @{$current_item}[
              Parse::Marpa::Earley_item::VALUE,
              Parse::Marpa::Earley_item::TOKEN_CHOICE,
              Parse::Marpa::Earley_item::LINK_CHOICE,
              Parse::Marpa::Earley_item::RULE_CHOICE,
              Parse::Marpa::Earley_item::RULES,
-         ] = ($null_value_ref, 0, 0, 0, []);
+         ] = (\$null_value, 0, 0, 0, []);
     }
 
     $current_item->[ Parse::Marpa::Earley_item::VALUE ]
@@ -2467,6 +2523,7 @@ sub initialize_children {
     my $child_rules = $state->[ Parse::Marpa::SDFA::COMPLETE_RULES ] -> [ $symbol_id ];
     my $child_rule_choice = 0;
     my $rule = $child_rules->[0];
+    local($Parse::Marpa::rule) = $rule;
     my ($rhs) = @{$rule}[ Parse::Marpa::Rule::RHS ];
 
     local(@Parse::Marpa::v) = (); # to store values in
@@ -2474,11 +2531,12 @@ sub initialize_children {
     CHILD: for (my $child_number = $#$rhs; $child_number >= 0; $child_number--) {
 
         my $child_symbol = $rhs->[ $child_number ];
-        my $null_value_ref = $child_symbol->[ Parse::Marpa::Symbol::NULL_VALUE ];
+        my $nulling = $child_symbol->[ Parse::Marpa::Symbol::NULLING ];
 
-        if ($null_value_ref)
+        if ($nulling)
         {
-           $v[ $child_number ] = $$null_value_ref;
+            $v[ $child_number ]
+                = $child_symbol->[ Parse::Marpa::Symbol::NULL_VALUE ];
            next CHILD;
         }
 
