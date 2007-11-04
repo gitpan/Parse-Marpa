@@ -25,7 +25,7 @@ use strict;
 use Carp;
 use Scalar::Util qw(weaken);
 
-our $VERSION = '0.001_030';
+our $VERSION = '0.001_031';
 $VERSION = eval $VERSION;
 
 =begin Apology:
@@ -86,6 +86,9 @@ what in C would be structures.
 =end Implementation:
 
 =cut
+
+# It's all integers, except for the version number
+use integer;
 
 package Parse::Marpa::Symbol;
 
@@ -2514,12 +2517,25 @@ sub initial {
              Parse::Marpa::Earley_item::LINK_CHOICE,
              Parse::Marpa::Earley_item::RULE_CHOICE,
              Parse::Marpa::Earley_item::RULES,
-         ] = (\$null_value, 0, 0, 0, []);
+         ] = (
+             \$null_value,
+             -1, -1, -1, [],
+         );
          return;
     }
 
-    $current_item->[ Parse::Marpa::Earley_item::VALUE ]
-        = \(initialize_children($current_item, $lhs));
+    my $value = initialize_children($current_item, $lhs);
+    @{$current_item}[
+        Parse::Marpa::Earley_item::VALUE,
+        Parse::Marpa::Earley_item::SYMBOL,
+        Parse::Marpa::Earley_item::TOKEN_CHOICE,
+        Parse::Marpa::Earley_item::LINK_CHOICE,
+        Parse::Marpa::Earley_item::RULE_CHOICE,
+        Parse::Marpa::Earley_item::RULES,
+    ] = (
+        \$value, $lhs,
+         -1, -1, -1, [],
+    );
 
 }
 
@@ -2595,13 +2611,19 @@ sub initialize_children {
         weaken($cause->[ Parse::Marpa::Earley_item::EFFECT ] = $item);
         my $value = initialize_children($cause, $child_symbol);
         @{$item}[
+            Parse::Marpa::Earley_item::SYMBOL,
             Parse::Marpa::Earley_item::TOKEN_CHOICE,
             Parse::Marpa::Earley_item::LINK_CHOICE,
             Parse::Marpa::Earley_item::RULE_CHOICE,
             Parse::Marpa::Earley_item::RULES,
             Parse::Marpa::Earley_item::VALUE,
             Parse::Marpa::Earley_item::PREDECESSOR,
-        ] = (0, 0, $child_rule_choice, $child_rules, \$value, $predecessor);
+        ] = (
+            $child_symbol,
+            0, 0,
+            $child_rule_choice, $child_rules,
+            \$value, $predecessor,
+        );
         $v[ $child_number ] = $value;
         weaken($predecessor->[Parse::Marpa::Earley_item::SUCCESSOR] = $item);
         $item = $predecessor;
@@ -2625,7 +2647,7 @@ sub value {
 sub next {
     my $parse = shift;
 
-    my ( $start_item, $last_set )
+    my ( $start_item, $end_set )
         = @{$parse}[
             Parse::Marpa::Parse::START_ITEM,
             Parse::Marpa::Parse::LAST_SET,
@@ -2634,24 +2656,153 @@ sub next {
     # find the "bottom left corner item", by following predecessors,
     # and causes when there is no predecessor
 
-    my $item = $start_item;
-    ITEM: for (;;) {
-        my $predecessor = $item->[ Parse::Marpa::Earley_item::PREDECESSOR ];
+    EVALUATION: for (;;) {
+        my $item = $start_item;
+        my $find_left_corner = 1;
 
-        # undefine the values as we go along
-        $item->[ Parse::Marpa::Earley_item::VALUE ] = undef;
-        if (defined $predecessor) {
-            $item = $predecessor;
-            next ITEM;
-        }
-        my ($link_choice, $links)
-            = @{$item}[
-                Parse::Marpa::Earley_item::LINK_CHOICE,
-                Parse::Marpa::Earley_item::LINKS
+        # Look for an item we can (potentially) iterate.
+        ITERATION_CANDIDATE: for (;;) {
+
+            # if we set the flag to find the item in the bottom
+            # left hand corner, do so
+            LEFT_CORNER_CANDIDATE: while ($find_left_corner) {
+
+                # undefine the values as we go along
+                $item->[ Parse::Marpa::Earley_item::VALUE ] = undef;
+
+                my $predecessor = $item->[ Parse::Marpa::Earley_item::PREDECESSOR ];
+
+                # Follow the predecessors all the way until
+                # just before the prediction.  The prediction
+                # is the item whose "parent" is the same as its
+                # Earley set.
+                if (defined $predecessor) {
+                    my ($predecessor_set, $predecessor_parent)
+                        = @{$predecessor}[
+                            Parse::Marpa::Earley_item::SET,
+                            Parse::Marpa::Earley_item::PARENT,
+                        ];
+                    if ($predecessor_set != $predecessor_parent) {
+                        $item = $predecessor;
+                        next LEFT_CORNER_CANDIDATE;
+                    }
+                }
+
+                # At the far left end, see if we have a cause (or
+                # child) item.  If so, descend.
+                my ($link_choice, $links)
+                    = @{$item}[
+                        Parse::Marpa::Earley_item::LINK_CHOICE,
+                        Parse::Marpa::Earley_item::LINKS,
+                    ];
+                last LEFT_CORNER_CANDIDATE
+                    if $link_choice < 0 or $link_choice > $#$links;
+                $item = $links->[$link_choice]->[1];
+
+            } # LEFT_CORNER_CANDIDATE
+
+            # We have our candidate, now try to iterate it,
+            # exhausting the rule choice if necessary
+            RULE_CHOICE: for (;;) {
+
+                my ($token_choice, $tokens) = @{$item}[
+                    Parse::Marpa::Earley_item::TOKEN_CHOICE,
+                    Parse::Marpa::Earley_item::TOKENS,
+                ];
+
+                # If we can increment the token_choice, this is our
+                # candidate
+                if ($token_choice < $#$tokens) {
+                    my ($predecessor, $value) = @{$tokens->[++$token_choice]};
+                    @{$item}[
+                        Parse::Marpa::Earley_item::TOKEN_CHOICE,
+                        Parse::Marpa::Earley_item::VALUE,
+                        Parse::Marpa::Earley_item::PREDECESSOR,
+                    ] = (
+                        $token_choice,
+                        \$value,
+                        $predecessor,
+                    );
+                    weaken($predecessor->[Parse::Marpa::Earley_item::SUCCESSOR] = $item);
+                    last ITERATION_CANDIDATE;
+                }
+
+                my ($link_choice, $links, $symbol) = @{$item}[
+                    Parse::Marpa::Earley_item::LINK_CHOICE,
+                    Parse::Marpa::Earley_item::LINKS,
+                    Parse::Marpa::Earley_item::SYMBOL,
+                ];
+
+                # If we can increment the link_choice, this is our
+                # candidate
+                if ($link_choice < $#$links) {
+                    my ($predecessor, $cause) = @{$links->[++$link_choice]};
+                    my $value = initialize_children($cause, $symbol);
+                    @{$item}[
+                        Parse::Marpa::Earley_item::LINK_CHOICE,
+                        Parse::Marpa::Earley_item::VALUE,
+                        Parse::Marpa::Earley_item::PREDECESSOR,
+                    ] = (
+                        $link_choice,
+                        \$value,
+                        $predecessor,
+                    );
+                    weaken($predecessor->[Parse::Marpa::Earley_item::SUCCESSOR] = $item);
+                    last ITERATION_CANDIDATE;
+                }
+
+                # Iterate rule, if possible
+                my ($rule_choice, $rules) = @{$item}[
+                    Parse::Marpa::Earley_item::RULE_CHOICE,
+                    Parse::Marpa::Earley_item::RULES,
+                ];
+                last RULE_CHOICE if $rule_choice >= $#$rules;
+                @{$item}[
+                    Parse::Marpa::Earley_item::RULE_CHOICE,
+                    Parse::Marpa::Earley_item::LINK_CHOICE,
+                    Parse::Marpa::Earley_item::TOKEN_CHOICE,
+                ] = (
+                     ++$rule_choice, -1, -1,
+                );
+
+            } # RULE_CHOICE
+
+            # This candidate did not work out.  Set up to look
+            # for another.
+
+            my ($successor, $effect) = @{$item}[
+                Parse::Marpa::Earley_item::SUCCESSOR,
+                Parse::Marpa::Earley_item::EFFECT,
             ];
-        last ITEM unless defined $link_choice;
-        $item = $links->[$link_choice]->[1];
-    }
+
+            $find_left_corner = 0;
+
+            if (defined $successor) {
+                $item = $successor;
+                $find_left_corner = 1;
+                next ITERATION_CANDIDATE;
+            }
+
+            # If no more candidates, we are finished with all the
+            # evaluations for this parse
+            return unless defined $effect;
+
+            $item = $effect;
+
+        } # ITERATION_CANDIDATE
+
+        # We've found and iterated an item.
+        # Now try to evaluate it.
+        initial($parse, $end_set);
+
+        # Rejected evaluations are not yet implemented.
+        # Therefore this evaluation pass succeeded.
+        return 1;
+
+    } # EVALUATION
+
+    return;
+
 }
 
 sub show_value {

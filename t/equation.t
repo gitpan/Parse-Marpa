@@ -102,12 +102,12 @@ END_SDFA
 
 # print $parse->show_status(1);
 
-# TODO: {
-    # local $TODO = "Not yet debugged";
-    $parse->initial();
-    # print $parse->show_status(1);
+$parse->initial();
+PARSE: for (;;) {
     is($parse->value(), "(((2-0)*3)+1)==7", "Ambiguous Equation Value");
-# }
+    last PARSE;
+    # last PARSE unless $parse->next();
+}
 
 # Local Variables:
 #   mode: cperl
