@@ -5,7 +5,7 @@
 use strict;
 use warnings;
 
-use Test::More tests => 4;
+use Test::More tests => 8;
 
 BEGIN {
 	use_ok( 'Parse::Marpa' );
@@ -104,11 +104,25 @@ END_SDFA
 
 # $Parse::Marpa::This::trace = 1;
 
+my @expected = (
+    '(((2-0)*3)+1)==7',
+    '((2-(0*3))+1)==3',
+    '((2-0)*(3+1))==8',
+    '(2-((0*3)+1))==1',
+    '(2-(0*(3+1)))==2',
+);
 $parse->initial();
+
+# Set max at 10 just in case there's an infinite loop.
+# This is for debugging, after all
 PARSE: for my $i (0 .. 10) {
-    is($parse->value(), "(((2-0)*3)+1)==7", "Ambiguous Equation Value");
-    # last PARSE unless $parse->next();
-    last PARSE;
+    my $value = $parse->value();
+    if ($i > $#expected) {
+       fail("Ambiguous equation has extra value: $value\n");
+    } else {
+        is($value, $expected[$i], "Ambiguous Equation Value $i");
+    }
+    last PARSE unless $parse->next();
 }
 
 # Local Variables:

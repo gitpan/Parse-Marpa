@@ -26,7 +26,7 @@ use Carp;
 use Scalar::Util qw(weaken);
 use Data::Dumper;
 
-our $VERSION = '0.001_032';
+our $VERSION = '0.001_033';
 $VERSION = eval $VERSION;
 
 =begin Apology:
@@ -2214,6 +2214,12 @@ sub show_earley_item {
             . brief_earley_item( $link->[0], $ii ) . "; c="
             . brief_earley_item( $link->[1], $ii ) . "]";
     }
+    if (defined $rules) {
+        $text .= "\n" . scalar @$rules . " rules: ";
+        for my $rule (@$rules) {
+            $text .= " [ " . Parse::Marpa::brief_rule($rule) . " ]";
+        }
+    }
     my @choices;
     push(@choices, "rule choice: $rule_choice") if defined $rule_choice;
     push(@choices, "link choice: $link_choice") if defined $link_choice;
@@ -2533,7 +2539,12 @@ sub initial {
         Parse::Marpa::Parse::LAST_SET,
     ] = ( $current_item, $end_set );
 
-    my  $lhs = $start_rule->[ Parse::Marpa::Rule::LHS ];
+    # TODO: Need rhs?
+    my  ($lhs, $rhs)
+        = @$start_rule[
+            Parse::Marpa::Rule::LHS,
+            Parse::Marpa::Rule::RHS,
+        ];
     my (
         $nulling, $null_value
     ) = @{$lhs}[
@@ -2555,7 +2566,7 @@ sub initial {
              $lhs,
          );
          if ($trace) {
-             print STDERR "Nulling start item, setting value of ",
+             print STDERR "Setting nulling start value of ",
              $lhs->[ Parse::Marpa::Symbol::NAME ],
              " to ", Dumper($null_value);
          }
@@ -2576,7 +2587,7 @@ sub initial {
          $lhs,
     );
      if ($trace) {
-         print STDERR "Start rule, setting value of ",
+         print STDERR "Setting start value of ",
          $lhs->[ Parse::Marpa::Symbol::NAME ],
          " to ", Dumper($value);
      }
@@ -2614,13 +2625,17 @@ sub initialize_children {
            next CHILD;
         }
 
-        my ($tokens, $links, $previous_value, $previous_predecessor)
-            = @{$item}[
-                Parse::Marpa::Earley_item::TOKENS,
-                Parse::Marpa::Earley_item::LINKS,
-                Parse::Marpa::Earley_item::VALUE,
-                Parse::Marpa::Earley_item::PREDECESSOR,
-            ];
+        my (
+            $tokens, $links,
+            $previous_value, $previous_predecessor,
+            $item_set,
+        ) = @{$item}[
+            Parse::Marpa::Earley_item::TOKENS,
+            Parse::Marpa::Earley_item::LINKS,
+            Parse::Marpa::Earley_item::VALUE,
+            Parse::Marpa::Earley_item::PREDECESSOR,
+            Parse::Marpa::Earley_item::SET,
+        ];
 
         if (defined $previous_value) {
             $v[ $child_number ] = $$previous_value;
@@ -2650,9 +2665,13 @@ sub initialize_children {
                 $child_symbol,
             );
             if ($trace) {
+                 my $predecessor_set = $predecessor->[
+                    Parse::Marpa::Earley_item::SET,
+                 ];
                  print STDERR
-                 "Token item, setting value of ",
+                 "Initializing token value of ",
                  $child_symbol->[ Parse::Marpa::Symbol::NAME ],
+                 " at ", $predecessor_set, "-", $item_set,
                  " to ", Dumper($value);
             }
             $v[ $child_number ] = $value;
@@ -2682,9 +2701,13 @@ sub initialize_children {
             $child_symbol,
         );
         if ($trace) {
+             my $predecessor_set = $predecessor->[
+                Parse::Marpa::Earley_item::SET,
+             ];
              print STDERR
-             "Caused item, setting value of ",
+             "Initializing caused value of ",
              $child_symbol->[ Parse::Marpa::Symbol::NAME ],
+             " at ", $predecessor_set, "-", $item_set,
              " to ", Dumper($value);
         }
         $v[ $child_number ] = $value;
@@ -2855,19 +2878,26 @@ sub next {
         # First, climb the tree, recalculating
         # all the successor and effect values.
 
-        my $reason = "Iteration";
+        my $reason = "Iterating";
 
         STEP_UP_TREE: for (;;) {
 
             RESET_VALUES: {
 
-                my ($token_choice, $tokens, $pointer) = @{$item}[
+                my (
+                    $token_choice, $tokens,
+                    $link_choice, $links,
+                    $pointer, $item_set
+                ) = @{$item}[
                     Parse::Marpa::Earley_item::TOKEN_CHOICE,
                     Parse::Marpa::Earley_item::TOKENS,
+                    Parse::Marpa::Earley_item::LINK_CHOICE,
+                    Parse::Marpa::Earley_item::LINKS,
                     Parse::Marpa::Earley_item::POINTER,
+                    Parse::Marpa::Earley_item::SET,
                 ];
 
-                if ($token_choice < $#$tokens) {
+                if ($token_choice >= 0 and $token_choice <= $#$tokens) {
                     my ($predecessor, $value) = @{$tokens->[$token_choice]};
                     @{$item}[
                         Parse::Marpa::Earley_item::VALUE,
@@ -2877,26 +2907,23 @@ sub next {
                         $predecessor,
                     );
                     if ($trace) {
+                         my $predecessor_set = $predecessor->[
+                            Parse::Marpa::Earley_item::SET,
+                         ];
                          print STDERR
-                         $reason, ", resetting token value for ",
-                         $pointer->[ Parse::Marpa::Symbol::NAME ],
-                         " to ", Dumper($value);
+                             $reason, " token value for ",
+                             $pointer->[ Parse::Marpa::Symbol::NAME ],
+                             " at ", $predecessor_set, "-", $item_set,
+                             " to ", Dumper($value);
                     }
                     weaken($predecessor->[Parse::Marpa::Earley_item::SUCCESSOR] = $item);
                     last RESET_VALUES;
                 }
 
-                my ($link_choice, $links, $lhs) = @{$item}[
-                    Parse::Marpa::Earley_item::LINK_CHOICE,
-                    Parse::Marpa::Earley_item::LINKS,
-                    Parse::Marpa::Earley_item::LHS,
-                ];
-
-                # If we can increment the link_choice, this is our
-                # candidate
-                if ($link_choice < $#$links) {
+                if ($link_choice >= 0 and $link_choice <= $#$links) {
                     my ($predecessor, $cause) = @{$links->[$link_choice]};
-                    my $value = initialize_children($cause, $lhs);
+                    weaken($cause->[ Parse::Marpa::Earley_item::EFFECT ] = $item);
+                    my $value = initialize_children($cause, $pointer);
                     @{$item}[
                         Parse::Marpa::Earley_item::VALUE,
                         Parse::Marpa::Earley_item::PREDECESSOR,
@@ -2905,9 +2932,13 @@ sub next {
                         $predecessor,
                     );
                     if ($trace) {
+                         my $predecessor_set = $predecessor->[
+                            Parse::Marpa::Earley_item::SET,
+                         ];
                          print STDERR
-                         $reason , ", resetting cause value for ",
+                         $reason , " cause value for ",
                          $pointer->[ Parse::Marpa::Symbol::NAME ],
+                         " at ", $predecessor_set, "-", $item_set,
                          " to ", Dumper($value);
                     }
                     weaken($predecessor->[Parse::Marpa::Earley_item::SUCCESSOR] = $item);
@@ -2916,7 +2947,7 @@ sub next {
 
             } # RESET_VALUES
 
-            $reason = "Parent";
+            $reason = "Recalculating Parent";
 
             my ($successor, $effect) = @{$item}[
                 Parse::Marpa::Earley_item::SUCCESSOR,
