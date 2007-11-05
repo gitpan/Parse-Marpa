@@ -1,4 +1,3 @@
-#!perl
 
 # the example grammar in Aycock/Horspool "Practical Earley Parsing",
 # _The Computer Journal_, Vol. 45, No. 6, pp. 620-630,
@@ -23,10 +22,10 @@ my $g = new Parse::Marpa(
         [ "E" ],
     ],
     default_closure => sub {
-         my $v_count = scalar @Parse::Marpa::v;
+         my $v_count = scalar @Parse::Marpa::This::v;
          return "" if $v_count <= 0;
-         return $Parse::Marpa::v[0] if $v_count == 1;
-         "(" . join(";", @Parse::Marpa::v) . ")";
+         return $Parse::Marpa::This::v[0] if $v_count == 1;
+         "(" . join(";", @Parse::Marpa::This::v) . ")";
     },
 );
 
@@ -368,6 +367,8 @@ sub NextPermute(\@)
     @{$vals}[$i,$j]= @{$vals}[$j,$i];
     return 1;
 }
+
+# $Parse::Marpa::This::trace = 1;
 
 # TODO: {
     # local $TODO  = "Not debugged";

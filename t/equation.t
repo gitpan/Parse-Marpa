@@ -23,10 +23,10 @@ my $g = new Parse::Marpa(
     rules => [
 	[ "E", [qw/E Op E/], sub {
             my ($right_string, $right_value)
-                = ($Parse::Marpa::v[2] =~ /^(.*)==(.*)$/);
+                = ($Parse::Marpa::This::v[2] =~ /^(.*)==(.*)$/);
             my ($left_string, $left_value)
-                = ($Parse::Marpa::v[0] =~ /^(.*)==(.*)$/);
-            my $op = $Parse::Marpa::v[1];
+                = ($Parse::Marpa::This::v[0] =~ /^(.*)==(.*)$/);
+            my $op = $Parse::Marpa::This::v[1];
             my $value;
             if ($op eq "+") {
                $value = $left_value + $right_value;
@@ -40,17 +40,17 @@ my $g = new Parse::Marpa(
             "(" . $left_string . $op . $right_string . ")==" . $value;
         } ],
 	[ "E", [qw/Number/], sub {
-           my $v0 = pop @Parse::Marpa::v;
+           my $v0 = pop @Parse::Marpa::This::v;
            $v0 . "==" . $v0;
         } ],
 	[ "Number" => qr/\d+/],
 	[ "Op" => qr/[-+*] /],
     ],
     default_closure => sub {
-         my $v_count = scalar @Parse::Marpa::v;
+         my $v_count = scalar @Parse::Marpa::This::v;
          return "" if $v_count <= 0;
-         return $Parse::Marpa::v[0] if $v_count == 1;
-         "(" . join(";", @Parse::Marpa::v) . ")";
+         return $Parse::Marpa::This::v[0] if $v_count == 1;
+         "(" . join(";", @Parse::Marpa::This::v) . ")";
     },
 );
 
@@ -102,11 +102,13 @@ END_SDFA
 
 # print $parse->show_status(1);
 
+# $Parse::Marpa::This::trace = 1;
+
 $parse->initial();
-PARSE: for (;;) {
+PARSE: for my $i (0 .. 10) {
     is($parse->value(), "(((2-0)*3)+1)==7", "Ambiguous Equation Value");
-    last PARSE;
     # last PARSE unless $parse->next();
+    last PARSE;
 }
 
 # Local Variables:
