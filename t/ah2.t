@@ -312,31 +312,31 @@ is( $parse->show_status(1),
     "Aycock/Horspool Parse Status before parse" );
 
 my $a = $g->get_symbol("a");
-$parse->token([$a, "a", 1]);
+$parse->earleme([$a, "a", 1]);
 
 is( $parse->show_status(1),
     "Current Earley Set: 1\n" .  $sets_at_0,
     "Aycock/Horspool Parse Status at 0" );
 
-$parse->token([$a, "a", 1]);
+$parse->earleme([$a, "a", 1]);
 
 is( $parse->show_status(1),
     "Current Earley Set: 2\n" .  $sets_at_1,
     "Aycock/Horspool Parse Status at 1" );
 
-$parse->token([$a, "a", 1]);
+$parse->earleme([$a, "a", 1]);
 
 is( $parse->show_status(1),
     "Current Earley Set: 3\n" .  $sets_at_2,
     "Aycock/Horspool Parse Status at 2" );
 
-$parse->token([$a, "a", 1]);
+$parse->earleme([$a, "a", 1]);
 
 is( $parse->show_status(1),
     "Current Earley Set: 4\n" .  $sets_at_3,
     "Aycock/Horspool Parse Status at 3" );
 
-$parse->token();
+$parse->earleme();
 
 is( $parse->show_status(1),
     "Current Earley Set: 5\n" .  $sets_at_4,

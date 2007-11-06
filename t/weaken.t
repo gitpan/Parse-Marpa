@@ -26,11 +26,11 @@ my $test = sub {
     );
     my $a = $g->get_symbol("a");
     my $parse = new Parse::Marpa::Parse($g);
-    $parse->token([$a, "a", 1]);
-    $parse->token([$a, "a", 1]);
-    $parse->token([$a, "a", 1]);
-    $parse->token([$a, "a", 1]);
-    $parse->token();
+    $parse->earleme([$a, "a", 1]);
+    $parse->earleme([$a, "a", 1]);
+    $parse->earleme([$a, "a", 1]);
+    $parse->earleme([$a, "a", 1]);
+    $parse->earleme();
     $parse->initial();
     [ $g, $parse ];
 };

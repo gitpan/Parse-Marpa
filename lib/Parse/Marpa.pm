@@ -26,7 +26,7 @@ use Carp;
 use Scalar::Util qw(weaken);
 use Data::Dumper;
 
-our $VERSION = '0.001_033';
+our $VERSION = '0.001_035';
 $VERSION = eval $VERSION;
 
 =begin Apology:
@@ -2090,6 +2090,8 @@ package Parse::Marpa::Parse;
 
 use Scalar::Util qw(weaken);
 use Data::Dumper;
+use Carp;
+our $trace;
 
 # Elements of the PARSE structure
 use constant GRAMMAR     => 0;    # the grammar used
@@ -2100,6 +2102,7 @@ use constant EARLEY_HASH => 3;    # the array of hashes used
 use constant LAST_SET    => 4;    # the set being taken as the end of
                                   # parse for an evaluation
 use constant START_ITEM  => 5;    # the start item for the current evaluation
+use constant TRACE       => 6;    # trace level
 
 # implementation dependent constant, used below in unpack
 use constant J_LENGTH => ( length pack( "J", 0, 0 ) );
@@ -2182,7 +2185,6 @@ sub brief_earley_item {
 sub show_earley_item {
     my $item = shift;
     my $ii = shift;
-    my $text = brief_earley_item($item, $ii);
     my ( $tokens, $links,
         $rules, $rule_choice, $link_choice, $token_choice,
         $value,
@@ -2202,44 +2204,49 @@ sub show_earley_item {
         Parse::Marpa::Earley_item::SUCCESSOR,
         Parse::Marpa::Earley_item::EFFECT,
     ];
-    for my $token (@$tokens) {
-        $text
-            .= " [p="
-            . brief_earley_item( $token->[0], $ii ) . "; t="
-            . $token->[1] . "]";
-    }
-    for my $link (@$links) {
-        $text
-            .= " [p="
-            . brief_earley_item( $link->[0], $ii ) . "; c="
-            . brief_earley_item( $link->[1], $ii ) . "]";
-    }
-    if (defined $rules) {
-        $text .= "\n" . scalar @$rules . " rules: ";
-        for my $rule (@$rules) {
-            $text .= " [ " . Parse::Marpa::brief_rule($rule) . " ]";
-        }
-    }
-    my @choices;
-    push(@choices, "rule choice: $rule_choice") if defined $rule_choice;
-    push(@choices, "link choice: $link_choice") if defined $link_choice;
-    push(@choices, "token choice: $token_choice") if defined $token_choice;
-    $text .= "\n  " . join("; ", @choices) if @choices;
+
+    my $text = brief_earley_item($item, $ii);
+    $text .= "  predecessor: " . brief_earley_item( $predecessor )
+        if defined $predecessor;
+    $text .= "  successor: " . brief_earley_item( $successor )
+        if defined $successor;
+    $text .= "  effect: " . brief_earley_item( $effect )
+        if defined $effect;
     my @symbols;
     push(@symbols, "pointer: " . $pointer->[ Parse::Marpa::Symbol::NAME ])
         if defined $pointer;
     push(@symbols, "lhs: " . $lhs->[ Parse::Marpa::Symbol::NAME ])
         if defined $lhs;
     $text .= "\n  " . join("; ", @symbols) if @symbols;
-    my @item_pointers;
-    push(@item_pointers, "predecessor: " . brief_earley_item( $predecessor ))
-        if defined $predecessor;
-    push(@item_pointers, "successor: " . brief_earley_item( $successor ))
-        if defined $successor;
-    push(@item_pointers, "effect: " . brief_earley_item( $effect ))
-        if defined $effect;
-    $text .= "\n  " . join("; ", @item_pointers) if @item_pointers;
     $text .= "\n  value: " . show_value($value, $ii) if defined $value;
+    if (defined $token_choice) {
+        $text .= "\n  token choice " . $token_choice;
+    }
+    if (defined $tokens) {
+        for my $token (@$tokens) {
+            $text .= " [p="
+                . brief_earley_item( $token->[0], $ii ) . "; t="
+                . $token->[1] . "]";
+        }
+    }
+    if (defined $link_choice) {
+        $text .= "\n  link choice " . $link_choice;
+    }
+    if (defined $links) {
+        for my $link (@$links) {
+            $text .= " [p="
+            . brief_earley_item( $link->[0], $ii ) . "; c="
+            . brief_earley_item( $link->[1], $ii ) . "]";
+        }
+    }
+    if (defined $rule_choice) {
+        $text .= "\n  rule choice " . $rule_choice;
+    }
+    if (defined $rules) {
+        for my $rule (@$rules) {
+            $text .= " [ " . Parse::Marpa::brief_rule($rule) . " ]";
+        }
+    }
     $text;
 }
 
@@ -2308,7 +2315,7 @@ earlemes.
 # Given a parse object and a list of alternative tokens starting at
 # the current earleme, compute the Earley set for that earleme
 
-sub token {
+sub earleme {
     my $parse = shift;
 
     my ( $earley_set_list, $earley_hash_list, $grammar, $current_set ) =
@@ -2355,9 +2362,10 @@ sub token {
             # nulling symbols, and internal symbols
             # (including the start symbols) are never terminals
             unless ( $token->[ Parse::Marpa::Symbol::TERMINAL ] ) {
-                croack(   "Non-terminal "
-                        . $token->[Parse::Marpa::Symbol::NAME]
-                        . " supplies as token");
+                my $name = $token->[Parse::Marpa::Symbol::NAME];
+                croak(   "Non-terminal "
+                        . (defined $name ? "$name " : "")
+                        . "supplied as token");
             }
 
             # compute goto(kernel_state, token_name)
@@ -2485,6 +2493,94 @@ sub token {
     @{$parse}[CURRENT_SET]++;
 }
 
+# set trace level;
+sub trace {
+    my $parse = shift;
+    my $trace_level = shift;
+    $parse->[Parse::Marpa::Parse::TRACE] = $trace_level;
+}
+
+sub show {
+    my $parse    = shift;
+    my $text = "";
+
+    croak("No parse supplied") unless defined $parse;
+
+    my (
+        $start_item, $end_set
+    ) = @{$parse}[
+        Parse::Marpa::Parse::START_ITEM,
+        Parse::Marpa::Parse::LAST_SET,
+    ];
+
+    local($Parse::Marpa::This::parse) = $parse;
+    local($Data::Dumper::Terse) = 1;
+
+    my $value = $start_item->[ Parse::Marpa::Earley_item::VALUE ];
+    croak("Parse not evaluated") unless defined $value;
+
+    my ( $rules, $rule_choice)
+        = @{$start_item}[
+            Parse::Marpa::Earley_item::RULES,
+            Parse::Marpa::Earley_item::RULE_CHOICE,
+        ];
+ 
+    $text .= show_derivation($start_item);
+
+}
+
+sub show_derivation {
+    my $item = shift;
+    my $text = "";
+
+    RHS_SYMBOL: for (;;) {
+
+        my $data = 0;
+
+        my (
+            $rules, $rule_choice,
+            $links, $link_choice,
+            $tokens, $token_choice,
+            $pointer, $value,
+        ) = @{$item}[
+            Parse::Marpa::Earley_item::RULES, Parse::Marpa::Earley_item::RULE_CHOICE,
+            Parse::Marpa::Earley_item::LINKS, Parse::Marpa::Earley_item::LINK_CHOICE,
+            Parse::Marpa::Earley_item::TOKENS, Parse::Marpa::Earley_item::TOKEN_CHOICE,
+            Parse::Marpa::Earley_item::POINTER, Parse::Marpa::Earley_item::VALUE,
+        ];
+
+        last RHS_SYMBOL unless defined $pointer;
+        my $symbol_name = $pointer->[ Parse::Marpa::Symbol::NAME ];
+
+        if ($rule_choice >= 0 and $rule_choice <= $#$rules) {
+            my $rule = $rules->[$rule_choice];
+            $text .= Parse::Marpa::brief_rule($rule) . "\n";
+            $data = 1;
+        }
+
+        if ($token_choice >= 0 and $token_choice <= $#$tokens) {
+            my ($predecessor, $token) = @{$tokens->[$token_choice]};
+            $text .= "$symbol_name = " . Dumper($token);
+            $item = $predecessor;
+            next RHS_SYMBOL;
+        }
+
+        $text .= "No data for " . brief_earley_item($item) . "\n"
+             unless $data;
+
+        if ($link_choice >= 0 and $link_choice <= $#$links) {
+            my ($predecessor, $cause) = @{$links->[$link_choice]};
+            $text .= show_derivation($cause);
+            $item = $predecessor;
+        }
+
+
+    }
+
+    $text;
+
+}
+
 sub initial {
     my $parse    = shift;
     my $end_set  = shift;
@@ -2492,22 +2588,23 @@ sub initial {
     # TODO: At some point I may need to ensure that evaluation notations are
     # cleared, rather than just assume it.
 
-    croak("No parse supplied") unless defined $parse;
+    # Is the correct way to do this?
     my $parse_class = ref $parse;
     my $right_class = "Parse::Marpa::Parse";
     croak("Don't parse argument is class: $parse_class; should be: $right_class")
         unless $parse_class eq $right_class;
 
     local($Parse::Marpa::This::parse) = $parse;
-    my ( $grammar, $current_set, $earley_sets ) = @{$parse}[
+    my ( $grammar, $current_set, $earley_sets, $trace_level ) = @{$parse}[
         Parse::Marpa::Parse::GRAMMAR,
         Parse::Marpa::Parse::CURRENT_SET,
-        Parse::Marpa::Parse::EARLEY_SETS
+        Parse::Marpa::Parse::EARLEY_SETS,
+        Parse::Marpa::Parse::TRACE,
     ];
     local($Parse::Marpa::This::grammar) = $grammar;
+    local($trace) = $trace_level;
+    local($Data::Dumper::Terse) = 1 if $trace;
 
-    # variables for the loop over the target earley set,
-    # and to be set in it.
     unless (defined $end_set) {
         $end_set = $current_set - 1;
         if ($end_set < 0) {
@@ -2562,11 +2659,12 @@ sub initial {
              Parse::Marpa::Earley_item::LHS,
          ] = (
              \$null_value,
-             -1, -1, -1, [],
+             -1, -1, 0, [ $start_rule ],
              $lhs,
          );
          if ($trace) {
              print STDERR "Setting nulling start value of ",
+             brief_earley_item($current_item), ", ",
              $lhs->[ Parse::Marpa::Symbol::NAME ],
              " to ", Dumper($null_value);
          }
@@ -2583,11 +2681,12 @@ sub initial {
         Parse::Marpa::Earley_item::LHS,
     ] = (
         \$value,
-         0, 0, 0, [],
+         0, 0, 0, [ $start_rule ],
          $lhs,
     );
      if ($trace) {
          print STDERR "Setting start value of ",
+         brief_earley_item($current_item), ", ",
          $lhs->[ Parse::Marpa::Symbol::NAME ],
          " to ", Dumper($value);
      }
@@ -2670,6 +2769,7 @@ sub initialize_children {
                  ];
                  print STDERR
                  "Initializing token value of ",
+                 brief_earley_item($item), ", ",
                  $child_symbol->[ Parse::Marpa::Symbol::NAME ],
                  " at ", $predecessor_set, "-", $item_set,
                  " to ", Dumper($value);
@@ -2706,6 +2806,7 @@ sub initialize_children {
              ];
              print STDERR
              "Initializing caused value of ",
+             brief_earley_item($item), ", ",
              $child_symbol->[ Parse::Marpa::Symbol::NAME ],
              " at ", $predecessor_set, "-", $item_set,
              " to ", Dumper($value);
@@ -2740,13 +2841,16 @@ sub next {
         unless $parse_class eq $right_class;
 
     local($Parse::Marpa::This::parse) = $parse;
-    my ( $grammar, $start_item, $end_set )
+    my ( $grammar, $start_item, $end_set, $trace_level )
         = @{$parse}[
             Parse::Marpa::Parse::GRAMMAR,
             Parse::Marpa::Parse::START_ITEM,
             Parse::Marpa::Parse::LAST_SET,
+            Parse::Marpa::Parse::TRACE,
         ];
     local($Parse::Marpa::This::grammar) = $grammar;
+    local($trace) = $trace_level;
+    local($Data::Dumper::Terse) = 1 if $trace;
 
     # find the "bottom left corner item", by following predecessors,
     # and causes when there is no predecessor
@@ -2786,6 +2890,10 @@ sub next {
                 last LEFT_CORNER_CANDIDATE
                     if $link_choice < 0 or $link_choice > $#$links;
                 $item = $links->[$link_choice]->[1];
+                if ($trace) {
+                     print STDERR
+                         "Seeking left corner at ", brief_earley_item($item), "\n";
+                }
 
             } # LEFT_CORNER_CANDIDATE
 
@@ -2832,6 +2940,14 @@ sub next {
                      ++$rule_choice, -1, -1,
                 );
 
+                if ($trace) {
+                     print STDERR
+                         "Incremented rule choice for ",
+                         brief_earley_item($item), ", ",
+                         Parse::Marpa::Parse::brief_earley_item($item),
+                         " to ", $rule_choice, "\n";
+                }
+
             } # RULE_CHOICE
 
             # This candidate could not be iterated.  Set up to look
@@ -2848,6 +2964,10 @@ sub next {
 
             if (defined $successor) {
                 $item = $successor;
+                if ($trace) {
+                     print STDERR
+                         "Trying to iterate successor ", brief_earley_item($item), "\n";
+                }
 
                 # Did the successor have a cause?  If so iterate from
                 # it or the "left corner" below it
@@ -2856,7 +2976,7 @@ sub next {
                         Parse::Marpa::Earley_item::LINK_CHOICE,
                         Parse::Marpa::Earley_item::LINKS,
                     ];
-                if ($link_choice > 0 and $link_choice <= $#$links) {
+                if ($link_choice >= 0 and $link_choice <= $#$links) {
                     $item->[ Parse::Marpa::Earley_item::VALUE ] = undef;
                     $item = $links->[$link_choice]->[1];
                     $find_left_corner = 1;
@@ -2870,6 +2990,10 @@ sub next {
             return unless defined $effect;
 
             $item = $effect;
+            if ($trace) {
+                 print STDERR
+                     "Trying to iterate effect ", brief_earley_item($item), "\n";
+            }
 
         } # ITERATION_CANDIDATE
 
@@ -2911,10 +3035,12 @@ sub next {
                             Parse::Marpa::Earley_item::SET,
                          ];
                          print STDERR
-                             $reason, " token value for ",
+                             $reason, " token choice for ",
+                             brief_earley_item($item),
+                             " to ", $token_choice, ", ",
                              $pointer->[ Parse::Marpa::Symbol::NAME ],
                              " at ", $predecessor_set, "-", $item_set,
-                             " to ", Dumper($value);
+                             " = ", Dumper($value);
                     }
                     weaken($predecessor->[Parse::Marpa::Earley_item::SUCCESSOR] = $item);
                     last RESET_VALUES;
@@ -2936,10 +3062,12 @@ sub next {
                             Parse::Marpa::Earley_item::SET,
                          ];
                          print STDERR
-                         $reason , " cause value for ",
+                         $reason , " cause choice for ",
+                         brief_earley_item($item),
+                         " to ", $link_choice, ", ",
                          $pointer->[ Parse::Marpa::Symbol::NAME ],
                          " at ", $predecessor_set, "-", $item_set,
-                         " to ", Dumper($value);
+                         " = ", Dumper($value);
                     }
                     weaken($predecessor->[Parse::Marpa::Earley_item::SUCCESSOR] = $item);
                     last RESET_VALUES;
