@@ -26,7 +26,7 @@ use Carp;
 use Scalar::Util qw(weaken);
 use Data::Dumper;
 
-our $VERSION = '0.001_035';
+our $VERSION = '0.001_036';
 $VERSION = eval $VERSION;
 
 =begin Apology:
@@ -2099,7 +2099,7 @@ use constant CURRENT_SET => 1;    # index of the first incomplete Earley set
 use constant EARLEY_SETS => 2;    # the array of the Earley sets
 use constant EARLEY_HASH => 3;    # the array of hashes used
                                   # to build the Earley sets
-use constant LAST_SET    => 4;    # the set being taken as the end of
+use constant CURRENT_PARSE_SET    => 4;    # the set being taken as the end of
                                   # parse for an evaluation
 use constant START_ITEM  => 5;    # the start item for the current evaluation
 use constant TRACE       => 6;    # trace level
@@ -2507,10 +2507,10 @@ sub show {
     croak("No parse supplied") unless defined $parse;
 
     my (
-        $start_item, $end_set
+        $start_item, $current_parse_set
     ) = @{$parse}[
         Parse::Marpa::Parse::START_ITEM,
-        Parse::Marpa::Parse::LAST_SET,
+        Parse::Marpa::Parse::CURRENT_PARSE_SET,
     ];
 
     local($Parse::Marpa::This::parse) = $parse;
@@ -2554,18 +2554,22 @@ sub show_derivation {
 
         if ($rule_choice >= 0 and $rule_choice <= $#$rules) {
             my $rule = $rules->[$rule_choice];
-            $text .= Parse::Marpa::brief_rule($rule) . "\n";
+            $text .= "[ "
+                . brief_earley_item($item) . "] "
+                . Parse::Marpa::brief_rule($rule) . "\n";
             $data = 1;
         }
 
         if ($token_choice >= 0 and $token_choice <= $#$tokens) {
             my ($predecessor, $token) = @{$tokens->[$token_choice]};
-            $text .= "$symbol_name = " . Dumper($token);
+            $text .= "[ "
+                . brief_earley_item($item) . "] "
+                . "$symbol_name = " . Dumper($token);
             $item = $predecessor;
             next RHS_SYMBOL;
         }
 
-        $text .= "No data for " . brief_earley_item($item) . "\n"
+        $text .= brief_earley_item($item) . "No data\n"
              unless $data;
 
         if ($link_choice >= 0 and $link_choice <= $#$links) {
@@ -2583,7 +2587,7 @@ sub show_derivation {
 
 sub initial {
     my $parse    = shift;
-    my $end_set  = shift;
+    my $parse_set_arg  = shift;
 
     # TODO: At some point I may need to ensure that evaluation notations are
     # cleared, rather than just assume it.
@@ -2595,53 +2599,79 @@ sub initial {
         unless $parse_class eq $right_class;
 
     local($Parse::Marpa::This::parse) = $parse;
-    my ( $grammar, $current_set, $earley_sets, $trace_level ) = @{$parse}[
+    my (
+        $grammar,
+        $current_set, $earley_sets, $trace_level,
+        $start_item, $current_parse_set,
+    ) = @{$parse}[
         Parse::Marpa::Parse::GRAMMAR,
         Parse::Marpa::Parse::CURRENT_SET,
         Parse::Marpa::Parse::EARLEY_SETS,
         Parse::Marpa::Parse::TRACE,
+        Parse::Marpa::Parse::START_ITEM,
+        Parse::Marpa::Parse::CURRENT_PARSE_SET,
     ];
     local($Parse::Marpa::This::grammar) = $grammar;
     local($trace) = $trace_level;
     local($Data::Dumper::Terse) = 1 if $trace;
 
-    unless (defined $end_set) {
-        $end_set = $current_set - 1;
-        if ($end_set < 0) {
-            $end_set = 0;
+    if (defined $parse_set_arg and
+        (not defined $current_parse_set
+            or $parse_set_arg != $current_parse_set)
+    ) {
+            $start_item = undef;
+            $current_parse_set = $parse_set_arg;
+    }
+
+    if (not defined $current_parse_set) {
+        $start_item = undef;
+        if ($current_set <= 0) {
+            $current_parse_set = 0;
+        } else {
+            $current_parse_set = $current_set - 1;
         }
     }
 
-    my $earley_set = $earley_sets->[$end_set];
-
-    # The start rule, if not nulling, must be a pure links rule
-    # (no tokens) because I don't allow tokens to be recognized
-    # for the start symbol
-
-    my $current_item;
     my $start_rule;
-
-    # mark start items with LHS?
-    EARLEY_ITEM: for (my $ix = 0; $ix <= $#$earley_set; $ix++) {
-        $current_item = $earley_set->[$ix];
-        my $state = $current_item->[ Parse::Marpa::Earley_item::STATE ];
+    if (defined $start_item) {
+        my $state = $start_item->[ Parse::Marpa::Earley_item::STATE ];
         $start_rule = $state->[Parse::Marpa::SDFA::START_RULE];
-        last EARLEY_ITEM if $start_rule;
+    }
+
+    if (not defined $start_rule) {
+        my $earley_set = $earley_sets->[$current_parse_set];
+
+        # The start rule, if not nulling, must be a pure links rule
+        # (no tokens) because I don't allow tokens to be recognized
+        # for the start symbol
+
+        my $item;
+        my $rule;
+
+        # mark start items with LHS?
+        EARLEY_ITEM: for (my $ix = 0; $ix <= $#$earley_set; $ix++) {
+            $item = $earley_set->[$ix];
+            my $state = $item->[ Parse::Marpa::Earley_item::STATE ];
+            $rule = $state->[Parse::Marpa::SDFA::START_RULE];
+            last EARLEY_ITEM if $rule;
+        }
+
+        $start_item = $item;
+        $start_rule = $rule;
     }
 
     return unless $start_rule;
 
+    my $previous_value = $start_item->[ Parse::Marpa::Earley_item::VALUE ];
+    return 1 if $previous_value;
+
     @{$parse}[
         Parse::Marpa::Parse::START_ITEM,
-        Parse::Marpa::Parse::LAST_SET,
-    ] = ( $current_item, $end_set );
+        Parse::Marpa::Parse::CURRENT_PARSE_SET,
+    ] = ( $start_item, $current_parse_set );
 
     # TODO: Need rhs?
-    my  ($lhs, $rhs)
-        = @$start_rule[
-            Parse::Marpa::Rule::LHS,
-            Parse::Marpa::Rule::RHS,
-        ];
+    my  ($lhs) = @$start_rule[ Parse::Marpa::Rule::LHS ];
     my (
         $nulling, $null_value
     ) = @{$lhs}[
@@ -2650,7 +2680,7 @@ sub initial {
     ];
 
     if ($nulling) {
-         @{$current_item}[
+         @{$start_item}[
              Parse::Marpa::Earley_item::VALUE,
              Parse::Marpa::Earley_item::TOKEN_CHOICE,
              Parse::Marpa::Earley_item::LINK_CHOICE,
@@ -2664,15 +2694,15 @@ sub initial {
          );
          if ($trace) {
              print STDERR "Setting nulling start value of ",
-             brief_earley_item($current_item), ", ",
+             brief_earley_item($start_item), ", ",
              $lhs->[ Parse::Marpa::Symbol::NAME ],
              " to ", Dumper($null_value);
          }
          return;
     }
 
-    my $value = initialize_children($current_item, $lhs);
-    @{$current_item}[
+    my $value = initialize_children($start_item, $lhs);
+    @{$start_item}[
         Parse::Marpa::Earley_item::VALUE,
         Parse::Marpa::Earley_item::TOKEN_CHOICE,
         Parse::Marpa::Earley_item::LINK_CHOICE,
@@ -2686,7 +2716,7 @@ sub initial {
     );
      if ($trace) {
          print STDERR "Setting start value of ",
-         brief_earley_item($current_item), ", ",
+         brief_earley_item($start_item), ", ",
          $lhs->[ Parse::Marpa::Symbol::NAME ],
          " to ", Dumper($value);
      }
@@ -2827,7 +2857,9 @@ sub value {
     my $start_item
         = $parse->[ Parse::Marpa::Parse::START_ITEM ];
     return unless defined $start_item;
-    return ${$start_item->[ Parse::Marpa::Earley_item::VALUE ]};
+    my $value_ref = $start_item->[ Parse::Marpa::Earley_item::VALUE ];
+    croak("No value defined") unless defined $value_ref;
+    return $$value_ref
 }
 
 # TODO Add check to ensure that the argument is an evaluated parse.
@@ -2841,11 +2873,11 @@ sub next {
         unless $parse_class eq $right_class;
 
     local($Parse::Marpa::This::parse) = $parse;
-    my ( $grammar, $start_item, $end_set, $trace_level )
+    my ( $grammar, $start_item, $current_parse_set, $trace_level )
         = @{$parse}[
             Parse::Marpa::Parse::GRAMMAR,
             Parse::Marpa::Parse::START_ITEM,
-            Parse::Marpa::Parse::LAST_SET,
+            Parse::Marpa::Parse::CURRENT_PARSE_SET,
             Parse::Marpa::Parse::TRACE,
         ];
     local($Parse::Marpa::This::grammar) = $grammar;
@@ -3095,7 +3127,7 @@ sub next {
         } # STEP_UP_TREE
 
         # Initialize everything else left unvalued.
-        initial($parse, $end_set);
+        initial($parse, $current_parse_set);
 
         # Rejected evaluations are not yet implemented.
         # Therefore this evaluation pass succeeded.
