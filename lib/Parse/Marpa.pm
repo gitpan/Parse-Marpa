@@ -26,7 +26,7 @@ use Carp;
 use Scalar::Util qw(weaken);
 use Data::Dumper;
 
-our $VERSION = '0.001_036';
+our $VERSION = '0.001_037';
 $VERSION = eval $VERSION;
 
 =begin Apology:
@@ -646,17 +646,24 @@ sub assign_user_symbol {
 }
 
 sub add_user_rule {
-    my $self      = shift;
+    my $grammar      = shift;
     my $lhs_name  = shift;
     my $rhs_names = shift;
     my $closure   = shift;
+    my ( $rule_hash ) = @{$grammar}[ Parse::Marpa::Grammar::RULE_HASH ];
 
-    add_rule(
-        $self,
-        assign_symbol( $self, canonical_name($lhs_name) ),
-        [ map { assign_symbol( $self, canonical_name($_) ); } @$rhs_names ],
-        $closure,
-    );
+    my $lhs_symbol = assign_symbol( $grammar, canonical_name($lhs_name) );
+    my $rhs_symbols = [ map { assign_symbol( $grammar, canonical_name($_) ); } @$rhs_names ];
+
+    # Don't allow the user to duplicate a rule
+    my $rule_key =
+        join( ",", map { $_->[Parse::Marpa::Symbol::ID] } ( $lhs_symbol, @$rhs_symbols ) );
+    croak( "Duplicate rule: " . $lhs_name . " -> " . join(" ", @$rhs_names ) )
+        if exists $rule_hash->{$rule_key};
+
+    $rule_hash->{$rule_key} = 1;
+
+    add_rule( $grammar, $lhs_symbol, $rhs_symbols, $closure);
 }
 
 sub add_rule {
@@ -665,11 +672,7 @@ sub add_rule {
     my $rhs     = shift;
     my $closure = shift;
 
-    my ( $rule, $rules ) =
-        @{$grammar}[
-            Parse::Marpa::Grammar::RULE_HASH,
-            Parse::Marpa::Grammar::RULES,
-        ];
+    my ( $rules ) = @{$grammar}[ Parse::Marpa::Grammar::RULES ];
     my $rule_count = @$rules;
     my $new_rule   = [];
     my $nulling = @$rhs ? undef : 1;
@@ -690,18 +693,11 @@ sub add_rule {
         $closure
         );
 
-    # Don't allow the same rule twice
-    my $rule_key =
-        join( ",", map { $_->[Parse::Marpa::Symbol::ID] } ( $lhs, @$rhs ) );
-    croak( "Duplicate rule:" . show_rule($new_rule) ) if $rule->{$rule_key};
-
     # if this is a nulling rule with a closure,
     # we get the null_value of the lhs from that
     if ($nulling and $closure) {
         $lhs->[ Parse::Marpa::Symbol::NULL_VALUE ] = $closure->();
     }
-
-    $rule->{$rule_key} = $new_rule;
 
     push( @$rules, $new_rule );
     {
@@ -769,24 +765,28 @@ sub set_start {
     my $grammar    = shift;
     my $start_name = shift;
 
-    my $symbol = $grammar->[Parse::Marpa::Grammar::SYMBOL_HASH];
-    my $start  = $symbol->{$start_name};
+    my $symbol_hash = $grammar->[Parse::Marpa::Grammar::SYMBOL_HASH];
+    my $start  = $symbol_hash->{$start_name};
+
     if ( not defined $start ) {
         croak( "start symbol " . $start_name . " not defined\n" );
     }
-    if ( not scalar @{ $start->[Parse::Marpa::Symbol::LHS] } ) {
+
+    my ($lhs, $rhs, $terminal, $input_reachable) = @{$start}[
+        Parse::Marpa::Symbol::LHS,
+        Parse::Marpa::Symbol::RHS,
+        Parse::Marpa::Symbol::TERMINAL,
+        Parse::Marpa::Symbol::INPUT_REACHABLE,
+    ];
+
+    if ( not scalar @$lhs and not $terminal ) {
         croak( "start symbol " . $start_name . " not on LHS of any rule\n" );
     }
 
-    # I think I'll allow the start symbol to be on the RHS of a production.
-    # After all, another start symbol will be created in the CHAF rewrite.
-    # if ( scalar @{ $start->[Parse::Marpa::Symbol::RHS] } ) {
-        # croak( "start symbol " . $start_name . " on RHS\n" );
-    # }
-
-    if ( not $start->[Parse::Marpa::Symbol::INPUT_REACHABLE] ) {
+    if ( not $input_reachable ) {
         croak( "start symbol " . $start_name . " not input reachable\n" );
     }
+
     $grammar->[Parse::Marpa::Grammar::START] = $start;
 }
 
@@ -1713,6 +1713,21 @@ that the semantics of the original grammar are not affected.
 
 =cut
 
+sub chaf_head_only { [ @Parse::Marpa::This::v ]; }
+
+sub chaf_head_and_tail {
+    my $tail = pop @Parse::Marpa::This::v;
+    [ @Parse::Marpa::This::v, @$tail ];
+}
+
+sub chaf_tail_only {
+    my $original
+        = $Parse::Marpa::This::rule->[ Parse::Marpa::Rule::ORIGINAL_RULE ];
+    my $tail = pop @Parse::Marpa::This::v;
+    push(@Parse::Marpa::This::v, @$tail);
+    $original->[ Parse::Marpa::Rule::CLOSURE ]->();
+}
+
 # rewrite as Chomsky-Horspool-Aycock Form
 sub rewrite_as_CHAF {
     my $grammar = shift;
@@ -1966,22 +1981,11 @@ sub rewrite_as_CHAF {
                 my $has_chaf_tail = $next_subp_lhs;
 
                 if ($has_chaf_head and not $has_chaf_tail) {
-                    $chaf_closure = sub {
-                        [ @Parse::Marpa::This::v ];
-                    }
+                    $chaf_closure = \&chaf_head_only;
                 } elsif ($has_chaf_head and $has_chaf_tail) {
-                    $chaf_closure = sub {
-                        my $tail = pop @Parse::Marpa::This::v;
-                        [ @Parse::Marpa::This::v, @$tail ];
-                    }
+                    $chaf_closure = \&chaf_head_and_tail;
                 } elsif ($has_chaf_tail) {
-                    $chaf_closure = sub {
-                        my $original
-                            = $Parse::Marpa::This::rule->[ Parse::Marpa::Rule::ORIGINAL_RULE ];
-                        my $tail = pop @Parse::Marpa::This::v;
-                        push(@Parse::Marpa::This::v, @$tail);
-                        $original->[ Parse::Marpa::Rule::CLOSURE ]->();
-                    }
+                    $chaf_closure = \&chaf_tail_only;
                 }
 
                 my $new_rule = add_rule( $grammar, $subp_lhs, $factor_rhs );
@@ -1991,13 +1995,15 @@ sub rewrite_as_CHAF {
                     Parse::Marpa::Rule::INPUT_REACHABLE,
                     Parse::Marpa::Rule::NULLABLE,
                     Parse::Marpa::Rule::NULLING,
-                    Parse::Marpa::Rule::CLOSURE,
-                    Parse::Marpa::Rule::ORIGINAL_RULE,
+                    # Parse::Marpa::Rule::CLOSURE,
+                    # Parse::Marpa::Rule::ORIGINAL_RULE,
                     ] = (
                         1, 1, 1, 0, 0,
-                        $chaf_closure,
-                        $rule
+                        # $chaf_closure,
+                        # $rule
                     );
+                weaken($new_rule->[ Parse::Marpa::Rule::CLOSURE ] = $chaf_closure);
+                weaken($new_rule->[ Parse::Marpa::Rule::ORIGINAL_RULE ] = $rule);
             }
 
             # no more
@@ -2670,7 +2676,6 @@ sub initial {
         Parse::Marpa::Parse::CURRENT_PARSE_SET,
     ] = ( $start_item, $current_parse_set );
 
-    # TODO: Need rhs?
     my  ($lhs) = @$start_rule[ Parse::Marpa::Rule::LHS ];
     my (
         $nulling, $null_value
@@ -2730,13 +2735,18 @@ sub initialize_children {
     $item->[ Parse::Marpa::Earley_item::LHS ] = $lhs_symbol;
     my $lhs_symbol_id = $lhs_symbol->[ Parse::Marpa::Symbol::ID ];
 
-    my ($state) = @{$item}[
+    my (
+        $state, $child_rule_choice,
+    ) = @{$item}[
         Parse::Marpa::Earley_item::STATE,
+        Parse::Marpa::Earley_item::RULE_CHOICE,
     ];
 
+    if (not defined $child_rule_choice) {
+        $child_rule_choice = 0;
+    }
     my $child_rules = $state->[ Parse::Marpa::SDFA::COMPLETE_RULES ] -> [ $lhs_symbol_id ];
-    my $child_rule_choice = 0;
-    my $rule = $child_rules->[0];
+    my $rule = $child_rules->[ $child_rule_choice ];
     local($Parse::Marpa::This::rule) = $rule;
     my ($rhs) = @{$rule}[ Parse::Marpa::Rule::RHS ];
 
@@ -2931,45 +2941,47 @@ sub next {
 
             # We have our candidate, now try to iterate it,
             # exhausting the rule choice if necessary
-            RULE_CHOICE: for (;;) {
 
-                my (
-                    $token_choice, $tokens,
-                    $link_choice, $links,
-                    $rule_choice, $rules,
-                ) = @{$item}[
-                    Parse::Marpa::Earley_item::TOKEN_CHOICE,
-                    Parse::Marpa::Earley_item::TOKENS,
-                    Parse::Marpa::Earley_item::LINK_CHOICE,
-                    Parse::Marpa::Earley_item::LINKS,
-                    Parse::Marpa::Earley_item::RULE_CHOICE,
-                    Parse::Marpa::Earley_item::RULES,
-                ];
+            # TODO: if this block necessary ?
 
-                # If we can increment the token_choice, this is our
-                # candidate
-                if ($token_choice < $#$tokens) {
-                    $token_choice++;
-                    $item->[ Parse::Marpa::Earley_item::TOKEN_CHOICE ] = $token_choice;
-                    last ITERATION_CANDIDATE;
-                }
+            my (
+                $token_choice, $tokens,
+                $link_choice, $links,
+                $rule_choice, $rules,
+            ) = @{$item}[
+                Parse::Marpa::Earley_item::TOKEN_CHOICE,
+                Parse::Marpa::Earley_item::TOKENS,
+                Parse::Marpa::Earley_item::LINK_CHOICE,
+                Parse::Marpa::Earley_item::LINKS,
+                Parse::Marpa::Earley_item::RULE_CHOICE,
+                Parse::Marpa::Earley_item::RULES,
+            ];
 
-                # If we can increment the link_choice, this is our
-                # candidate
-                if ($link_choice < $#$links) {
-                    $link_choice++;
-                    $item->[ Parse::Marpa::Earley_item::LINK_CHOICE ] = $link_choice;
-                    last ITERATION_CANDIDATE;
-                }
+            # If we can increment the token_choice, this is our
+            # candidate
+            if ($token_choice < $#$tokens) {
+                $token_choice++;
+                $item->[ Parse::Marpa::Earley_item::TOKEN_CHOICE ] = $token_choice;
+                last ITERATION_CANDIDATE;
+            }
 
-                # Iterate rule, if possible
-                last RULE_CHOICE if $rule_choice >= $#$rules;
+            # If we can increment the link_choice, this is our
+            # candidate
+            if ($link_choice < $#$links) {
+                $link_choice++;
+                $item->[ Parse::Marpa::Earley_item::LINK_CHOICE ] = $link_choice;
+                last ITERATION_CANDIDATE;
+            }
+
+            # Iterate rule, if possible
+            if ($rule_choice < $#$rules) {
+
                 @{$item}[
                     Parse::Marpa::Earley_item::RULE_CHOICE,
                     Parse::Marpa::Earley_item::LINK_CHOICE,
                     Parse::Marpa::Earley_item::TOKEN_CHOICE,
                 ] = (
-                     ++$rule_choice, -1, -1,
+                     ++$rule_choice, 0, 0,
                 );
 
                 if ($trace) {
@@ -2980,12 +2992,17 @@ sub next {
                          " to ", $rule_choice, "\n";
                 }
 
-            } # RULE_CHOICE
+                last ITERATION_CANDIDATE;
+
+            }
 
             # This candidate could not be iterated.  Set up to look
             # for another.
 
-            $item->[ Parse::Marpa::Earley_item::VALUE ] = undef;
+            @{$item}[
+                Parse::Marpa::Earley_item::VALUE,
+                Parse::Marpa::Earley_item::RULE_CHOICE,
+            ] = (undef, 0);
 
             my ($successor, $effect) = @{$item}[
                 Parse::Marpa::Earley_item::SUCCESSOR,
@@ -3009,7 +3026,10 @@ sub next {
                         Parse::Marpa::Earley_item::LINKS,
                     ];
                 if ($link_choice >= 0 and $link_choice <= $#$links) {
-                    $item->[ Parse::Marpa::Earley_item::VALUE ] = undef;
+                    @{$item}[
+                        Parse::Marpa::Earley_item::VALUE,
+                        Parse::Marpa::Earley_item::RULE_CHOICE,
+                    ] = (undef, 0);
                     $item = $links->[$link_choice]->[1];
                     $find_left_corner = 1;
                 }
@@ -3043,12 +3063,14 @@ sub next {
                 my (
                     $token_choice, $tokens,
                     $link_choice, $links,
+                    $rule_choice,
                     $pointer, $item_set
                 ) = @{$item}[
                     Parse::Marpa::Earley_item::TOKEN_CHOICE,
                     Parse::Marpa::Earley_item::TOKENS,
                     Parse::Marpa::Earley_item::LINK_CHOICE,
                     Parse::Marpa::Earley_item::LINKS,
+                    Parse::Marpa::Earley_item::RULE_CHOICE,
                     Parse::Marpa::Earley_item::POINTER,
                     Parse::Marpa::Earley_item::SET,
                 ];

@@ -11,7 +11,7 @@ t/ah.t
 t/ah2.t
 t/gj.t
 t/hu.t
-t/pod.t
 t/weaken.t
 t/equation.t
 t/minus.t
+t/pascal.t
