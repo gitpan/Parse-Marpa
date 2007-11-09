@@ -15,17 +15,19 @@ BEGIN {
 my $g = new Parse::Marpa(
     start => "S'",
     rules => [
-        [ 'n' => qr/n/ ],
-        [ '$' => qr/\$/ ],
-        [ ')' => qr/\)/ ],
-        [ '(' => qr/\(/ ],
-        [ '-' => qr/\-/ ],
         [ "S'", [qw/S $/] ],
         [ "S",  [qw/E/] ],
         [ "E",  [qw/E - T/] ],
         [ "E",  [qw/T/] ],
         [ "T",  [qw/n/] ],
         [ "T",  [qw/( E )/] ],
+    ],
+    terminals => [
+        [ 'n' => qr/n/ ],
+        [ '$' => qr/\$/ ],
+        [ ')' => qr/\)/ ],
+        [ '(' => qr/\(/ ],
+        [ '-' => qr/\-/ ],
     ],
     academic => 1,
 );
@@ -40,15 +42,15 @@ is($g->show_rules(), <<'EOS', "Grune/Jacobs Rules");
 EOS
 
 is($g->show_symbols(), <<'EOS', "Grune/Jacobs Symbols");
-0: n, lhs=[], rhs=[4]
-1: $, lhs=[], rhs=[0]
-2: ), lhs=[], rhs=[5]
-3: (, lhs=[], rhs=[5]
+0: S', lhs=[0], rhs=[]
+1: S, lhs=[1], rhs=[0]
+2: $, lhs=[], rhs=[0]
+3: E, lhs=[2 3], rhs=[1 2 5]
 4: -, lhs=[], rhs=[2]
-5: S', lhs=[0], rhs=[]
-6: S, lhs=[1], rhs=[0]
-7: E, lhs=[2 3], rhs=[1 2 5]
-8: T, lhs=[4 5], rhs=[2 3]
+5: T, lhs=[4 5], rhs=[2 3]
+6: n, lhs=[], rhs=[4]
+7: (, lhs=[], rhs=[5]
+8: ), lhs=[], rhs=[5]
 EOS
 
 is($g->show_nullable_symbols(), "", "Grune/Jacobs Nullable Symbols");

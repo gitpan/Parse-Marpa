@@ -15,11 +15,13 @@ BEGIN {
 my $g = new Parse::Marpa(
     start => "S",
     rules => [
-        [ "a" => qr/a/ ],
         [ "S", [qw/A A A A/] ],
         [ "A", [qw/a/] ],
         [ "A", [qw/E/] ],
         [ "E" ],
+    ],
+    terminals => [
+        [ "a" => qr/a/ ],
     ],
     default_closure => sub {
          my $v_count = scalar @Parse::Marpa::This::v;
@@ -48,9 +50,9 @@ is( $g->show_rules(), <<'EOS', "Aycock/Horspool Rules" );
 EOS
 
 is( $g->show_symbols(), <<'EOS', "Aycock/Horspool Symbols" );
-0: a, lhs=[], rhs=[1]
-1: S, lhs=[0 4 5 6], rhs=[13]
-2: A, lhs=[1 2], rhs=[0 4 6 7 9 10 11 12]
+0: S, lhs=[0 4 5 6], rhs=[13]
+1: A, lhs=[1 2], rhs=[0 4 6 7 9 10 11 12]
+2: a, lhs=[], rhs=[1]
 3: E, lhs=[3], rhs=[2] nullable nulling
 4: S[], lhs=[], rhs=[] nullable nulling
 5: A[], lhs=[], rhs=[5 8 11 12] nullable nulling

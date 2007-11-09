@@ -17,11 +17,13 @@ my $test = sub {
     my $g = new Parse::Marpa(
         start => "S",
         rules => [
-            [ "a" => qr/a/ ],
             [ "S", [qw/A A A A/] ],
             [ "A", [qw/a/] ],
             [ "A", [qw/E/] ],
             [ "E" ],
+        ],
+        terminals => [
+            [ "a" => qr/a/ ],
         ],
     );
     my $a = $g->get_symbol("a");

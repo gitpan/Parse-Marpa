@@ -26,7 +26,7 @@ use Carp;
 use Scalar::Util qw(weaken);
 use Data::Dumper;
 
-our $VERSION = '0.001_037';
+our $VERSION = '0.001_038';
 $VERSION = eval $VERSION;
 
 =begin Apology:
@@ -111,6 +111,7 @@ use constant NULL_ALIAS      => 11;   # for a non-nulling symbol,
                                       # if there is one
                                       # otherwise undef
 use constant TERMINAL        => 12;   # terminal?
+use constant COMPILED_REGEX  => 13;   # compiled version of REGEX
 
 package Parse::Marpa::Rule;
 
@@ -147,6 +148,7 @@ use constant COMPLETE_RULES => 5;    # an array of lists of the complete rules,
                                      # indexed by lhs
 use constant START_RULE     => 6;    # the start rule
 use constant TAG            => 7;    # implementation-independant tag
+use constant LEXABLES       => 8;    # lexable symbols for this state
 
 package Parse::Marpa::LR0_item;
 
@@ -172,11 +174,11 @@ use constant DEFAULT_CLOSURE => 11; # closure for rules without one
 
 package Parse::Marpa::This;
 
-our @v;
-our $rule;
-our $trace;
-our $grammar;
-our $parse;
+my @v;
+my $rule;
+my $trace;
+my $grammar;
+my $parse;
 
 package Parse::Marpa;
 
@@ -196,6 +198,7 @@ sub new {
     my %args  = @_;
 
     my $rules;
+    my $terminals;
     my $start;
 
     # Academic grammar?  An "academic grammar" is one, usually from a textbook, which we are using
@@ -206,9 +209,10 @@ sub new {
     my $default_closure = $default_default_closure;
 
     my %arg_logic = (
-        "rules"    => sub { $rules    = $_[0] },
-        "start"    => sub { $start    = $_[0] },
-        "academic" => sub { $academic = $_[0] },
+        "rules"      => sub { $rules     = $_[0] },
+        "terminals"  => sub { $terminals = $_[0] },
+        "start"      => sub { $start     = $_[0] },
+        "academic"   => sub { $academic  = $_[0] },
         "default_null_value" => sub { $default_null_value = $_[0] },
         "default_closure" => sub { $default_closure = $_[0] },
     );
@@ -221,6 +225,7 @@ sub new {
     }
 
     croak("No rules specified")        unless defined $rules;
+    croak("No terminals specified")    unless defined $terminals;
     croak("No start symbol specified") unless defined $start;
 
     my $grammar = [];
@@ -241,6 +246,7 @@ sub new {
     bless( $grammar, $class );
 
     add_user_rules( $grammar, $rules );
+    add_user_terminals( $grammar, $terminals );
     compile( $grammar, $start )
 }
 
@@ -562,26 +568,35 @@ sub add_terminal {
             Parse::Marpa::Grammar::DEFAULT_NULL_VALUE,
         ];
 
-    if ( "" =~ $regex ) {
-        croak("Attempt to add nullable terminal: $name");
+    my $compiled_regex;
+    if ( defined $regex ) {
+        if ( "" =~ $regex ) {
+            croak("Attempt to add nullable terminal: $name");
+        }
+        $compiled_regex = qr/\G($regex)/;
     }
 
     # I allow redefinition of a LHS symbol as a terminal
     # I need to test that this works, or unallow it
-    $name = canonical_name($name);
     my $symbol = $symbol_hash->{$name};
     if ( defined $symbol) {
 
         if ($symbol->[ Parse::Marpa::Symbol::TERMINAL ]) {
-            croak("Attempt to add duplicate terminal: $name");
+            croak("Attempt to add terminal twice: $name");
         }
 
         @{$symbol}[
             Parse::Marpa::Symbol::INPUT_REACHABLE,
             Parse::Marpa::Symbol::NULLING,
             Parse::Marpa::Symbol::REGEX,
+            Parse::Marpa::Symbol::COMPILED_REGEX,
             Parse::Marpa::Symbol::TERMINAL,
-        ] = (1, 0, $regex, 1);
+        ] = (
+            1, 0,
+            $regex,
+            $compiled_regex,
+            1
+        );
 
         return;
     }
@@ -598,12 +613,14 @@ sub add_terminal {
         Parse::Marpa::Symbol::NULLING,
         Parse::Marpa::Symbol::NULL_VALUE,
         Parse::Marpa::Symbol::REGEX,
+        Parse::Marpa::Symbol::COMPILED_REGEX,
         Parse::Marpa::Symbol::TERMINAL,
     ] = (
         $symbol_count, $name, [], [],
         0, 1, 0,
         $default_null_value,
         $regex,
+        $compiled_regex,
         1,
     );
 
@@ -728,20 +745,38 @@ sub add_user_rules {
     my $grammar  = shift;
     my $rules = shift;
 
-    rule: for my $rule (@$rules) {
+    RULE: for my $rule (@$rules) {
         my $arg_count = @$rule;
         if ( $arg_count > 3 or $arg_count < 1) {
             croak("rule must have from 1 to 3 arguments");
         }
         my ($lhs, $rhs, $closure) = @$rule;
         $rhs = [] unless defined $rhs;
-        if ( ref $rhs eq "Regexp" ) {
-            add_terminal( $grammar, $lhs, $rhs );
-            next rule;
-        }
 
         add_user_rule( $grammar, $lhs, $rhs, $closure);
     }
+}
+
+sub add_user_terminals {
+    my $grammar  = shift;
+    my $terminals = shift;
+
+    TERMINAL: for my $terminal (@$terminals) {
+        my $arg_count = @$terminal;
+        if ( $arg_count > 2 or $arg_count < 1) {
+            croak("terminal must have from 1 or 2 arguments");
+        }
+        my ($lhs_name, $regex) = @$terminal;
+        add_user_terminal( $grammar, $lhs_name, $regex);
+    }
+}
+
+sub add_user_terminal {
+    my $grammar = shift;
+    my $lhs_name = shift;
+    my $regex = shift;
+
+    add_terminal( $grammar, canonical_name($lhs_name), $regex );
 }
 
 sub set_closures {
@@ -1559,8 +1594,10 @@ sub assign_SDFA_kernel_state {
 
 sub create_SDFA {
     my $grammar = shift;
-    my ( $symbol, $NFA, $start ) = @{$grammar}[
-        Parse::Marpa::Grammar::SYMBOLS, Parse::Marpa::Grammar::NFA,
+    my ( $symbols, $symbol_hash, $NFA, $start ) = @{$grammar}[
+        Parse::Marpa::Grammar::SYMBOLS,
+        Parse::Marpa::Grammar::SYMBOL_HASH,
+        Parse::Marpa::Grammar::NFA,
         Parse::Marpa::Grammar::START
     ];
     my $SDFA = $grammar->[Parse::Marpa::Grammar::SDFA] = [];
@@ -1612,7 +1649,7 @@ sub create_SDFA {
         my $lhs_list       = [];
         my $complete_rules = [];
         my $start_rule     = undef;
-        $#$lhs_list = @$symbol;
+        $#$lhs_list = @$symbols;
         my $NFA_states = $state->[Parse::Marpa::SDFA::NFA_STATES];
         for my $NFA_state (@$NFA_states) {
             my $item = $NFA_state->[Parse::Marpa::NFA::ITEM];
@@ -1636,7 +1673,13 @@ sub create_SDFA {
         $state->[Parse::Marpa::SDFA::COMPLETE_RULES] = $complete_rules;
         $state->[Parse::Marpa::SDFA::COMPLETE_LHS] =
             [ map { $_->[Parse::Marpa::Symbol::NAME] }
-                @{$symbol}[ grep { $lhs_list->[$_] } ( 0 .. $#$lhs_list ) ] ];
+                @{$symbols}[ grep { $lhs_list->[$_] } ( 0 .. $#$lhs_list ) ] ];
+        $state->[Parse::Marpa::SDFA::LEXABLES] = [
+             grep { defined $_->[ Parse::Marpa::Symbol::REGEX ] }
+             map { $symbol_hash->{$_} }
+             grep { $_ ne "" }
+             keys %{$state->[ Parse::Marpa::SDFA::TRANSITION ]}
+        ]
     }    # STATE
 }
 
@@ -2302,6 +2345,75 @@ sub clear_notations {
 
 # Mutator methods
 
+sub lex {
+    my $parse = shift;
+    my $input_ref = shift;
+    my $length = shift;
+
+    my (
+        $grammar,
+        $earley_sets,
+        $current_set,
+    ) = @{$parse}[
+        Parse::Marpa::Parse::GRAMMAR,
+        Parse::Marpa::Parse::EARLEY_SETS,
+        Parse::Marpa::Parse::CURRENT_SET,
+    ];
+
+    my (
+        $symbols,
+    ) = $grammar->[
+        Parse::Marpa::Grammar::SYMBOLS,
+    ];
+
+    $length = length $$input_ref unless defined $length;
+
+    POS: for (my $pos = 0; $pos < $length; $pos++) {
+        my @lexable_seen;
+        $#lexable_seen = $#$symbols;
+        my @alternatives;
+
+        # NOTE: Often the number of the earley set, and the idea of
+        # lexical position will correspond.  Marpa imposes no such
+        # requirement, however.
+
+        # Get next earley set
+        my $earley_set  = $earley_sets->[$current_set];
+
+        EARLEY_ITEM: for my $earley_item (@$earley_set) {
+            my (
+                $state,
+            ) = @{$earley_item}[
+                Parse::Marpa::Earley_item::STATE,
+            ];
+
+            my ($lexables) = @{$state}[ Parse::Marpa::SDFA::LEXABLES, ];
+
+            LEXABLE: for my $lexable (@$lexables) {
+                my ($id, $regex) = @{$lexable}[
+                    Parse::Marpa::Symbol::ID,
+                    Parse::Marpa::Symbol::COMPILED_REGEX,
+                ];
+                next LEXABLE if $lexable_seen[ $id ]++;
+                pos $$input_ref = $pos;
+                if (my ($match) = ($$input_ref =~ $regex)) {
+                    push(@alternatives, [ $lexable, $match, length($match) ]);
+                } # if match
+            } # LEXABLE
+
+        } # EARLEY_ITEM
+
+        earleme($parse, @alternatives);
+
+    } # POS
+
+} # sub lex
+
+sub lex_end {
+    my $parse = shift;
+    earleme($parse);
+}
+
 =begin Apolegetic:
 
 It's bad style, but this routine is in a tight loop and for efficiency
@@ -2320,7 +2432,6 @@ earlemes.
 
 # Given a parse object and a list of alternative tokens starting at
 # the current earleme, compute the Earley set for that earleme
-
 sub earleme {
     my $parse = shift;
 
@@ -2365,8 +2476,7 @@ sub earleme {
 
             # Make sure it's an allowed terminal symbol.
             # TODO: Must remember to be sure that
-            # nulling symbols, and internal symbols
-            # (including the start symbols) are never terminals
+            # nulling symbols are never terminals
             unless ( $token->[ Parse::Marpa::Symbol::TERMINAL ] ) {
                 my $name = $token->[Parse::Marpa::Symbol::NAME];
                 croak(   "Non-terminal "
@@ -2759,7 +2869,7 @@ sub initialize_children {
 
         if ($nulling)
         {
-            $v[ $child_number ]
+            $Parse::Marpa::This::v[ $child_number ]
                 = $child_symbol->[ Parse::Marpa::Symbol::NULL_VALUE ];
            next CHILD;
         }
@@ -2777,7 +2887,7 @@ sub initialize_children {
         ];
 
         if (defined $previous_value) {
-            $v[ $child_number ] = $$previous_value;
+            $Parse::Marpa::This::v[ $child_number ] = $$previous_value;
             $item = $previous_predecessor;
             next CHILD;
         }
@@ -2814,7 +2924,7 @@ sub initialize_children {
                  " at ", $predecessor_set, "-", $item_set,
                  " to ", Dumper($value);
             }
-            $v[ $child_number ] = $value;
+            $Parse::Marpa::This::v[ $child_number ] = $value;
             weaken($predecessor->[Parse::Marpa::Earley_item::SUCCESSOR] = $item);
             $item = $predecessor;
             next CHILD;
@@ -2851,7 +2961,7 @@ sub initialize_children {
              " at ", $predecessor_set, "-", $item_set,
              " to ", Dumper($value);
         }
-        $v[ $child_number ] = $value;
+        $Parse::Marpa::This::v[ $child_number ] = $value;
         weaken($predecessor->[Parse::Marpa::Earley_item::SUCCESSOR] = $item);
         $item = $predecessor;
 

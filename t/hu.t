@@ -14,14 +14,16 @@ BEGIN {
 my $g = new Parse::Marpa(
     start => "S'",
     rules => [
-        [ "a" => qr/a/ ],
-        [ "b" => qr/b/ ],
-        [ "c" => qr/c/ ],
         [ "S'", [qw/S c/] ],
         [ "S",  [qw/S A/] ],
         [ "S",  [qw/A/] ],
         [ "A",  [qw/a S b/] ],
         [ "A",  [qw/a b/] ],
+    ],
+    terminals => [
+        [ "a" => qr/a/ ],
+        [ "b" => qr/b/ ],
+        [ "c" => qr/c/ ],
     ],
     academic => 1,
 );
@@ -35,12 +37,12 @@ is($g->show_rules(), <<'EOS', "Hopcroft/Ullman Rules");
 EOS
 
 is($g->show_symbols(), <<'EOS', "Hopcroft/Ullman Symbols");
-0: a, lhs=[], rhs=[3 4]
-1: b, lhs=[], rhs=[3 4]
+0: S', lhs=[0], rhs=[]
+1: S, lhs=[1 2], rhs=[0 1 3]
 2: c, lhs=[], rhs=[0]
-3: S', lhs=[0], rhs=[]
-4: S, lhs=[1 2], rhs=[0 1 3]
-5: A, lhs=[3 4], rhs=[1 2]
+3: A, lhs=[3 4], rhs=[1 2]
+4: a, lhs=[], rhs=[3 4]
+5: b, lhs=[], rhs=[3 4]
 EOS
 
 is($g->show_nullable_symbols(), "", "Hopcroft/Ullman Nullable Symbols");

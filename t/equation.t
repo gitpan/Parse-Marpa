@@ -43,6 +43,8 @@ my $g = new Parse::Marpa(
            my $v0 = pop @Parse::Marpa::This::v;
            $v0 . "==" . $v0;
         } ],
+    ],
+    terminals => [
 	[ "Number" => qr/\d+/],
 	[ "Op" => qr/[-+*] /],
     ],

@@ -48,6 +48,8 @@ my $g = new Parse::Marpa(
             my $value = $Parse::Marpa::This::v[0];
             "$value==$value";
         } ],
+    ],
+    terminals => [
 	[ "Number" => qr/\d+/],
 	[ "Minus" => qr/[-] /],
     ],

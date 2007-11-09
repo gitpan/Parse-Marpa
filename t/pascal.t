@@ -18,11 +18,13 @@ sub ah_extended {
     my $g = new Parse::Marpa(
         start => "S",
         rules => [
-            [ "a" => qr/a/ ],
             [ "S", [("A")x$n] ],
             [ "A", [qw/a/] ],
             [ "A", [qw/E/] ],
             [ "E" ],
+        ],
+        terminals => [
+            [ "a" => qr/a/ ],
         ],
         default_closure => sub {
              my $v_count = scalar @Parse::Marpa::This::v;
