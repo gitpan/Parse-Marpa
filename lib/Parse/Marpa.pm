@@ -26,7 +26,7 @@ use Carp;
 use Scalar::Util qw(weaken);
 use Data::Dumper;
 
-our $VERSION = '0.001_038';
+our $VERSION = '0.001_039';
 $VERSION = eval $VERSION;
 
 =begin Apology:
@@ -176,7 +176,11 @@ package Parse::Marpa::This;
 
 my @v;
 my $rule;
-my $trace;
+my $trace_fh;
+my $trace_lex_tries;
+my $trace_lex_matches;
+my $trace_iteration_searches;
+my $trace_iteration_actions;
 my $grammar;
 my $parse;
 
@@ -386,7 +390,6 @@ sub show_rule {
 sub show_rules {
     my $grammar = shift;
     my $rules   = $grammar->[Parse::Marpa::Grammar::RULES];
-    my $ruleno  = -1;
     my $text;
 
     for my $rule (@$rules) {
@@ -2133,14 +2136,11 @@ use constant LHS               => 14;  # LHS symbol
 # Note that (at least right now) items either have a SUCCESSOR
 # or an EFFECT, never both.
 
-use constant FIRST_NOTATION_FIELD   => POINTER;
-
 package Parse::Marpa::Parse;
 
 use Scalar::Util qw(weaken);
 use Data::Dumper;
 use Carp;
-our $trace;
 
 # Elements of the PARSE structure
 use constant GRAMMAR     => 0;    # the grammar used
@@ -2152,6 +2152,14 @@ use constant CURRENT_PARSE_SET    => 4;    # the set being taken as the end of
                                   # parse for an evaluation
 use constant START_ITEM  => 5;    # the start item for the current evaluation
 use constant TRACE       => 6;    # trace level
+use constant FURTHEST_SET             => 7;    # last earley set with a token
+use constant EXHAUSTED                => 8;    # last earley set with a token
+
+use constant TRACE_LEX_TRIES       => 9; 
+use constant TRACE_LEX_MATCHES        => 10; 
+use constant TRACE_ITERATION_SEARCHES => 11; 
+use constant TRACE_ITERATION_CHANGES  => 12; 
+use constant TRACE_FILE_HANDLE        => 13; 
 
 # implementation dependent constant, used below in unpack
 use constant J_LENGTH => ( length pack( "J", 0, 0 ) );
@@ -2206,8 +2214,13 @@ sub new {
         push( @$earley_set, $item );
         $earley_hash->{$key} = $item;
     }
-    @{$parse}[ CURRENT_SET, EARLEY_HASH, GRAMMAR, EARLEY_SETS ] =
-        ( 0, [$earley_hash], $grammar, [$earley_set] );
+    @{$parse}[
+        CURRENT_SET, FURTHEST_SET, EARLEY_HASH, GRAMMAR, EARLEY_SETS,
+        TRACE_FILE_HANDLE,
+    ] = (
+        0, 0, [$earley_hash], $grammar, [$earley_set],
+        *STDERR
+    );
 
     bless $parse, $class;
 }
@@ -2268,30 +2281,24 @@ sub show_earley_item {
         if defined $lhs;
     $text .= "\n  " . join("; ", @symbols) if @symbols;
     $text .= "\n  value: " . show_value($value, $ii) if defined $value;
-    if (defined $token_choice) {
+    if (defined $tokens and @$tokens) {
         $text .= "\n  token choice " . $token_choice;
-    }
-    if (defined $tokens) {
         for my $token (@$tokens) {
             $text .= " [p="
                 . brief_earley_item( $token->[0], $ii ) . "; t="
                 . $token->[1] . "]";
         }
     }
-    if (defined $link_choice) {
+    if (defined $links and @$links) {
         $text .= "\n  link choice " . $link_choice;
-    }
-    if (defined $links) {
         for my $link (@$links) {
             $text .= " [p="
             . brief_earley_item( $link->[0], $ii ) . "; c="
             . brief_earley_item( $link->[1], $ii ) . "]";
         }
     }
-    if (defined $rule_choice) {
+    if (defined $rules and @$rules) {
         $text .= "\n  rule choice " . $rule_choice;
-    }
-    if (defined $rules) {
         for my $rule (@$rules) {
             $text .= " [ " . Parse::Marpa::brief_rule($rule) . " ]";
         }
@@ -2325,26 +2332,43 @@ sub show_earley_set_list {
 sub show_status {
     my $parse = shift;
     my $ii = shift;
-    my ( $current_set, $earley_set_list ) =
-        @{$parse}[ CURRENT_SET, EARLEY_SETS ];
-    my $text = "Current Earley Set: " . $current_set . "\n";
+    my ( $current_set, $furthest_set, $earley_set_list ) =
+        @{$parse}[ CURRENT_SET, FURTHEST_SET, EARLEY_SETS ];
+    my $text
+        = "Current Earley Set: " . $current_set
+        . "; Furthest: " . $furthest_set. "\n";
     $text .= show_earley_set_list($earley_set_list, $ii);
 }
 
 sub clear_notations {
     my $parse = shift;
-    my ( $current_set, $earley_set_list ) =
-        @{$parse}[ CURRENT_SET, EARLEY_SETS ];
+    my ( $earley_set_list ) =
+        @{$parse}[ EARLEY_SETS ];
     for my $earley_set (@$earley_set_list) {
         for my $earley_item (@$earley_set) {
-            splice(@$earley_item,
-                Parse::Marpa::Earley_item::FIRST_NOTATION_FIELD);
+            @{$earley_item}[
+                Parse::Marpa::Earley_item::POINTER,
+                Parse::Marpa::Earley_item::RULES,
+                Parse::Marpa::Earley_item::RULE_CHOICE,
+                Parse::Marpa::Earley_item::LINK_CHOICE,
+                Parse::Marpa::Earley_item::TOKEN_CHOICE,
+                Parse::Marpa::Earley_item::VALUE,
+                Parse::Marpa::Earley_item::PREDECESSOR,
+                Parse::Marpa::Earley_item::SUCCESSOR,
+                Parse::Marpa::Earley_item::EFFECT,
+                Parse::Marpa::Earley_item::LHS,
+            ] = (
+                undef, [],
+                0, 0, 0,
+                undef, undef, undef, undef, undef,
+            );
         }
     }
 }
 
 # Mutator methods
 
+# Returns the position where the parse was exhausted
 sub lex {
     my $parse = shift;
     my $input_ref = shift;
@@ -2354,11 +2378,21 @@ sub lex {
         $grammar,
         $earley_sets,
         $current_set,
+        $trace_lex_tries,
+        $trace_lex_matches,
+        $trace_fh,
     ) = @{$parse}[
         Parse::Marpa::Parse::GRAMMAR,
         Parse::Marpa::Parse::EARLEY_SETS,
         Parse::Marpa::Parse::CURRENT_SET,
+        Parse::Marpa::Parse::TRACE_LEX_TRIES,
+        Parse::Marpa::Parse::TRACE_LEX_MATCHES,
+        Parse::Marpa::Parse::TRACE_FILE_HANDLE,
     ];
+
+    local($Parse::Marpa::This::trace_lex_tries) = $trace_lex_tries;
+    local($Parse::Marpa::This::trace_lex_matches) = $trace_lex_matches;
+    local($Parse::Marpa::This::trace_fh) = $trace_fh;
 
     my (
         $symbols,
@@ -2378,6 +2412,8 @@ sub lex {
         # requirement, however.
 
         # Get next earley set
+
+        my $current_set = $parse->[ Parse::Marpa::Parse::CURRENT_SET ];
         my $earley_set  = $earley_sets->[$current_set];
 
         EARLEY_ITEM: for my $earley_item (@$earley_set) {
@@ -2395,17 +2431,31 @@ sub lex {
                     Parse::Marpa::Symbol::COMPILED_REGEX,
                 ];
                 next LEXABLE if $lexable_seen[ $id ]++;
+                if ($Parse::Marpa::This::trace_lex_tries) {
+                    print $Parse::Marpa::This::trace_fh
+                        "Trying to match ", $lexable->[ Parse::Marpa::Symbol::NAME ], " at $pos\n";
+                }
                 pos $$input_ref = $pos;
                 if (my ($match) = ($$input_ref =~ $regex)) {
                     push(@alternatives, [ $lexable, $match, length($match) ]);
+                    if ($Parse::Marpa::This::trace_lex_matches) {
+                        print $Parse::Marpa::This::trace_fh
+                            "Matched ", $lexable->[ Parse::Marpa::Symbol::NAME ],
+                            " at $pos: ", $match, "\n";
+                    }
                 } # if match
+
             } # LEXABLE
 
         } # EARLEY_ITEM
 
-        earleme($parse, @alternatives);
+        my $active = earleme($parse, @alternatives);
+
+        return $pos unless $active;
 
     } # POS
+
+    return 0;
 
 } # sub lex
 
@@ -2435,8 +2485,13 @@ earlemes.
 sub earleme {
     my $parse = shift;
 
-    my ( $earley_set_list, $earley_hash_list, $grammar, $current_set ) =
-        @{$parse}[ EARLEY_SETS, EARLEY_HASH, GRAMMAR, CURRENT_SET ];
+    my (
+        $earley_set_list, $earley_hash_list, $grammar,
+        $current_set, $furthest_set, $exhausted,
+    ) = @{$parse}[
+        EARLEY_SETS, EARLEY_HASH, GRAMMAR,
+        CURRENT_SET, FURTHEST_SET, EXHAUSTED ];
+    croak("Cannot continue an exhausted parse") if $exhausted;
     my $SDFA = $grammar->[Parse::Marpa::Grammar::SDFA];
 
     my $earley_set  = $earley_set_list->[$current_set];
@@ -2451,7 +2506,12 @@ sub earleme {
         $earley_set_list->[$current_set] = [];
         $earley_hash->[$current_set]     = undef;
         $parse->[CURRENT_SET]++;
-        return;
+        if ($current_set >= $furthest_set) {
+            $parse->[ Parse::Marpa::Parse::EXHAUSTED ]
+                = $exhausted
+                =  1;
+        }
+        return !$exhausted;
     }
 
     EARLEY_ITEM: for ( my $ix = 0; $ix < @$earley_set; $ix++ ) {
@@ -2496,17 +2556,28 @@ sub earleme {
             my $target_earley_hash =
                 ( $earley_hash_list->[$target_ix] ||= {} );
             my $target_earley_set = ( $earley_set_list->[$target_ix] ||= [] );
+            if ($target_earley_set > $furthest_set) {
+                $parse->[ Parse::Marpa::Parse::FURTHEST_SET ]
+                    = $furthest_set
+                    = $target_ix;
+            }
             my $key = pack( "JJ", $kernel_state, $parent );
             my $target_earley_item = $target_earley_hash->{$key};
             unless ( defined $target_earley_item ) {
                 @{$target_earley_item}[
                     Parse::Marpa::Earley_item::STATE,
                     Parse::Marpa::Earley_item::PARENT,
+                    Parse::Marpa::Earley_item::LINK_CHOICE,
                     Parse::Marpa::Earley_item::LINKS,
+                    Parse::Marpa::Earley_item::TOKEN_CHOICE,
                     Parse::Marpa::Earley_item::TOKENS,
                     Parse::Marpa::Earley_item::SET
-                    ]
-                    = ( $kernel_state, $parent, [], [], $target_ix );
+                    ] = (
+                        $kernel_state, $parent,
+                        0, [],
+                        0, [],
+                        $target_ix
+                    );
                 $target_earley_hash->{$key} = $target_earley_item;
                 push( @$target_earley_set, $target_earley_item );
             }
@@ -2525,11 +2596,17 @@ sub earleme {
                 @{$new_earley_item}[
                     Parse::Marpa::Earley_item::STATE,
                     Parse::Marpa::Earley_item::PARENT,
+                    Parse::Marpa::Earley_item::LINK_CHOICE,
                     Parse::Marpa::Earley_item::LINKS,
+                    Parse::Marpa::Earley_item::TOKEN_CHOICE,
                     Parse::Marpa::Earley_item::TOKENS,
                     Parse::Marpa::Earley_item::SET
-                ]
-                    = ( $resetting_state, $target_ix, [], [], $target_ix );
+                ] = (
+                    $resetting_state, $target_ix,
+                    0, [],
+                    0, [],
+                    $target_ix
+                );
                 $target_earley_hash->{$key} = $new_earley_item;
                 push( @$target_earley_set, $new_earley_item );
             }
@@ -2561,11 +2638,17 @@ sub earleme {
                     @{$target_earley_item}[
                         Parse::Marpa::Earley_item::STATE,
                         Parse::Marpa::Earley_item::PARENT,
+                        Parse::Marpa::Earley_item::LINK_CHOICE,
                         Parse::Marpa::Earley_item::LINKS,
+                        Parse::Marpa::Earley_item::TOKEN_CHOICE,
                         Parse::Marpa::Earley_item::TOKENS,
                         Parse::Marpa::Earley_item::SET
-                        ]
-                        = ( $kernel_state, $grandparent, [], [], $current_set );
+                        ] = (
+                            $kernel_state, $grandparent,
+                            0, [],
+                            0, [],
+                            $current_set
+                        );
                     $earley_hash->{$key} = $target_earley_item;
                     push( @$earley_set, $target_earley_item );
                 }
@@ -2585,11 +2668,17 @@ sub earleme {
                     @{$new_earley_item}[
                         Parse::Marpa::Earley_item::STATE,
                         Parse::Marpa::Earley_item::PARENT,
+                        Parse::Marpa::Earley_item::LINK_CHOICE,
                         Parse::Marpa::Earley_item::LINKS,
+                        Parse::Marpa::Earley_item::TOKEN_CHOICE,
                         Parse::Marpa::Earley_item::TOKENS,
                         Parse::Marpa::Earley_item::SET
-                        ]
-                        = ( $resetting_state, $current_set, [], [], $current_set);
+                        ] = (
+                            $resetting_state, $current_set,
+                            0, [],
+                            0, [],
+                            $current_set
+                        );
                     $earley_hash->{$key} = $new_earley_item;
                     push( @$earley_set, $new_earley_item );
                 }
@@ -2598,7 +2687,7 @@ sub earleme {
         }    # COMPLETE_RULE
     }    # EARLEY_ITEM
 
-    # TO DO: Prove that the completion links are UNIQUE
+    # TODO: Prove that the completion links are UNIQUE
 
     $earley_set_list->[$current_set] = $earley_set;
 
@@ -2607,13 +2696,45 @@ sub earleme {
 
     # Increment CURRENT_SET
     @{$parse}[CURRENT_SET]++;
+
+    return 1;
 }
 
-# set trace level;
+sub trace_file_handle {
+    my $parse = shift;
+    my $fh = shift;
+    $parse->[ Parse::Marpa::Parse::TRACE_FILE_HANDLE ] = $fh;
+}
+
 sub trace {
     my $parse = shift;
-    my $trace_level = shift;
-    $parse->[Parse::Marpa::Parse::TRACE] = $trace_level;
+    my %parameter = (
+        "lex (try|tries)?" => sub { $parse->[ Parse::Marpa::Parse::TRACE_LEX_TRIES ] = 1; },
+        "lex match(es)?" => sub { $parse->[ Parse::Marpa::Parse::TRACE_LEX_MATCHES ] = 1; },
+        "lex(es|ing)?" => sub {
+            $parse->[ Parse::Marpa::Parse::TRACE_LEX_TRIES ] = 1;
+            $parse->[ Parse::Marpa::Parse::TRACE_LEX_MATCHES ] = 1;
+        },
+        "iteration search(es)?" => sub { $parse->[ Parse::Marpa::Parse::TRACE_ITERATION_SEARCHES ] = 1; },
+        "iteration change(s)?" => sub { $parse->[ Parse::Marpa::Parse::TRACE_ITERATION_CHANGES ] = 1; },
+        "iteration(s)?" => sub {
+            $parse->[ Parse::Marpa::Parse::TRACE_ITERATION_SEARCHES ] = 1;
+            $parse->[ Parse::Marpa::Parse::TRACE_ITERATION_CHANGES ] = 1;
+        },
+        "all" => sub {
+            $parse->[ Parse::Marpa::Parse::TRACE_LEX_TRIES ] = 1;
+            $parse->[ Parse::Marpa::Parse::TRACE_LEX_MATCHES ] = 1;
+            $parse->[ Parse::Marpa::Parse::TRACE_ITERATION_SEARCHES ] = 1;
+            $parse->[ Parse::Marpa::Parse::TRACE_ITERATION_CHANGES ] = 1;
+        },
+    );
+    for my $argument (@_) {
+        while (my ($key, $closure) = each %parameter) {
+            if ($argument =~ /^$key$/) {
+                $closure->();
+            }
+        }
+    }
 }
 
 sub show {
@@ -2668,7 +2789,7 @@ sub show_derivation {
         last RHS_SYMBOL unless defined $pointer;
         my $symbol_name = $pointer->[ Parse::Marpa::Symbol::NAME ];
 
-        if ($rule_choice >= 0 and $rule_choice <= $#$rules) {
+        if (defined $rules and $rule_choice <= $#$rules) {
             my $rule = $rules->[$rule_choice];
             $text .= "[ "
                 . brief_earley_item($item) . "] "
@@ -2676,7 +2797,7 @@ sub show_derivation {
             $data = 1;
         }
 
-        if ($token_choice >= 0 and $token_choice <= $#$tokens) {
+        if ($token_choice <= $#$tokens) {
             my ($predecessor, $token) = @{$tokens->[$token_choice]};
             $text .= "[ "
                 . brief_earley_item($item) . "] "
@@ -2688,7 +2809,7 @@ sub show_derivation {
         $text .= brief_earley_item($item) . "No data\n"
              unless $data;
 
-        if ($link_choice >= 0 and $link_choice <= $#$links) {
+        if ($link_choice <= $#$links) {
             my ($predecessor, $cause) = @{$links->[$link_choice]};
             $text .= show_derivation($cause);
             $item = $predecessor;
@@ -2717,19 +2838,26 @@ sub initial {
     local($Parse::Marpa::This::parse) = $parse;
     my (
         $grammar,
-        $current_set, $earley_sets, $trace_level,
+        $current_set, $earley_sets,
         $start_item, $current_parse_set,
+        $trace_iteration_searches,
+        $trace_iteration_changes,
+        $trace_fh,
     ) = @{$parse}[
         Parse::Marpa::Parse::GRAMMAR,
         Parse::Marpa::Parse::CURRENT_SET,
         Parse::Marpa::Parse::EARLEY_SETS,
-        Parse::Marpa::Parse::TRACE,
         Parse::Marpa::Parse::START_ITEM,
         Parse::Marpa::Parse::CURRENT_PARSE_SET,
+        Parse::Marpa::Parse::TRACE_ITERATION_SEARCHES,
+        Parse::Marpa::Parse::TRACE_ITERATION_CHANGES,
+        Parse::Marpa::Parse::TRACE_FILE_HANDLE,
     ];
     local($Parse::Marpa::This::grammar) = $grammar;
-    local($trace) = $trace_level;
-    local($Data::Dumper::Terse) = 1 if $trace;
+    local($Parse::Marpa::This::trace_iteration_searches) = $trace_iteration_searches;
+    local($Parse::Marpa::This::trace_iteration_changes) = $trace_iteration_changes;
+    local($Parse::Marpa::This::trace_fh) = $trace_fh;
+    local($Data::Dumper::Terse) = 1;
 
     if (defined $parse_set_arg and
         (not defined $current_parse_set
@@ -2804,11 +2932,11 @@ sub initial {
              Parse::Marpa::Earley_item::LHS,
          ] = (
              \$null_value,
-             -1, -1, 0, [ $start_rule ],
+             0, 0, 0, [ $start_rule ],
              $lhs,
          );
-         if ($trace) {
-             print STDERR "Setting nulling start value of ",
+         if ($Parse::Marpa::This::trace_iteration_tries) {
+             print $Parse::Marpa::This::trace_fh "Setting nulling start value of ",
              brief_earley_item($start_item), ", ",
              $lhs->[ Parse::Marpa::Symbol::NAME ],
              " to ", Dumper($null_value);
@@ -2829,8 +2957,8 @@ sub initial {
          0, 0, 0, [ $start_rule ],
          $lhs,
     );
-     if ($trace) {
-         print STDERR "Setting start value of ",
+     if ($Parse::Marpa::This::trace_iteration_actions) {
+         print $Parse::Marpa::This::trace_fh "Setting start value of ",
          brief_earley_item($start_item), ", ",
          $lhs->[ Parse::Marpa::Symbol::NAME ],
          " to ", Dumper($value);
@@ -2908,16 +3036,16 @@ sub initialize_children {
                 Parse::Marpa::Earley_item::PREDECESSOR,
                 Parse::Marpa::Earley_item::POINTER,
             ] = (
-                0, -1,
+                0, 0,
                 $child_rule_choice, $child_rules,
                 \$value, $predecessor,
                 $child_symbol,
             );
-            if ($trace) {
+            if ($Parse::Marpa::This::trace_iteration_actions) {
                  my $predecessor_set = $predecessor->[
                     Parse::Marpa::Earley_item::SET,
                  ];
-                 print STDERR
+                 print $Parse::Marpa::This::trace_fh
                  "Initializing token value of ",
                  brief_earley_item($item), ", ",
                  $child_symbol->[ Parse::Marpa::Symbol::NAME ],
@@ -2950,11 +3078,11 @@ sub initialize_children {
             \$value, $predecessor,
             $child_symbol,
         );
-        if ($trace) {
+        if ($Parse::Marpa::This::trace_iteration_tries) {
              my $predecessor_set = $predecessor->[
                 Parse::Marpa::Earley_item::SET,
              ];
-             print STDERR
+             print $Parse::Marpa::This::trace_fh
              "Initializing caused value of ",
              brief_earley_item($item), ", ",
              $child_symbol->[ Parse::Marpa::Symbol::NAME ],
@@ -2993,16 +3121,27 @@ sub next {
         unless $parse_class eq $right_class;
 
     local($Parse::Marpa::This::parse) = $parse;
-    my ( $grammar, $start_item, $current_parse_set, $trace_level )
-        = @{$parse}[
-            Parse::Marpa::Parse::GRAMMAR,
-            Parse::Marpa::Parse::START_ITEM,
-            Parse::Marpa::Parse::CURRENT_PARSE_SET,
-            Parse::Marpa::Parse::TRACE,
-        ];
+    my (
+        $grammar, $start_item,
+        $current_parse_set,
+        $trace_iteration_searches,
+        $trace_iteration_changes,
+    ) = @{$parse}[
+        Parse::Marpa::Parse::GRAMMAR,
+        Parse::Marpa::Parse::START_ITEM,
+        Parse::Marpa::Parse::CURRENT_PARSE_SET,
+        Parse::Marpa::Parse::TRACE_ITERATION_SEARCHES,
+        Parse::Marpa::Parse::TRACE_ITERATION_CHANGES,
+        Parse::Marpa::Parse::TRACE_FILE_HANDLE,
+    ];
+    croak("Parse not initialized: no start item") unless defined $start_item;
+    my $start_value = $start_item->[ Parse::Marpa::Earley_item::VALUE ];
+    croak("Parse not initialized: no start item") unless defined $start_value;
     local($Parse::Marpa::This::grammar) = $grammar;
-    local($trace) = $trace_level;
-    local($Data::Dumper::Terse) = 1 if $trace;
+    local($Parse::Marpa::This::trace_iteration_searches) = $trace_iteration_searches;
+    local($Parse::Marpa::This::trace_iteration_changes) = $trace_iteration_changes;
+    local($Parse::Marpa::This::trace_fh) = $trace_fh;
+    local($Data::Dumper::Terse) = 1;
 
     # find the "bottom left corner item", by following predecessors,
     # and causes when there is no predecessor
@@ -3039,11 +3178,10 @@ sub next {
                         Parse::Marpa::Earley_item::LINK_CHOICE,
                         Parse::Marpa::Earley_item::LINKS,
                     ];
-                last LEFT_CORNER_CANDIDATE
-                    if $link_choice < 0 or $link_choice > $#$links;
+                last LEFT_CORNER_CANDIDATE if $link_choice > $#$links;
                 $item = $links->[$link_choice]->[1];
-                if ($trace) {
-                     print STDERR
+                if ($Parse::Marpa::This::trace_iteration_search) {
+                     print $Parse::Marpa::This::trace_fh
                          "Seeking left corner at ", brief_earley_item($item), "\n";
                 }
 
@@ -3094,8 +3232,8 @@ sub next {
                      ++$rule_choice, 0, 0,
                 );
 
-                if ($trace) {
-                     print STDERR
+                if ($Parse::Marpa::This::trace_iteration_actions) {
+                     print $Parse::Marpa::This::trace_fh
                          "Incremented rule choice for ",
                          brief_earley_item($item), ", ",
                          Parse::Marpa::Parse::brief_earley_item($item),
@@ -3123,8 +3261,8 @@ sub next {
 
             if (defined $successor) {
                 $item = $successor;
-                if ($trace) {
-                     print STDERR
+                if ($Parse::Marpa::This::trace_iteration_actions) {
+                     print $Parse::Marpa::This::trace_fh
                          "Trying to iterate successor ", brief_earley_item($item), "\n";
                 }
 
@@ -3135,7 +3273,7 @@ sub next {
                         Parse::Marpa::Earley_item::LINK_CHOICE,
                         Parse::Marpa::Earley_item::LINKS,
                     ];
-                if ($link_choice >= 0 and $link_choice <= $#$links) {
+                if ($link_choice <= $#$links) {
                     @{$item}[
                         Parse::Marpa::Earley_item::VALUE,
                         Parse::Marpa::Earley_item::RULE_CHOICE,
@@ -3152,8 +3290,8 @@ sub next {
             return unless defined $effect;
 
             $item = $effect;
-            if ($trace) {
-                 print STDERR
+            if ($Parse::Marpa::This::trace_iteration_search) {
+                 print $Parse::Marpa::This::trace_fh
                      "Trying to iterate effect ", brief_earley_item($item), "\n";
             }
 
@@ -3185,7 +3323,7 @@ sub next {
                     Parse::Marpa::Earley_item::SET,
                 ];
 
-                if ($token_choice >= 0 and $token_choice <= $#$tokens) {
+                if ($token_choice <= $#$tokens) {
                     my ($predecessor, $value) = @{$tokens->[$token_choice]};
                     @{$item}[
                         Parse::Marpa::Earley_item::VALUE,
@@ -3194,11 +3332,11 @@ sub next {
                         \$value,
                         $predecessor,
                     );
-                    if ($trace) {
+                    if ($Parse::Marpa::This::trace_iteration_actions) {
                          my $predecessor_set = $predecessor->[
                             Parse::Marpa::Earley_item::SET,
                          ];
-                         print STDERR
+                         print $Parse::Marpa::This::trace_fh
                              $reason, " token choice for ",
                              brief_earley_item($item),
                              " to ", $token_choice, ", ",
@@ -3210,7 +3348,7 @@ sub next {
                     last RESET_VALUES;
                 }
 
-                if ($link_choice >= 0 and $link_choice <= $#$links) {
+                if ($link_choice <= $#$links) {
                     my ($predecessor, $cause) = @{$links->[$link_choice]};
                     weaken($cause->[ Parse::Marpa::Earley_item::EFFECT ] = $item);
                     my $value = initialize_children($cause, $pointer);
@@ -3221,11 +3359,11 @@ sub next {
                         \$value,
                         $predecessor,
                     );
-                    if ($trace) {
+                    if ($Parse::Marpa::This::trace_iteration_actions) {
                          my $predecessor_set = $predecessor->[
                             Parse::Marpa::Earley_item::SET,
                          ];
-                         print STDERR
+                         print $Parse::Marpa::This::trace_fh
                          $reason , " cause choice for ",
                          brief_earley_item($item),
                          " to ", $link_choice, ", ",

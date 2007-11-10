@@ -14,4 +14,5 @@ t/hu.t
 t/weaken.t
 t/equation.t
 t/minus.t
+t/lex_minus.t
 t/pascal.t
