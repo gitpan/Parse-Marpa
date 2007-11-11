@@ -65,14 +65,14 @@ my $parse = new Parse::Marpa::Parse($g);
 
 my $minus = $g->get_symbol("Minus");
 my $number = $g->get_symbol("Number");
-$parse->earleme([$number, 6, 1]);
-$parse->earleme([$minus, "+", 1]);
-$parse->earleme([$minus, "+", 1]);
-$parse->earleme([$minus, "+", 1]);
-$parse->earleme([$minus, "+", 1]);
-$parse->earleme([$minus, "+", 1]);
-$parse->earleme([$number, 1, 1]);
-$parse->earleme();
+$parse->lex_earleme([$number, 6, 1]);
+$parse->lex_earleme([$minus, "+", 1]);
+$parse->lex_earleme([$minus, "+", 1]);
+$parse->lex_earleme([$minus, "+", 1]);
+$parse->lex_earleme([$minus, "+", 1]);
+$parse->lex_earleme([$minus, "+", 1]);
+$parse->lex_earleme([$number, 1, 1]);
+$parse->lex_end();
 
 # print $g->show_rules(), "\n";
 is( $g->show_rules(), <<'END_RULES', "Minuses Equation Rules" );
@@ -92,12 +92,14 @@ E ::= . E Minus Minus
 E ::= . Minus Minus E
 E ::= . Minus E
 E ::= . Number
+lexables: Minus Number
  <E> => St8 (2,6)
  <Minus> => St1 (10,14)
  <Number> => St5 (17)
 St1: 10,14
 E ::= Minus . Minus E
 E ::= Minus . E
+lexables: Minus
  empty => St0 (1,5,9,13,16)
  <E> => St4 (15)
  <Minus> => St2 (11)
@@ -120,10 +122,12 @@ E['] ::= E .
 St8: 2,6
 E ::= E . Minus E
 E ::= E . Minus Minus
+lexables: Minus
  <Minus> => St9 (3,7)
 St9: 3,7
 E ::= E Minus . E
 E ::= E Minus . Minus
+lexables: Minus
  empty => St0 (1,5,9,13,16)
  <E> => St10 (4)
  <Minus> => St11 (8)

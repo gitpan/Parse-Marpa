@@ -26,7 +26,7 @@ use Carp;
 use Scalar::Util qw(weaken);
 use Data::Dumper;
 
-our $VERSION = '0.001_039';
+our $VERSION = '0.001_040';
 $VERSION = eval $VERSION;
 
 =begin Apology:
@@ -455,10 +455,13 @@ sub show_SDFA_state {
     my $tags  = shift;
 
     my $text = "";
-    my ( $id, $name, $NFA_states, $transition, $tag) = @{$state}[
+    my (
+        $id, $name, $NFA_states, $transition, $tag, $lexables,
+    ) = @{$state}[
         Parse::Marpa::SDFA::ID,         Parse::Marpa::SDFA::NAME,
         Parse::Marpa::SDFA::NFA_STATES, Parse::Marpa::SDFA::TRANSITION,
-        Parse::Marpa::SDFA::TAG
+        Parse::Marpa::SDFA::TAG,
+        Parse::Marpa::SDFA::LEXABLES,
     ];
 
     $text .= defined $tags ? "St" . $tag : "S" . $id;
@@ -466,6 +469,14 @@ sub show_SDFA_state {
     for my $NFA_state (@$NFA_states) {
         my $item = $NFA_state->[Parse::Marpa::NFA::ITEM];
         $text .= show_item($item) . "\n";
+    }
+    if (@$lexables) {
+        $text
+            .= "lexables: "
+            . join(" ", sort map {
+                $_->[ Parse::Marpa::Symbol::NAME ]
+            } @$lexables)
+            . "\n"
     }
     for my $symbol_name ( sort keys %$transition ) {
         my ( $to_id, $to_name ) =
@@ -2146,7 +2157,7 @@ use Carp;
 use constant GRAMMAR     => 0;    # the grammar used
 use constant CURRENT_SET => 1;    # index of the first incomplete Earley set
 use constant EARLEY_SETS => 2;    # the array of the Earley sets
-use constant EARLEY_HASH => 3;    # the array of hashes used
+use constant EARLEY_HASHES => 3;    # the array of hashes used
                                   # to build the Earley sets
 use constant CURRENT_PARSE_SET    => 4;    # the set being taken as the end of
                                   # parse for an evaluation
@@ -2160,6 +2171,7 @@ use constant TRACE_LEX_MATCHES        => 10;
 use constant TRACE_ITERATION_SEARCHES => 11; 
 use constant TRACE_ITERATION_CHANGES  => 12; 
 use constant TRACE_FILE_HANDLE        => 13; 
+use constant DEFAULT_PARSE_SET        => 14;
 
 # implementation dependent constant, used below in unpack
 use constant J_LENGTH => ( length pack( "J", 0, 0 ) );
@@ -2214,11 +2226,14 @@ sub new {
         push( @$earley_set, $item );
         $earley_hash->{$key} = $item;
     }
+
     @{$parse}[
-        CURRENT_SET, FURTHEST_SET, EARLEY_HASH, GRAMMAR, EARLEY_SETS,
+        DEFAULT_PARSE_SET, CURRENT_SET, FURTHEST_SET,
+        EARLEY_HASHES, GRAMMAR, EARLEY_SETS,
         TRACE_FILE_HANDLE,
     ] = (
-        0, 0, [$earley_hash], $grammar, [$earley_set],
+        0, 0, 0,
+        [$earley_hash], $grammar, [$earley_set],
         *STDERR
     );
 
@@ -2368,8 +2383,19 @@ sub clear_notations {
 
 # Mutator methods
 
-# Returns the position where the parse was exhausted
-sub lex {
+# check parse? 
+sub lex_earleme {
+    my $parse = shift;
+
+    # lexables not checked -- don't use prediction here
+    # maybe add this as an option
+    my $lexables = complete_set($parse);
+    return scan_set($parse, @_);
+}
+
+# Returns the position where the parse was exhausted,
+# or -1 if the parse is not exhausted
+sub lex_string {
     my $parse = shift;
     my $input_ref = shift;
     my $length = shift;
@@ -2408,60 +2434,46 @@ sub lex {
         my @alternatives;
 
         # NOTE: Often the number of the earley set, and the idea of
-        # lexical position will correspond.  Marpa imposes no such
-        # requirement, however.
+        # lexical position will correspond.  Be careful that Marpa
+        # imposes no such requirement, however.
 
-        # Get next earley set
+        pos $$input_ref = $pos;
 
-        my $current_set = $parse->[ Parse::Marpa::Parse::CURRENT_SET ];
-        my $earley_set  = $earley_sets->[$current_set];
+        my $lexables = complete_set($parse);
 
-        EARLEY_ITEM: for my $earley_item (@$earley_set) {
-            my (
-                $state,
-            ) = @{$earley_item}[
-                Parse::Marpa::Earley_item::STATE,
+        LEXABLE: for my $lexable (@$lexables) {
+            my ($regex) = @{$lexable}[
+                Parse::Marpa::Symbol::COMPILED_REGEX,
             ];
+            if ($Parse::Marpa::This::trace_lex_tries) {
+                print $Parse::Marpa::This::trace_fh
+                    "Trying to match ", $lexable->[ Parse::Marpa::Symbol::NAME ], " at $pos\n";
+            }
 
-            my ($lexables) = @{$state}[ Parse::Marpa::SDFA::LEXABLES, ];
-
-            LEXABLE: for my $lexable (@$lexables) {
-                my ($id, $regex) = @{$lexable}[
-                    Parse::Marpa::Symbol::ID,
-                    Parse::Marpa::Symbol::COMPILED_REGEX,
-                ];
-                next LEXABLE if $lexable_seen[ $id ]++;
-                if ($Parse::Marpa::This::trace_lex_tries) {
+            if (my ($match) = ($$input_ref =~ $regex)) {
+                push(@alternatives, [ $lexable, $match, length($match) ]);
+                if ($Parse::Marpa::This::trace_lex_matches) {
                     print $Parse::Marpa::This::trace_fh
-                        "Trying to match ", $lexable->[ Parse::Marpa::Symbol::NAME ], " at $pos\n";
+                        "Matched ", $lexable->[ Parse::Marpa::Symbol::NAME ],
+                        " at $pos: ", $match, "\n";
                 }
-                pos $$input_ref = $pos;
-                if (my ($match) = ($$input_ref =~ $regex)) {
-                    push(@alternatives, [ $lexable, $match, length($match) ]);
-                    if ($Parse::Marpa::This::trace_lex_matches) {
-                        print $Parse::Marpa::This::trace_fh
-                            "Matched ", $lexable->[ Parse::Marpa::Symbol::NAME ],
-                            " at $pos: ", $match, "\n";
-                    }
-                } # if match
+            } # if match
 
-            } # LEXABLE
+        } # LEXABLE
 
-        } # EARLEY_ITEM
-
-        my $active = earleme($parse, @alternatives);
+        my $active = scan_set($parse, @alternatives);
 
         return $pos unless $active;
 
     } # POS
 
-    return 0;
+    return -1;
 
-} # sub lex
+} # sub lex_string
 
 sub lex_end {
     my $parse = shift;
-    earleme($parse);
+    complete_set($parse);
 }
 
 =begin Apolegetic:
@@ -2482,34 +2494,28 @@ earlemes.
 
 # Given a parse object and a list of alternative tokens starting at
 # the current earleme, compute the Earley set for that earleme
-sub earleme {
+sub scan_set {
     my $parse = shift;
 
     my (
         $earley_set_list, $earley_hash_list, $grammar,
         $current_set, $furthest_set, $exhausted,
     ) = @{$parse}[
-        EARLEY_SETS, EARLEY_HASH, GRAMMAR,
+        EARLEY_SETS, EARLEY_HASHES, GRAMMAR,
         CURRENT_SET, FURTHEST_SET, EXHAUSTED ];
     croak("Cannot continue an exhausted parse") if $exhausted;
     my $SDFA = $grammar->[Parse::Marpa::Grammar::SDFA];
 
     my $earley_set  = $earley_set_list->[$current_set];
-    my $earley_hash = $earley_hash_list->[$current_set];
 
-    # It's helpful below to assume there's at least one item in the work list,
-    # so for sanity's sake, I treat the empty work list
-    # as a special case:
-    #
-    # If there's nothing in the work list, we're done.
     if ( not defined $earley_set ) {
         $earley_set_list->[$current_set] = [];
-        $earley_hash->[$current_set]     = undef;
-        $parse->[CURRENT_SET]++;
         if ($current_set >= $furthest_set) {
             $parse->[ Parse::Marpa::Parse::EXHAUSTED ]
                 = $exhausted
                 =  1;
+        } else {
+            $parse->[ CURRENT_SET ] ++;
         }
         return !$exhausted;
     }
@@ -2613,12 +2619,58 @@ sub earleme {
 
         }    # ALTERNATIVE
 
+    } # EARLEY_ITEM
+
+    $parse->[CURRENT_SET]++;
+
+    return 1;
+
+} # sub scan_set
+
+sub complete_set {
+    my $parse = shift;
+
+    my (
+        $earley_set_list, $earley_hash_list, $grammar,
+        $current_set, $furthest_set, $exhausted,
+    ) = @{$parse}[
+        EARLEY_SETS, EARLEY_HASHES, GRAMMAR,
+        CURRENT_SET, FURTHEST_SET, EXHAUSTED ];
+    croak("Cannot continue an exhausted parse") if $exhausted;
+
+    my $earley_set  = $earley_set_list->[$current_set];
+    my $earley_hash = $earley_hash_list->[$current_set];
+
+    $earley_set ||= [];
+
+    my (
+        $SDFA, $symbols,
+    ) = @{$grammar}[
+        Parse::Marpa::Grammar::SDFA,
+        Parse::Marpa::Grammar::SYMBOLS,
+    ];
+
+    my $lexable_seen = [];
+    $#$lexable_seen = $#$symbols;
+
+    EARLEY_ITEM: for ( my $ix = 0; $ix < @$earley_set; $ix++ ) {
+
+        my $earley_item = $earley_set->[$ix];
+        my ( $state, $parent ) = @{$earley_item}[
+            Parse::Marpa::Earley_item::STATE,
+            Parse::Marpa::Earley_item::PARENT
+        ];
+
+        for my $lexable (@{$state->[ Parse::Marpa::SDFA::LEXABLES ]}) {
+            $lexable_seen->[ $lexable->[ Parse::Marpa::Symbol::ID ] ] = 1;
+        }
+
         next EARLEY_ITEM if $current_set == $parent;
 
         COMPLETE_RULE:
         for my $complete_symbol_name (
-            @{ $state->[Parse::Marpa::SDFA::COMPLETE_LHS] } )
-        {
+            @{ $state->[Parse::Marpa::SDFA::COMPLETE_LHS] }
+        ) {
             PARENT_ITEM:
             for my $parent_item ( @{ $earley_set_list->[$parent] } )
             {
@@ -2684,21 +2736,23 @@ sub earleme {
                 }
 
             }    # PARENT_ITEM
+
         }    # COMPLETE_RULE
+
     }    # EARLEY_ITEM
 
     # TODO: Prove that the completion links are UNIQUE
 
-    $earley_set_list->[$current_set] = $earley_set;
-
     # Free memory for the hash
     $earley_hash_list->[$current_set] = undef;
 
-    # Increment CURRENT_SET
-    @{$parse}[CURRENT_SET]++;
+    $parse->[ Parse::Marpa::Parse::DEFAULT_PARSE_SET ] = $current_set;
 
-    return 1;
-}
+    my $lexables
+        = [ map { $symbols->[$_] } grep { $lexable_seen->[$_] } (0 .. $#$symbols) ];
+    return $lexables;
+
+} # sub complete_set
 
 sub trace_file_handle {
     my $parse = shift;
@@ -2837,18 +2891,18 @@ sub initial {
 
     local($Parse::Marpa::This::parse) = $parse;
     my (
-        $grammar,
-        $current_set, $earley_sets,
-        $start_item, $current_parse_set,
+        $grammar, $earley_sets,
+        $start_item,
+        $current_parse_set, $default_parse_set,
         $trace_iteration_searches,
         $trace_iteration_changes,
         $trace_fh,
     ) = @{$parse}[
         Parse::Marpa::Parse::GRAMMAR,
-        Parse::Marpa::Parse::CURRENT_SET,
         Parse::Marpa::Parse::EARLEY_SETS,
         Parse::Marpa::Parse::START_ITEM,
         Parse::Marpa::Parse::CURRENT_PARSE_SET,
+        Parse::Marpa::Parse::DEFAULT_PARSE_SET,
         Parse::Marpa::Parse::TRACE_ITERATION_SEARCHES,
         Parse::Marpa::Parse::TRACE_ITERATION_CHANGES,
         Parse::Marpa::Parse::TRACE_FILE_HANDLE,
@@ -2869,11 +2923,7 @@ sub initial {
 
     if (not defined $current_parse_set) {
         $start_item = undef;
-        if ($current_set <= 0) {
-            $current_parse_set = 0;
-        } else {
-            $current_parse_set = $current_set - 1;
-        }
+        $current_parse_set = $default_parse_set;
     }
 
     my $start_rule;
@@ -3136,7 +3186,7 @@ sub next {
     ];
     croak("Parse not initialized: no start item") unless defined $start_item;
     my $start_value = $start_item->[ Parse::Marpa::Earley_item::VALUE ];
-    croak("Parse not initialized: no start item") unless defined $start_value;
+    croak("Parse not initialized: no start value") unless defined $start_value;
     local($Parse::Marpa::This::grammar) = $grammar;
     local($Parse::Marpa::This::trace_iteration_searches) = $trace_iteration_searches;
     local($Parse::Marpa::This::trace_iteration_changes) = $trace_iteration_changes;

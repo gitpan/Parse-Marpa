@@ -83,6 +83,7 @@ E ::= . E MinusMinus
 E ::= . MinusMinus E
 E ::= . Minus E
 E ::= . Number
+lexables: Minus MinusMinus Number
  <E> => St7 (2,6)
  <Minus> => St2 (12)
  <MinusMinus> => St11 (9)
@@ -106,6 +107,7 @@ E['] ::= E .
 St7: 2,6
 E ::= E . Minus E
 E ::= E . MinusMinus
+lexables: Minus MinusMinus
  <Minus> => St8 (3)
  <MinusMinus> => St10 (7)
 St8: 3
@@ -132,15 +134,15 @@ my @expected = (
     '(6-(-(-(-(-1)))))==5',
     '(6-(-(--(-1))))==4',
 );
+
+$parse->lex_string(\("6-----1"));
+$parse->lex_end();
+
 $parse->initial();
 
-SKIP: {
-    skip "Not yet debugged", (scalar @expected);
+# SKIP: {
+    # skip "Not yet debugged", (scalar @expected);
 
-    my $minus = $g->get_symbol("Minus");
-    my $number = $g->get_symbol("Number");
-    $parse->lex(\("6-----1"));
-    $parse->lex_end();
 
 # Set max at 20 just in case there's an infinite loop.
 # This is for debugging, after all
@@ -155,7 +157,7 @@ PARSE: for my $i (0 .. 20) {
     last PARSE unless $parse->next();
 }
 
-} # SKIP
+# } # SKIP
 
 # Local Variables:
 #   mode: cperl

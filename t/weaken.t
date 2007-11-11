@@ -28,11 +28,11 @@ my $test = sub {
     );
     my $a = $g->get_symbol("a");
     my $parse = new Parse::Marpa::Parse($g);
-    $parse->earleme([$a, "a", 1]);
-    $parse->earleme([$a, "a", 1]);
-    $parse->earleme([$a, "a", 1]);
-    $parse->earleme([$a, "a", 1]);
-    $parse->earleme();
+    $parse->lex_earleme([$a, "a", 1]);
+    $parse->lex_earleme([$a, "a", 1]);
+    $parse->lex_earleme([$a, "a", 1]);
+    $parse->lex_earleme([$a, "a", 1]);
+    $parse->lex_end();
     $parse->initial();
     [ $g, $parse ];
 };

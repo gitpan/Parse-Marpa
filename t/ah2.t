@@ -153,6 +153,7 @@ EOS
 is( $g->show_ii_SDFA(), <<'EOS', "Aycock/Horspool SDFA" );
 St0: 1
 A ::= . a
+lexables: a
  <a> => St7 (2)
 St1: 1,12,16,18,21,25,27
 A ::= . a
@@ -162,6 +163,7 @@ S[0:1] ::= . A S[0:2][]
 S[0:2] ::= . A A
 S[0:2] ::= A[] . A
 S[0:2] ::= . A A[]
+lexables: a
  <A> => St4 (13,20,22,26,29)
  <S[0:2]> => St6 (17)
  <a> => St7 (2)
@@ -170,6 +172,7 @@ A ::= . a
 S[0:2] ::= . A A
 S[0:2] ::= A[] . A
 S[0:2] ::= . A A[]
+lexables: a
  <A> => St8 (22,26,29)
  <a> => St7 (2)
 St3: 1,3,7,9,12,16,18,21,25,27
@@ -183,6 +186,7 @@ S[0:1] ::= . A S[0:2][]
 S[0:2] ::= . A A
 S[0:2] ::= A[] . A
 S[0:2] ::= . A A[]
+lexables: a
  <A> => St12 (4,11,13,20,22,26,29)
  <S[0:1]> => St14 (8)
  <S[0:2]> => St6 (17)
@@ -342,34 +346,34 @@ is( $parse->show_status(1),
     "Aycock/Horspool Parse Status before parse" );
 
 my $a = $g->get_symbol("a");
-$parse->earleme([$a, "a", 1]);
+$parse->lex_earleme([$a, "a", 1]);
 
 is( $parse->show_status(1),
     "Current Earley Set: 1; Furthest: 1\n" .  $sets_at_0,
     "Aycock/Horspool Parse Status at 0" );
 
-$parse->earleme([$a, "a", 1]);
+$parse->lex_earleme([$a, "a", 1]);
 
 is( $parse->show_status(1),
     "Current Earley Set: 2; Furthest: 2\n" .  $sets_at_1,
     "Aycock/Horspool Parse Status at 1" );
 
-$parse->earleme([$a, "a", 1]);
+$parse->lex_earleme([$a, "a", 1]);
 
 is( $parse->show_status(1),
     "Current Earley Set: 3; Furthest: 3\n" .  $sets_at_2,
     "Aycock/Horspool Parse Status at 2" );
 
-$parse->earleme([$a, "a", 1]);
+$parse->lex_earleme([$a, "a", 1]);
 
 is( $parse->show_status(1),
     "Current Earley Set: 4; Furthest: 4\n" .  $sets_at_3,
     "Aycock/Horspool Parse Status at 3" );
 
-$parse->earleme();
+$parse->lex_end();
 
 is( $parse->show_status(1),
-    "Current Earley Set: 5; Furthest: 4\n" .  $sets_at_4,
+    "Current Earley Set: 4; Furthest: 4\n" .  $sets_at_4,
     "Aycock/Horspool Parse Status at 4" );
 
 # from Tye McQueen's Algorithm::Loops

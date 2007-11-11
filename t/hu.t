@@ -92,11 +92,13 @@ S' ::= . S c
 St1: 10,14
 A ::= a . S b
 A ::= a . b
+lexables: b
  empty => St7 (4,7,9,13)
  <S> => St2 (11)
  <b> => St4 (15)
 St2: 11
 A ::= a S . b
+lexables: b
  <b> => St3 (12)
 St3: 12
 A ::= a S b .
@@ -104,6 +106,7 @@ St4: 15
 A ::= a b .
 St5: 2
 S' ::= S . c
+lexables: c
  <c> => St6 (3)
 St6: 3
 S' ::= S c .
@@ -112,6 +115,7 @@ S ::= . S A
 S ::= . A
 A ::= . a S b
 A ::= . a b
+lexables: a
  <A> => St10 (8)
  <S> => St8 (5)
  <a> => St1 (10,14)
@@ -126,6 +130,7 @@ S ::= A .
 St11: 9,13
 A ::= . a S b
 A ::= . a b
+lexables: a
  <a> => St1 (10,14)
 EOS
 

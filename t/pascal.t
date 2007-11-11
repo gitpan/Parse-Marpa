@@ -37,8 +37,8 @@ sub ah_extended {
     my $parse = new Parse::Marpa::Parse($g);
 
     my $a = $g->get_symbol("a");
-    for (0 .. $n) { $parse->earleme([$a, "a", 1]); }
-    $parse->earleme();
+    for (0 .. $n) { $parse->lex_earleme([$a, "a", 1]); }
+    $parse->lex_end();
 
     my @parse_counts;
     for my $loc (0 .. $n) {
