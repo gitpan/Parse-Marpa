@@ -26,7 +26,7 @@ use Carp;
 use Scalar::Util qw(weaken);
 use Data::Dumper;
 
-our $VERSION = '0.001_040';
+our $VERSION = '0.001_041';
 $VERSION = eval $VERSION;
 
 =begin Apology:
@@ -127,6 +127,8 @@ use constant USEFUL                   => 8;    # use this rule in NFA?
 use constant ORIGINAL_CLOSURE         => 9;    # closure assigned when rule created
 use constant CLOSURE                  => 10;   # closure to use
 use constant ORIGINAL_RULE            => 11;   # for a rewritten rule, the original
+use constant ORDER                    => 12;   # the order in which rules are to
+                                               # be tried -- not necessarily unique
 
 package Parse::Marpa::NFA;
 
@@ -157,20 +159,22 @@ use constant POSITION => 1;
 
 package Parse::Marpa::Grammar;
 
-use constant RULES           => 0;     # array of rule refs
-use constant SYMBOLS         => 1;     # array of symbol refs
-use constant RULE_HASH       => 2;     # hash by name of symbol refs
-use constant SYMBOL_HASH     => 3;     # hash by name of symbol refs
-use constant START           => 4;     # ref to start symbol
-use constant NFA             => 5;     # array of states
-use constant SDFA            => 6;     # array of states
-use constant SDFA_BY_NAME    => 7;     # hash from SDFA name to SDFA reference
-use constant NULLABLE_SYMBOL => 8;     # array of refs of the nullable symbols
-use constant ACADEMIC        => 9;     # true if this is a textbook grammar,
+use constant ID              => 0; # number of this grammar
+use constant NAME            => 1; # namespace special to this grammar
+use constant RULES           => 2;     # array of rule refs
+use constant SYMBOLS         => 3;     # array of symbol refs
+use constant RULE_HASH       => 4;     # hash by name of symbol refs
+use constant SYMBOL_HASH     => 5;     # hash by name of symbol refs
+use constant START           => 6;     # ref to start symbol
+use constant NFA             => 7;     # array of states
+use constant SDFA            => 8;     # array of states
+use constant SDFA_BY_NAME    => 9;     # hash from SDFA name to SDFA reference
+use constant NULLABLE_SYMBOL => 10;     # array of refs of the nullable symbols
+use constant ACADEMIC        => 11;     # true if this is a textbook grammar,
                                        # for checking the NFA and SDFA, and NOT
                                        # for actual Earley parsing
-use constant DEFAULT_NULL_VALUE => 10; # default value for nulling symbols
-use constant DEFAULT_CLOSURE => 11; # closure for rules without one
+use constant DEFAULT_NULL_VALUE => 12; # default value for nulling symbols
+use constant DEFAULT_CLOSURE => 13; # closure for rules without one
 
 package Parse::Marpa::This;
 
@@ -186,14 +190,16 @@ my $parse;
 
 package Parse::Marpa;
 
-our $default_default_closure = sub { "" };
+my $grammar_number = 0;
 
-our $chaf_stub = sub {
+my $default_default_closure = sub { "" };
+
+sub chaf_stub {
          my $v_count = scalar @Parse::Marpa::This::v;
          return "" if $v_count <= 0;
          return $Parse::Marpa::This::v[0] if $v_count == 1;
          "(" . join(";", @Parse::Marpa::This::v) . ")";
-    };
+};
 
 # Constructor
 
@@ -233,7 +239,12 @@ sub new {
     croak("No start symbol specified") unless defined $start;
 
     my $grammar = [];
+    # Note: this limits the number of grammar to the number of integers --
+    # not likely to be a big problem.
+    my $namespace = sprintf("X%x", $grammar_number);
     @{$grammar}[
+        Parse::Marpa::Grammar::ID,
+        Parse::Marpa::Grammar::NAME,
         Parse::Marpa::Grammar::SYMBOLS,
         Parse::Marpa::Grammar::SYMBOL_HASH,
         Parse::Marpa::Grammar::RULES,
@@ -242,7 +253,10 @@ sub new {
         Parse::Marpa::Grammar::ACADEMIC,
         Parse::Marpa::Grammar::DEFAULT_NULL_VALUE,
         Parse::Marpa::Grammar::DEFAULT_CLOSURE,
-        ] = ( [], {}, [], {}, {},
+        ] = (
+            $grammar_number++,
+            $namespace,
+            [], {}, [], {}, {},
             $academic,
             $default_null_value,
             $default_closure,
@@ -715,18 +729,21 @@ sub add_rule {
         Parse::Marpa::Rule::NULLABLE,
         Parse::Marpa::Rule::INPUT_REACHABLE,
         Parse::Marpa::Rule::NULLING,
-        Parse::Marpa::Rule::ORIGINAL_CLOSURE
+        Parse::Marpa::Rule::ORIGINAL_CLOSURE,
+        Parse::Marpa::Rule::ORDER,
         ]
         = (
         $rule_count, "rule $rule_count",
         $lhs, $rhs,
         $nulling, $nulling, $nulling,
-        $closure
+        $closure,
+        $rule_count,
         );
 
     # if this is a nulling rule with a closure,
     # we get the null_value of the lhs from that
     if ($nulling and $closure) {
+        local(@Parse::Marpa::This::v) = ();
         $lhs->[ Parse::Marpa::Symbol::NULL_VALUE ] = $closure->();
     }
 
@@ -762,7 +779,10 @@ sub add_user_rules {
     RULE: for my $rule (@$rules) {
         my $arg_count = @$rule;
         if ( $arg_count > 3 or $arg_count < 1) {
-            croak("rule must have from 1 to 3 arguments");
+            croak("Rule has $arg_count arguments: "
+                . join(", ", map { defined $_ ? $_ : "undef" } @$rule) . "\n"
+                . "Rule must have from 1 to 3 arguments"
+            );
         }
         my ($lhs, $rhs, $closure) = @$rule;
         $rhs = [] unless defined $rhs;
@@ -1684,6 +1704,13 @@ sub create_SDFA {
             }
         }    # NFA_state
         $state->[Parse::Marpa::SDFA::START_RULE]     = $start_rule;
+        LHS: for my $lhs_id (0 .. $#$complete_rules) {
+            my $rules = $complete_rules->[$lhs_id];
+            next LHS unless defined $rules;
+            $rules = [ sort {
+               $a->[ Parse::Marpa::Rule::ORDER ] <=> $b->[ Parse::Marpa::Rule::ORDER ]
+            } @$rules ];
+        }
         $state->[Parse::Marpa::SDFA::COMPLETE_RULES] = $complete_rules;
         $state->[Parse::Marpa::SDFA::COMPLETE_LHS] =
             [ map { $_->[Parse::Marpa::Symbol::NAME] }
@@ -2024,7 +2051,7 @@ sub rewrite_as_CHAF {
             for (my $ix = 0; $ix <= $#$factored_rhs; $ix++) {
                 my $factor_rhs = $factored_rhs->[$ix];
 
-                my $chaf_closure = $Parse::Marpa::chaf_stub;
+                my $chaf_closure = \&Parse::Marpa::chaf_stub;
 
                 # figure out which closure to use
                 # if the LHS is the not LHS of the original rule, we have a
@@ -2052,12 +2079,10 @@ sub rewrite_as_CHAF {
                     Parse::Marpa::Rule::INPUT_REACHABLE,
                     Parse::Marpa::Rule::NULLABLE,
                     Parse::Marpa::Rule::NULLING,
-                    # Parse::Marpa::Rule::CLOSURE,
-                    # Parse::Marpa::Rule::ORIGINAL_RULE,
+                    Parse::Marpa::Rule::ORDER,
                     ] = (
                         1, 1, 1, 0, 0,
-                        # $chaf_closure,
-                        # $rule
+                        $rule_id,
                     );
                 weaken($new_rule->[ Parse::Marpa::Rule::CLOSURE ] = $chaf_closure);
                 weaken($new_rule->[ Parse::Marpa::Rule::ORIGINAL_RULE ] = $rule);
@@ -2097,7 +2122,7 @@ sub rewrite_as_CHAF {
         Parse::Marpa::Rule::USEFUL,
         Parse::Marpa::Rule::CLOSURE,
         ]
-        = ( $input_reachable, 1, 1, $Parse::Marpa::chaf_stub );
+        = ( $input_reachable, 1, 1, \&Parse::Marpa::chaf_stub );
 
     # If we created a null alias for the original start symobl, we need
     # to create a nulling start rule
@@ -2428,7 +2453,7 @@ sub lex_string {
 
     $length = length $$input_ref unless defined $length;
 
-    POS: for (my $pos = 0; $pos < $length; $pos++) {
+    POS: for (my $pos = (pos $$input_ref || 0); $pos < $length; $pos++) {
         my @lexable_seen;
         $#lexable_seen = $#$symbols;
         my @alternatives;
@@ -3464,6 +3489,7 @@ sub show_value {
     my $ii = shift;
     return "none" unless defined $value_ref;
     my $value = $$value_ref;
+    return "undef" unless defined $value;
     if ($ii) {
         my $type  = ref $value;
         return $type if $type;

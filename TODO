@@ -1,0 +1,17 @@
+* Change "internal" grammar definition mechanism, so that it allows closures as strings.
+
+* Have string closures run in special per grammar namespace
+
+* Allow closures for terminals
+
+* Have lex_string evaluate in list context, and
+  croak if any additional matches
+
+* Allow macros:
+     @LHS
+     $LHS_REF
+     $LHS[n]
+     $LHS{NAME}
+     $LHS{NAME}[n]
+     @RULE
+     $RULE_REF

@@ -3,6 +3,7 @@ MANIFEST
 META.yml # Will be created by "make dist"
 Makefile.PL
 README
+TODO
 lib/Parse/Marpa/ALGORITHM.pod
 lib/Parse/Marpa/WHY_CALL_IT_MARPA.pod
 lib/Parse/Marpa.pm
@@ -16,3 +17,5 @@ t/equation.t
 t/minus.t
 t/lex_minus.t
 t/pascal.t
+t/wall.t
+t/self.pl
