@@ -2,6 +2,7 @@
 
 # An ambiguous equation
 
+use 5.009005;
 use strict;
 use warnings;
 

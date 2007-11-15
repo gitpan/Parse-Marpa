@@ -1,5 +1,6 @@
-#!perl
 
+
+use 5.009005;
 # An ambiguous equation
 
 use strict;

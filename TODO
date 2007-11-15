@@ -1,11 +1,28 @@
+* Change all to require 5.9.5
+
+* Comments in # or #[ form.  (Check latter is really Perl 6.)
+
+* Code blocks in { } or %{ }% (yacc) form
+
+* (Someday) precedence declarations, a la yacc
+
+* Arguments of semantic routines as @_?  (A la Parse::Yapp)
+Note that yacc starts counting at 1, and $_[0] is the parser
+object in Yapp.
+
+* Look at Yacc macros yyerrok YYERROR YYACCEPT YYABORT YYRECOVERING
+
+* Look at error recovery.   Is anything in Parse::Yapp or yacc useful?
+
+* Add lex unambigious option
+
 * Change "internal" grammar definition mechanism, so that it allows closures as strings.
 
 * Have string closures run in special per grammar namespace
 
 * Allow closures for terminals
 
-* Have lex_string evaluate in list context, and
-  croak if any additional matches
+* Go to Perl 10 only, used named captures for lexing
 
 * Allow macros:
      @LHS
@@ -15,3 +32,5 @@
      $LHS{NAME}[n]
      @RULE
      $RULE_REF
+
+* Allow POD

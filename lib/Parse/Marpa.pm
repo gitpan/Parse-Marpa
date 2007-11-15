@@ -1,6 +1,6 @@
 package Parse::Marpa;
 
-require 5.008000;
+require 5.009005;
 
 # TO THE (POTENTIAL) READER:
 
@@ -19,6 +19,7 @@ require 5.008000;
 
 # thanks, Jeffrey Kegler
 
+use feature ":5.10";
 use warnings;
 use strict;
 
@@ -26,7 +27,7 @@ use Carp;
 use Scalar::Util qw(weaken);
 use Data::Dumper;
 
-our $VERSION = '0.001_041';
+our $VERSION = '0.001_042';
 $VERSION = eval $VERSION;
 
 =begin Apology:
@@ -2475,14 +2476,25 @@ sub lex_string {
                     "Trying to match ", $lexable->[ Parse::Marpa::Symbol::NAME ], " at $pos\n";
             }
 
-            if (my ($match) = ($$input_ref =~ $regex)) {
+            my (@match) = ($$input_ref =~ $regex);
+            my $match_count = @match;
+            if ($match_count == 1) {
+                my $match = $match[0];
                 push(@alternatives, [ $lexable, $match, length($match) ]);
                 if ($Parse::Marpa::This::trace_lex_matches) {
                     print $Parse::Marpa::This::trace_fh
                         "Matched ", $lexable->[ Parse::Marpa::Symbol::NAME ],
                         " at $pos: ", $match, "\n";
                 }
+                next LEXABLE;
             } # if match
+
+            next LEXABLE if $match_count <= 0;
+
+            croak(
+                "Lex pattern for "
+                . $lexable->[ Parse::Marpa::Symbol::NAME ]
+                . "or its prefix has capturing parentheses -- not allowed");
 
         } # LEXABLE
 
@@ -3500,7 +3512,7 @@ sub show_value {
 
 =head1 NAME
 
-Parse::Marpa - Jay Earley's general parsing algorithm with LR(0) precomputation
+Parse::Marpa - (pre-Alpha) Jay Earley's general parsing algorithm, with LR(0) precomputation
 
 =head1 VERSION
 

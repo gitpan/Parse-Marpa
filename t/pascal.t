@@ -1,4 +1,5 @@
 
+use 5.009005;
 # the example grammar in Aycock/Horspool "Practical Earley Parsing",
 # _The Computer Journal_, Vol. 45, No. 6, pp. 620-630,
 # in its "NNF" form
