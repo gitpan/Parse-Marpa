@@ -25,7 +25,7 @@ sub ah_extended {
             [ "E" ],
         ],
         terminals => [
-            [ "a" => qr/a/ ],
+            [ "a" => [qr/a/] ],
         ],
         default_closure => sub {
              my $v_count = scalar @Parse::Marpa::This::v;

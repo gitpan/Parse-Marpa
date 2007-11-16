@@ -21,9 +21,9 @@ my $g = new Parse::Marpa(
         [ "A",  [qw/a b/] ],
     ],
     terminals => [
-        [ "a" => qr/a/ ],
-        [ "b" => qr/b/ ],
-        [ "c" => qr/c/ ],
+        [ "a" => [qr/a/] ],
+        [ "b" => [qr/b/] ],
+        [ "c" => [qr/c/] ],
     ],
     academic => 1,
 );

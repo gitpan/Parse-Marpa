@@ -24,7 +24,7 @@ my $test = sub {
             [ "E" ],
         ],
         terminals => [
-            [ "a" => qr/a/ ],
+            [ "a" => [qr/a/] ],
         ],
     );
     my $a = $g->get_symbol("a");
@@ -35,6 +35,7 @@ my $test = sub {
     $parse->lex_earleme([$a, "a", 1]);
     $parse->lex_end();
     $parse->initial();
+    $parse->next();
     [ $g, $parse ];
 };
 

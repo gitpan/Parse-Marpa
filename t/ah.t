@@ -23,7 +23,7 @@ my $g = new Parse::Marpa(
         [ "E" ],
     ],
     terminals => [
-        [ "a" => qr/a/ ],
+        [ "a" => ["a"] ],
     ],
     academic => 1,
 );

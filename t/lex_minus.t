@@ -53,9 +53,9 @@ my $g = new Parse::Marpa(
         } ],
     ],
     terminals => [
-	[ "Number" => qr/\d+/],
-	[ "Minus" => qr/[-]/],
-	[ "MinusMinus" => qr/[-][-]/],
+	[ "Number" => [qr/\d+/] ],
+	[ "Minus" => [qr/[-]/] ],
+	[ "MinusMinus" => [qr/[-][-]/] ],
     ],
     default_closure => sub {
          my $v_count = scalar @Parse::Marpa::This::v;

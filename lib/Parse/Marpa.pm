@@ -27,7 +27,7 @@ use Carp;
 use Scalar::Util qw(weaken);
 use Data::Dumper;
 
-our $VERSION = '0.001_042';
+our $VERSION = '0.001_043';
 $VERSION = eval $VERSION;
 
 =begin Apology:
@@ -112,7 +112,7 @@ use constant NULL_ALIAS      => 11;   # for a non-nulling symbol,
                                       # if there is one
                                       # otherwise undef
 use constant TERMINAL        => 12;   # terminal?
-use constant COMPILED_REGEX  => 13;   # compiled version of REGEX
+use constant CLOSURE         => 13;   # closure to do lexing
 
 package Parse::Marpa::Rule;
 
@@ -170,12 +170,14 @@ use constant START           => 6;     # ref to start symbol
 use constant NFA             => 7;     # array of states
 use constant SDFA            => 8;     # array of states
 use constant SDFA_BY_NAME    => 9;     # hash from SDFA name to SDFA reference
-use constant NULLABLE_SYMBOL => 10;     # array of refs of the nullable symbols
-use constant ACADEMIC        => 11;     # true if this is a textbook grammar,
+use constant NULLABLE_SYMBOL => 10;    # array of refs of the nullable symbols
+use constant ACADEMIC        => 11;    # true if this is a textbook grammar,
                                        # for checking the NFA and SDFA, and NOT
                                        # for actual Earley parsing
 use constant DEFAULT_NULL_VALUE => 12; # default value for nulling symbols
-use constant DEFAULT_CLOSURE => 13; # closure for rules without one
+use constant DEFAULT_CLOSURE    => 13; # closure for rules without one
+use constant DEFAULT_LEX_PREFIX => 14; # default prefix for lexing
+use constant DEFAULT_LEX_SUFFIX => 15; # default suffix for lexing
 
 package Parse::Marpa::This;
 
@@ -194,6 +196,9 @@ package Parse::Marpa;
 my $grammar_number = 0;
 
 my $default_default_closure = sub { "" };
+
+my $default_default_lex_prefix = "";
+my $default_default_lex_suffix = "";
 
 sub chaf_stub {
          my $v_count = scalar @Parse::Marpa::This::v;
@@ -218,14 +223,18 @@ sub new {
     my $academic = 0;
     my $default_null_value = "";
     my $default_closure = $default_default_closure;
+    my $default_lex_prefix = $default_default_lex_prefix;
+    my $default_lex_suffix = $default_default_lex_suffix;
 
     my %arg_logic = (
-        "rules"      => sub { $rules     = $_[0] },
-        "terminals"  => sub { $terminals = $_[0] },
-        "start"      => sub { $start     = $_[0] },
-        "academic"   => sub { $academic  = $_[0] },
+        "rules"              => sub { $rules     = $_[0] },
+        "terminals"          => sub { $terminals = $_[0] },
+        "start"              => sub { $start     = $_[0] },
+        "academic"           => sub { $academic  = $_[0] },
         "default_null_value" => sub { $default_null_value = $_[0] },
-        "default_closure" => sub { $default_closure = $_[0] },
+        "default_closure"    => sub { $default_closure = $_[0] },
+        "default_lex_prefix" => sub { $default_lex_prefix = $_[0] },
+        "default_lex_suffix" => sub { $default_lex_suffix = $_[0] },
     );
 
     while ( my ( $arg, $value ) = each %args ) {
@@ -254,6 +263,8 @@ sub new {
         Parse::Marpa::Grammar::ACADEMIC,
         Parse::Marpa::Grammar::DEFAULT_NULL_VALUE,
         Parse::Marpa::Grammar::DEFAULT_CLOSURE,
+        Parse::Marpa::Grammar::DEFAULT_LEX_PREFIX,
+        Parse::Marpa::Grammar::DEFAULT_LEX_SUFFIX,
         ] = (
             $grammar_number++,
             $namespace,
@@ -261,6 +272,8 @@ sub new {
             $academic,
             $default_null_value,
             $default_closure,
+            $default_lex_prefix,
+            $default_lex_suffix,
         );
     bless( $grammar, $class );
 
@@ -589,12 +602,28 @@ sub canonical_name {
 sub add_terminal {
     my $grammar = shift;
     my $name    = shift;
-    my $regex   = shift;
-    my ( $symbol_hash, $symbols, $default_null_value )
-        = @{$grammar}[
+    my $lexer = shift;
+    my ($regex, $prefix, $suffix);
+    my $closure;
+
+    if (defined ref $lexer) {
+        ($regex, $prefix, $suffix) = @$lexer;
+    } else {
+        $closure = $lexer;
+    }
+
+    my ( $symbol_hash, $symbols,
+        $private_package,
+        $default_null_value,
+        $default_lex_prefix,
+        $default_lex_suffix,
+    ) = @{$grammar}[
             Parse::Marpa::Grammar::SYMBOL_HASH,
             Parse::Marpa::Grammar::SYMBOLS,
+            Parse::Marpa::Grammar::NAME,
             Parse::Marpa::Grammar::DEFAULT_NULL_VALUE,
+            Parse::Marpa::Grammar::DEFAULT_LEX_PREFIX,
+            Parse::Marpa::Grammar::DEFAULT_LEX_SUFFIX,
         ];
 
     my $compiled_regex;
@@ -602,7 +631,20 @@ sub add_terminal {
         if ( "" =~ $regex ) {
             croak("Attempt to add nullable terminal: $name");
         }
-        $compiled_regex = qr/\G($regex)/;
+        $prefix //= $default_lex_prefix;
+        $suffix //= $default_lex_suffix;
+        $compiled_regex = qr/
+            \G
+            (?<mArPa_prefix>$prefix)
+            (?<mArPa_match>$regex)
+            (?<mArPa_suffix>$suffix)
+        /xms;
+    } elsif (defined $closure) {
+       my $closure = eval
+           'sub { use ' . $private_package . ';'
+               . $closure
+           . '}';
+        croak($@) if $@;
     }
 
     # I allow redefinition of a LHS symbol as a terminal
@@ -618,12 +660,12 @@ sub add_terminal {
             Parse::Marpa::Symbol::INPUT_REACHABLE,
             Parse::Marpa::Symbol::NULLING,
             Parse::Marpa::Symbol::REGEX,
-            Parse::Marpa::Symbol::COMPILED_REGEX,
+            Parse::Marpa::Symbol::CLOSURE,
             Parse::Marpa::Symbol::TERMINAL,
         ] = (
             1, 0,
-            $regex,
             $compiled_regex,
+            $closure,
             1
         );
 
@@ -642,13 +684,11 @@ sub add_terminal {
         Parse::Marpa::Symbol::NULLING,
         Parse::Marpa::Symbol::NULL_VALUE,
         Parse::Marpa::Symbol::REGEX,
-        Parse::Marpa::Symbol::COMPILED_REGEX,
         Parse::Marpa::Symbol::TERMINAL,
     ] = (
         $symbol_count, $name, [], [],
         0, 1, 0,
         $default_null_value,
-        $regex,
         $compiled_regex,
         1,
     );
@@ -801,17 +841,17 @@ sub add_user_terminals {
         if ( $arg_count > 2 or $arg_count < 1) {
             croak("terminal must have from 1 or 2 arguments");
         }
-        my ($lhs_name, $regex) = @$terminal;
-        add_user_terminal( $grammar, $lhs_name, $regex);
+        my ($lhs_name, $lexer) = @$terminal;
+        add_user_terminal( $grammar, $lhs_name, $lexer);
     }
 }
 
 sub add_user_terminal {
     my $grammar = shift;
     my $lhs_name = shift;
-    my $regex = shift;
+    my $lexer = shift;
 
-    add_terminal( $grammar, canonical_name($lhs_name), $regex );
+    add_terminal( $grammar, canonical_name($lhs_name), $lexer );
 }
 
 sub set_closures {
@@ -1717,7 +1757,7 @@ sub create_SDFA {
             [ map { $_->[Parse::Marpa::Symbol::NAME] }
                 @{$symbols}[ grep { $lhs_list->[$_] } ( 0 .. $#$lhs_list ) ] ];
         $state->[Parse::Marpa::SDFA::LEXABLES] = [
-             grep { defined $_->[ Parse::Marpa::Symbol::REGEX ] }
+             grep { $_->[Parse::Marpa::Symbol::CLOSURE] // $_->[Parse::Marpa::Symbol::REGEX] }
              map { $symbol_hash->{$_} }
              grep { $_ ne "" }
              keys %{$state->[ Parse::Marpa::SDFA::TRANSITION ]}
@@ -2454,7 +2494,7 @@ sub lex_string {
 
     $length = length $$input_ref unless defined $length;
 
-    POS: for (my $pos = (pos $$input_ref || 0); $pos < $length; $pos++) {
+    POS: for (my $pos = (pos $$input_ref // 0); $pos < $length; $pos++) {
         my @lexable_seen;
         $#lexable_seen = $#$symbols;
         my @alternatives;
@@ -2463,38 +2503,48 @@ sub lex_string {
         # lexical position will correspond.  Be careful that Marpa
         # imposes no such requirement, however.
 
-        pos $$input_ref = $pos;
 
         my $lexables = complete_set($parse);
 
         LEXABLE: for my $lexable (@$lexables) {
             my ($regex) = @{$lexable}[
-                Parse::Marpa::Symbol::COMPILED_REGEX,
+                Parse::Marpa::Symbol::REGEX,
             ];
             if ($Parse::Marpa::This::trace_lex_tries) {
                 print $Parse::Marpa::This::trace_fh
                     "Trying to match ", $lexable->[ Parse::Marpa::Symbol::NAME ], " at $pos\n";
             }
 
-            my (@match) = ($$input_ref =~ $regex);
-            my $match_count = @match;
-            if ($match_count == 1) {
-                my $match = $match[0];
-                push(@alternatives, [ $lexable, $match, length($match) ]);
+            pos $$input_ref = $pos;
+            if (defined $regex) {
+                $$input_ref =~ $regex;
+                my $match = $+{mArPa_match};
+                if (defined $match) {
+                    push(@alternatives, [ $lexable, $match, length($match) ]);
+                    if ($Parse::Marpa::This::trace_lex_matches) {
+                        print $Parse::Marpa::This::trace_fh
+                            "Matched Regex for ", $lexable->[ Parse::Marpa::Symbol::NAME ],
+                            " at $pos: ", $match, "\n";
+                    }
+                } # if match
+
+                next LEXABLE;
+
+            } # if defined regex
+
+            # If it's a lexable and a regex was not defined, there must be a
+            # closure
+
+            if (my ($match, $length) = $lexable->[ Parse::Marpa::Symbol::CLOSURE ]->()) {
+                $length //= length $match;
+
+                push(@alternatives, [ $lexable, $match, $length ]);
                 if ($Parse::Marpa::This::trace_lex_matches) {
                     print $Parse::Marpa::This::trace_fh
-                        "Matched ", $lexable->[ Parse::Marpa::Symbol::NAME ],
+                        "Matched Closure for ", $lexable->[ Parse::Marpa::Symbol::NAME ],
                         " at $pos: ", $match, "\n";
                 }
-                next LEXABLE;
-            } # if match
-
-            next LEXABLE if $match_count <= 0;
-
-            croak(
-                "Lex pattern for "
-                . $lexable->[ Parse::Marpa::Symbol::NAME ]
-                . "or its prefix has capturing parentheses -- not allowed");
+            }
 
         } # LEXABLE
 
@@ -3530,6 +3580,16 @@ for at least a released, beta version.
 
     TO DO
     ...
+
+=head1 DESCRIPTION
+
+Notes toward the documentation: Point out that lexing honors the pos setting
+and must not alter it, even on successful match.  Warn user of counter-intuitive
+behavior.
+
+Warn user that in the lex patterns all named captures beginning with any
+"MARPA_" in any capitalization variant ("marpa_", "MaRpA_", etc.) is
+reserved.
 
 =head1 AUTHOR
 

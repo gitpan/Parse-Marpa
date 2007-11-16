@@ -22,7 +22,7 @@ my $g = new Parse::Marpa(
         [ "E" ],
     ],
     terminals => [
-        [ "a" => qr/a/ ],
+        [ "a" => ["a"] ],
     ],
     default_closure => sub {
          my $v_count = scalar @Parse::Marpa::This::v;
