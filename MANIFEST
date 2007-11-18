@@ -19,3 +19,4 @@ t/lex_minus.t
 t/pascal.t
 t/wall.t
 t/self.pl
+t/self_lex.pl

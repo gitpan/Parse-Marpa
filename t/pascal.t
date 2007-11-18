@@ -28,10 +28,10 @@ sub ah_extended {
             [ "a" => [qr/a/] ],
         ],
         default_closure => sub {
-             my $v_count = scalar @Parse::Marpa::This::v;
+             my $v_count = scalar @$Parse::Marpa::This::v;
              return "" if $v_count <= 0;
-             return $Parse::Marpa::This::v[0] if $v_count == 1;
-             "(" . join(";", @Parse::Marpa::This::v) . ")";
+             return $Parse::Marpa::This::v->[0] if $v_count == 1;
+             "(" . join(";", @$Parse::Marpa::This::v) . ")";
         },
     );
 

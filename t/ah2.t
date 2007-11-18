@@ -25,10 +25,10 @@ my $g = new Parse::Marpa(
         [ "a" => ["a"] ],
     ],
     default_closure => sub {
-         my $v_count = scalar @Parse::Marpa::This::v;
+         my $v_count = scalar @$Parse::Marpa::This::v;
          return "" if $v_count <= 0;
-         return $Parse::Marpa::This::v[0] if $v_count == 1;
-         "(" . join(";", @Parse::Marpa::This::v) . ")";
+         return $Parse::Marpa::This::v->[0] if $v_count == 1;
+         "(" . join(";", @$Parse::Marpa::This::v) . ")";
     },
 );
 
@@ -147,9 +147,6 @@ S30: S['] ::= . S
 S31: S['] ::= S .
 S32: S['][] ::= .
 EOS
-
-#is( normalize_SDFA($g->show_SDFA()),
-    #normalize_SDFA(<<'EOS'), "Aycock/Horspool SDFA" );
 
 is( $g->show_ii_SDFA(), <<'EOS', "Aycock/Horspool SDFA" );
 St0: 1
@@ -403,36 +400,32 @@ sub NextPermute(\@)
     return 1;
 }
 
-# $Parse::Marpa::This::trace = 1;
-
-# TODO: {
-    # local $TODO  = "Not debugged";
-    my $failure_count = 0;
-    my $total_count = 0;
-    my @a = sort (0, 1, 2, 3, 4);
-    my @answer = ("", qw[(a;;;) (a;a;;) (;a;a;a) (a;a;a;a)]);
-    PERMUTATION: for (;;) {
-        for my $i (@a) {
-            $parse->initial($i);
-            my $result = $parse->value();
-            $total_count++;
-            if ($answer[$i] ne $result) {
-                diag( "got $result, expected "
-                    . $answer[$i]
-                    . " for $i in ("
-                    . join(",", @a)
-                    . ")\n"
-                );
-                $failure_count++;
-            }
-        }
-        $parse->clear_notations();
-        if (not NextPermute(@a)) {
-            last PERMUTATION;
+my $failure_count = 0;
+my $total_count = 0;
+my @a = sort (0, 1, 2, 3, 4);
+my @answer = ("", qw[(a;;;) (a;a;;) (;a;a;a) (a;a;a;a)]);
+$parse->trace("all");
+PERMUTATION: for (;;) {
+    for my $i (@a) {
+        $parse->initial($i);
+        my $result = $parse->value();
+        $total_count++;
+        if ($answer[$i] ne $result) {
+            diag( "got $result, expected "
+                . $answer[$i]
+                . " for $i in ("
+                . join(",", @a)
+                . ")\n"
+            );
+            $failure_count++;
         }
     }
-    ok(!$failure_count, ($total_count-$failure_count) . " of $total_count parse permutations succeeded");
-# }
+    $parse->clear_notations();
+    if (not NextPermute(@a)) {
+        last PERMUTATION;
+    }
+}
+ok(!$failure_count, ($total_count-$failure_count) . " of $total_count parse permutations succeeded");
 
 # Local Variables:
 #   mode: cperl

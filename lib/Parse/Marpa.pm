@@ -27,7 +27,7 @@ use Carp;
 use Scalar::Util qw(weaken);
 use Data::Dumper;
 
-our $VERSION = '0.001_043';
+our $VERSION = '0.001_044';
 $VERSION = eval $VERSION;
 
 =begin Apology:
@@ -113,6 +113,7 @@ use constant NULL_ALIAS      => 11;   # for a non-nulling symbol,
                                       # otherwise undef
 use constant TERMINAL        => 12;   # terminal?
 use constant CLOSURE         => 13;   # closure to do lexing
+use constant ORDER           => 14;   # order, for lexing
 
 package Parse::Marpa::Rule;
 
@@ -181,19 +182,16 @@ use constant DEFAULT_LEX_SUFFIX => 15; # default suffix for lexing
 
 package Parse::Marpa::This;
 
-my @v;
-my $rule;
-my $trace_fh;
-my $trace_lex_tries;
-my $trace_lex_matches;
-my $trace_iteration_searches;
-my $trace_iteration_actions;
-my $grammar;
-my $parse;
-
 package Parse::Marpa;
 
 my $grammar_number = 0;
+
+# The lexables theoretically should be numbered within
+# grammars, but I number them globally for efficiency.
+# Other numbers (like the symbol ID #'s) will overflow
+# first, so running out of numbers is not likely to be
+# an issue.
+my $terminal_number = 0;
 
 my $default_default_closure = sub { "" };
 
@@ -201,10 +199,10 @@ my $default_default_lex_prefix = "";
 my $default_default_lex_suffix = "";
 
 sub chaf_stub {
-         my $v_count = scalar @Parse::Marpa::This::v;
+         my $v_count = scalar @$Parse::Marpa::This::v;
          return "" if $v_count <= 0;
-         return $Parse::Marpa::This::v[0] if $v_count == 1;
-         "(" . join(";", @Parse::Marpa::This::v) . ")";
+         return $Parse::Marpa::This::v->[0] if $v_count == 1;
+         "(" . join(";", @$Parse::Marpa::This::v) . ")";
 };
 
 # Constructor
@@ -648,7 +646,7 @@ sub add_terminal {
     }
 
     # I allow redefinition of a LHS symbol as a terminal
-    # I need to test that this works, or unallow it
+    # I need to test that this works, or disallow it
     my $symbol = $symbol_hash->{$name};
     if ( defined $symbol) {
 
@@ -662,11 +660,13 @@ sub add_terminal {
             Parse::Marpa::Symbol::REGEX,
             Parse::Marpa::Symbol::CLOSURE,
             Parse::Marpa::Symbol::TERMINAL,
+            Parse::Marpa::Symbol::ORDER,
         ] = (
             1, 0,
             $compiled_regex,
             $closure,
-            1
+            1,
+            $terminal_number++,
         );
 
         return;
@@ -685,12 +685,14 @@ sub add_terminal {
         Parse::Marpa::Symbol::NULL_VALUE,
         Parse::Marpa::Symbol::REGEX,
         Parse::Marpa::Symbol::TERMINAL,
+        Parse::Marpa::Symbol::ORDER,
     ] = (
         $symbol_count, $name, [], [],
         0, 1, 0,
         $default_null_value,
         $compiled_regex,
         1,
+        $terminal_number++,
     );
 
     push( @$symbols, $new_symbol );
@@ -784,7 +786,7 @@ sub add_rule {
     # if this is a nulling rule with a closure,
     # we get the null_value of the lhs from that
     if ($nulling and $closure) {
-        local(@Parse::Marpa::This::v) = ();
+        local($Parse::Marpa::This::v) = [];
         $lhs->[ Parse::Marpa::Symbol::NULL_VALUE ] = $closure->();
     }
 
@@ -1757,6 +1759,7 @@ sub create_SDFA {
             [ map { $_->[Parse::Marpa::Symbol::NAME] }
                 @{$symbols}[ grep { $lhs_list->[$_] } ( 0 .. $#$lhs_list ) ] ];
         $state->[Parse::Marpa::SDFA::LEXABLES] = [
+             sort { $a->[Parse::Marpa::Symbol::ORDER] <=> $b->[Parse::Marpa::Symbol::ORDER] }
              grep { $_->[Parse::Marpa::Symbol::CLOSURE] // $_->[Parse::Marpa::Symbol::REGEX] }
              map { $symbol_hash->{$_} }
              grep { $_ ne "" }
@@ -1838,18 +1841,19 @@ that the semantics of the original grammar are not affected.
 
 =cut
 
-sub chaf_head_only { [ @Parse::Marpa::This::v ]; }
+sub chaf_head_only { $Parse::Marpa::This::v; }
 
 sub chaf_head_and_tail {
-    my $tail = pop @Parse::Marpa::This::v;
-    [ @Parse::Marpa::This::v, @$tail ];
+    my $tail = pop @$Parse::Marpa::This::v;
+    push (@$Parse::Marpa::This::v, @$tail );
+    $Parse::Marpa::This::v;
 }
 
 sub chaf_tail_only {
     my $original
         = $Parse::Marpa::This::rule->[ Parse::Marpa::Rule::ORIGINAL_RULE ];
-    my $tail = pop @Parse::Marpa::This::v;
-    push(@Parse::Marpa::This::v, @$tail);
+    my $tail = pop @$Parse::Marpa::This::v;
+    push(@$Parse::Marpa::This::v, @$tail);
     $original->[ Parse::Marpa::Rule::CLOSURE ]->();
 }
 
@@ -2125,8 +2129,8 @@ sub rewrite_as_CHAF {
                         1, 1, 1, 0, 0,
                         $rule_id,
                     );
-                weaken($new_rule->[ Parse::Marpa::Rule::CLOSURE ] = $chaf_closure);
-                weaken($new_rule->[ Parse::Marpa::Rule::ORIGINAL_RULE ] = $rule);
+                $new_rule->[ Parse::Marpa::Rule::CLOSURE ] = $chaf_closure;
+                $new_rule->[ Parse::Marpa::Rule::ORIGINAL_RULE ] = $rule;
             }
 
             # no more
@@ -2238,6 +2242,7 @@ use constant TRACE_ITERATION_SEARCHES => 11;
 use constant TRACE_ITERATION_CHANGES  => 12; 
 use constant TRACE_FILE_HANDLE        => 13; 
 use constant DEFAULT_PARSE_SET        => 14;
+use constant TRACE_COMPLETIONS  => 15; 
 
 # implementation dependent constant, used below in unpack
 use constant J_LENGTH => ( length pack( "J", 0, 0 ) );
@@ -2512,15 +2517,19 @@ sub lex_string {
             ];
             if ($Parse::Marpa::This::trace_lex_tries) {
                 print $Parse::Marpa::This::trace_fh
-                    "Trying to match ", $lexable->[ Parse::Marpa::Symbol::NAME ], " at $pos\n";
+                    "Trying to match ",
+                    $lexable->[ Parse::Marpa::Symbol::NAME ],
+                    " at $pos\n";
             }
 
             pos $$input_ref = $pos;
             if (defined $regex) {
-                $$input_ref =~ $regex;
-                my $match = $+{mArPa_match};
-                if (defined $match) {
-                    push(@alternatives, [ $lexable, $match, length($match) ]);
+                if ($$input_ref =~ /$regex/p) {
+                    my $match = $+{mArPa_match};
+                    # my $prefix = $+{mArPa_prefix};
+                    # my $suffix = $+{mArPa_suffix};
+                    my $length = length(${^MATCH});
+                    push(@alternatives, [ $lexable, $match, $length ]);
                     if ($Parse::Marpa::This::trace_lex_matches) {
                         print $Parse::Marpa::This::trace_fh
                             "Matched Regex for ", $lexable->[ Parse::Marpa::Symbol::NAME ],
@@ -2590,7 +2599,7 @@ sub scan_set {
     ) = @{$parse}[
         EARLEY_SETS, EARLEY_HASHES, GRAMMAR,
         CURRENT_SET, FURTHEST_SET, EXHAUSTED ];
-    croak("Cannot continue an exhausted parse") if $exhausted;
+    croak("Attempt to scan tokens on an exhausted parse") if $exhausted;
     my $SDFA = $grammar->[Parse::Marpa::Grammar::SDFA];
 
     my $earley_set  = $earley_set_list->[$current_set];
@@ -2720,10 +2729,15 @@ sub complete_set {
     my (
         $earley_set_list, $earley_hash_list, $grammar,
         $current_set, $furthest_set, $exhausted,
+        $trace_completions,
+        $trace_fh,
     ) = @{$parse}[
         EARLEY_SETS, EARLEY_HASHES, GRAMMAR,
-        CURRENT_SET, FURTHEST_SET, EXHAUSTED ];
-    croak("Cannot continue an exhausted parse") if $exhausted;
+        CURRENT_SET, FURTHEST_SET, EXHAUSTED,
+        TRACE_COMPLETIONS,
+        TRACE_FILE_HANDLE,
+    ];
+    croak("Attempt to complete another earley set in an exhausted parse") if $exhausted;
 
     my $earley_set  = $earley_set_list->[$current_set];
     my $earley_hash = $earley_hash_list->[$current_set];
@@ -2835,6 +2849,10 @@ sub complete_set {
 
     $parse->[ Parse::Marpa::Parse::DEFAULT_PARSE_SET ] = $current_set;
 
+    if ($trace_completions) {
+        print $trace_fh show_earley_set($earley_set);
+    }
+
     my $lexables
         = [ map { $symbols->[$_] } grep { $lexable_seen->[$_] } (0 .. $#$symbols) ];
     return $lexables;
@@ -2862,11 +2880,15 @@ sub trace {
             $parse->[ Parse::Marpa::Parse::TRACE_ITERATION_SEARCHES ] = 1;
             $parse->[ Parse::Marpa::Parse::TRACE_ITERATION_CHANGES ] = 1;
         },
+        "completion(s)?" => sub {
+            $parse->[ Parse::Marpa::Parse::TRACE_COMPLETIONS ] = 1;
+        },
         "all" => sub {
             $parse->[ Parse::Marpa::Parse::TRACE_LEX_TRIES ] = 1;
             $parse->[ Parse::Marpa::Parse::TRACE_LEX_MATCHES ] = 1;
             $parse->[ Parse::Marpa::Parse::TRACE_ITERATION_SEARCHES ] = 1;
             $parse->[ Parse::Marpa::Parse::TRACE_ITERATION_CHANGES ] = 1;
+            $parse->[ Parse::Marpa::Parse::TRACE_COMPLETIONS ] = 1;
         },
     );
     for my $argument (@_) {
@@ -3125,7 +3147,7 @@ sub initialize_children {
     local($Parse::Marpa::This::rule) = $rule;
     my ($rhs) = @{$rule}[ Parse::Marpa::Rule::RHS ];
 
-    local(@Parse::Marpa::This::v) = (); # to store values in
+    local($Parse::Marpa::This::v) = []; # to store values in
 
     CHILD: for (my $child_number = $#$rhs; $child_number >= 0; $child_number--) {
 
@@ -3134,7 +3156,7 @@ sub initialize_children {
 
         if ($nulling)
         {
-            $Parse::Marpa::This::v[ $child_number ]
+            $Parse::Marpa::This::v->[ $child_number ]
                 = $child_symbol->[ Parse::Marpa::Symbol::NULL_VALUE ];
            next CHILD;
         }
@@ -3152,7 +3174,7 @@ sub initialize_children {
         ];
 
         if (defined $previous_value) {
-            $Parse::Marpa::This::v[ $child_number ] = $$previous_value;
+            $Parse::Marpa::This::v->[ $child_number ] = $$previous_value;
             $item = $previous_predecessor;
             next CHILD;
         }
@@ -3189,7 +3211,7 @@ sub initialize_children {
                  " at ", $predecessor_set, "-", $item_set,
                  " to ", Dumper($value);
             }
-            $Parse::Marpa::This::v[ $child_number ] = $value;
+            $Parse::Marpa::This::v->[ $child_number ] = $value;
             weaken($predecessor->[Parse::Marpa::Earley_item::SUCCESSOR] = $item);
             $item = $predecessor;
             next CHILD;
@@ -3226,7 +3248,7 @@ sub initialize_children {
              " at ", $predecessor_set, "-", $item_set,
              " to ", Dumper($value);
         }
-        $Parse::Marpa::This::v[ $child_number ] = $value;
+        $Parse::Marpa::This::v->[ $child_number ] = $value;
         weaken($predecessor->[Parse::Marpa::Earley_item::SUCCESSOR] = $item);
         $item = $predecessor;
 
@@ -3263,6 +3285,7 @@ sub next {
         $current_parse_set,
         $trace_iteration_searches,
         $trace_iteration_changes,
+        $trace_fh,
     ) = @{$parse}[
         Parse::Marpa::Parse::GRAMMAR,
         Parse::Marpa::Parse::START_ITEM,

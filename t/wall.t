@@ -26,29 +26,29 @@ my $g = new Parse::Marpa(
     rules => [
         [ "E", [qw/E Minus E/], sub {
             my ($right_string, $right_value)
-                = ($Parse::Marpa::This::v[2] =~ /^(.*)==(.*)$/);
+                = ($Parse::Marpa::This::v->[2] =~ /^(.*)==(.*)$/);
             my ($left_string, $left_value)
-                = ($Parse::Marpa::This::v[0] =~ /^(.*)==(.*)$/);
+                = ($Parse::Marpa::This::v->[0] =~ /^(.*)==(.*)$/);
             my $value = $left_value - $right_value;
             "(" . $left_string . "-" . $right_string . ")==" . $value;
         } ],
         [ "E", [qw/E Minus Minus/], sub {
             my ($string, $value)
-                = ($Parse::Marpa::This::v[0] =~ /^(.*)==(.*)$/);
+                = ($Parse::Marpa::This::v->[0] =~ /^(.*)==(.*)$/);
             "(" . $string . "--" . ")==" . $value--;
         } ],
         [ "E", [qw/Minus Minus E/], sub {
             my ($string, $value)
-                = ($Parse::Marpa::This::v[2] =~ /^(.*)==(.*)$/);
+                = ($Parse::Marpa::This::v->[2] =~ /^(.*)==(.*)$/);
             "(" . "--" . $string . ")==" . --$value;
         } ],
         [ "E", [qw/Minus E/], sub {
             my ($string, $value)
-                = ($Parse::Marpa::This::v[1] =~ /^(.*)==(.*)$/);
+                = ($Parse::Marpa::This::v->[1] =~ /^(.*)==(.*)$/);
             "(" . "-" . $string . ")==" . -$value;
         } ],
         [ "E", [qw/Number/], sub {
-            my $value = $Parse::Marpa::This::v[0];
+            my $value = $Parse::Marpa::This::v->[0];
             "$value==$value";
         } ],
     ],
@@ -57,10 +57,10 @@ my $g = new Parse::Marpa(
         [ "Minus" => [qr/[-] /] ],
     ],
     default_closure => sub {
-         my $v_count = scalar @Parse::Marpa::This::v;
+         my $v_count = scalar @$Parse::Marpa::This::v;
          return "" if $v_count <= 0;
-         return $Parse::Marpa::This::v[0] if $v_count == 1;
-         "(" . join(";", @Parse::Marpa::This::v) . ")";
+         return $Parse::Marpa::This::v->[0] if $v_count == 1;
+         "(" . join(";", @$Parse::Marpa::This::v) . ")";
     },
 );
 

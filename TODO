@@ -1,6 +1,8 @@
-* Allow closures for terminals
+* Major surgery; v (values) array must be changed to array REFERENCE.
 
-* Comments in # or #[ form.  (Check latter is really Perl 6.)
+* Enforce order on lexables.  Use order in which their regex or closures were defined.
+
+* Comments in # form.
 
 * Code blocks in { } or %{ }% (yacc) form?
 

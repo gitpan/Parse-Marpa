@@ -24,10 +24,10 @@ my $g = new Parse::Marpa(
     rules => [
 	[ "E", [qw/E Op E/], sub {
             my ($right_string, $right_value)
-                = ($Parse::Marpa::This::v[2] =~ /^(.*)==(.*)$/);
+                = ($Parse::Marpa::This::v->[2] =~ /^(.*)==(.*)$/);
             my ($left_string, $left_value)
-                = ($Parse::Marpa::This::v[0] =~ /^(.*)==(.*)$/);
-            my $op = $Parse::Marpa::This::v[1];
+                = ($Parse::Marpa::This::v->[0] =~ /^(.*)==(.*)$/);
+            my $op = $Parse::Marpa::This::v->[1];
             my $value;
             if ($op eq "+") {
                $value = $left_value + $right_value;
@@ -41,7 +41,7 @@ my $g = new Parse::Marpa(
             "(" . $left_string . $op . $right_string . ")==" . $value;
         } ],
 	[ "E", [qw/Number/], sub {
-           my $v0 = pop @Parse::Marpa::This::v;
+           my $v0 = pop @$Parse::Marpa::This::v;
            $v0 . "==" . $v0;
         } ],
     ],
@@ -50,16 +50,15 @@ my $g = new Parse::Marpa(
 	[ "Op" => [qr/[-+*]/] ],
     ],
     default_closure => sub {
-         my $v_count = scalar @Parse::Marpa::This::v;
+         my $v_count = scalar @$Parse::Marpa::This::v;
          return "" if $v_count <= 0;
-         return $Parse::Marpa::This::v[0] if $v_count == 1;
-         "(" . join(";", @Parse::Marpa::This::v) . ")";
+         return $Parse::Marpa::This::v->[0] if $v_count == 1;
+         "(" . join(";", @$Parse::Marpa::This::v) . ")";
     },
 );
 
 my $parse = new Parse::Marpa::Parse($g);
 
-$parse->trace("all");
 my $op = $g->get_symbol("Op");
 my $number = $g->get_symbol("Number");
 $parse->lex_earleme([$number, 2, 1]);
@@ -105,10 +104,6 @@ E['] ::= . E
 St6: 8
 E['] ::= E .
 END_SDFA
-
-# print $parse->show_status(1);
-
-# $Parse::Marpa::This::trace = 1;
 
 my @expected = (
     '(((2-0)*3)+1)==7',
