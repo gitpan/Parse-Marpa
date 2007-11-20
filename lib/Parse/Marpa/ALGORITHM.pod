@@ -1,41 +1,113 @@
 =head1 NAME
 
-Parse::Marpa::ALGORITHM - Description of Parse::Marpa's Algorithm
+Parse::Marpa::ALGORITHM - Description of the Marpa Algorithm
 
 =head1 THE ALGORITHM
 
-Marpa is essentially the parser described in John Aycock and R.
+Marpa is based on and derived from
+the parser described in John Aycock and R.
 Nigel Horspool's "Practical Earley Parsing", I<The Computer Journal>,
-Vol. 45, No. 6, 2002, pp. 620-630.  This combines LR(0) with Jay
-Earley's parsing algorithm.  His most accessible paper
-is J. Earley, "An efficient context-free parsing algorithm",
+Vol. 45, No. 6, 2002, pp. 620-630.  This combines LR(0)
+precomputation
+with Earley's general parsing algorithm.
+Jay Earley's most accessible paper
+is "An efficient context-free parsing algorithm",
 I<Communications of the Association for Computing Machinery>,
 13:2:94-102, 1970.
 
 The Aycock and Horspool paper is on the web
 (L<http://www.cs.uvic.ca/~nigelh/Publications/PracticalEarleyParsing.pdf>),
 unlike Earley's, and
-it summarizes Earley's very nicely.  It is B<not>, however, easy
-reading.  I have a degree in the subject, and have been following
-this particular topic on and off for years.  I'd also unsuccessfully
-attempted to work out many of the same problems myself, which
-gives me some advantage in understanding the issues that Aycock and
-Horspool solved.  Nonetheless I found the Aycock and Horspool paper
-very difficult going.
+it summarizes Earley's very nicely.
+It is B<not>, however, easy reading.
+I have a degree in the subject, and have been following
+this particular topic on and off for years.
+Nonetheless I found the Aycock and Horspool paper very difficult going.
 
-The rest of this document describes only my improvements to the
-work of Aycock, Horspool and Earley, and does not repeat the details
-of the algorithm described in their papers and elsewhere.  I focus
-on my improvements because they have not been documented previously.
-I hope the reader does not allow this to confuse him into thinking
-most of the algorithm in Marpa is mine.  That's not correct.  The
-major part of the algorithm, and not a few of the implementation
-ideas, are due to Aycock, Horspool and Earley.
+Earley's algorithm is documented in many places and
+Aycock and Horspool have documented their contribution in the paper
+cited above.
+In what follows,
+I'll briefly describe the more significant ideas that are new with Marpa.
 
-My first improvement was to Aycock and Horspool's internal rewriting
+=head2 Upside-down and Inside-out
+
+Perhaps the most central change in Marpa is that it takes the parse engine as
+described by Horspool and Aycock
+and literally turns it inside out and upside down.
+In the Horspool and Aycock version of Earley's,
+the main loop iterated over each item of an Earley set,
+first scanning for tokens,
+then completing items in the set.
+Marpa turns this into two separate loops over the
+Earley items,
+the first of which completes the current earley set,
+and the second of which scans for tokens.
+
+The advantage of this double inversion is that lexical analysis
+can be put between the two loops,
+after completion,
+but before scanning.
+This makes predictive lexing possible.
+Being able to predict which lexables are legal at a given
+point in the parse can save a lot of processing,
+especially if the lexical level is complex.
+Any lexemes
+which are not predicted by 
+items in the current
+Earley set do not need to be scanned for.
+Now that Hayspool and Aycock have sped up Earley's algorithm,
+the time spent lexing is a significant factor in overall speed.
+Predictive lexing can easily reduce lexing time to a fraction of the original.
+
+=head2 Earlemes
+
+Marpa allows ambiguous lexing,
+including recognition of lexemes of different length at the
+same point in the lexing,
+and recognition of overlapping lexemes.
+To facilitate this,
+Marpa introduces the "earleme" (named after Jay Earley).
+Previous
+implementations required the Earley grammar's input to be broken
+up into tokens, presumably by lexical analysis of the input using
+DFA's.
+(DFA's -- deterministic finite automata -- are the equivalent of
+regular expressions when that term is used in the strictest sense).
+Requiring that the first level of analysis
+be performed by a DFA hobbles a general parser like Earley's.
+
+Marpa allows the scanning phase of
+Earley's algorithm to add items not just to the
+the next Earley set, but to any later one.
+Several
+alternative scans of the input can be put into the Earley sets, and
+the power of Earley's algorithm harnessed to deal with the
+indeterminism.
+
+Marpa does this by allowing
+each scanned item to have a length in "earlemes",
+call it C<l>.
+If the current Earley set is C<i>, a newly scanned
+Earley item is added to Earley set C<l+i>.
+In other words, the B<earleme> is a unit of distance
+measured in Earley sets.
+An implementation can sync
+earlemes up with any measure that's convenient.
+For example, the
+distance in earlemes may be the length of a string, as measured
+either in ASCII characters or UNICODE graphemes.
+An implementation may mimic traditional lexing by defining
+the earleme to be the same as the distance in a token stream,
+measured in tokens.
+
+=head2 Chomsky-Horspool-Aycock Form
+
+Marpa's third significant change to the Aycock and Horspool algorithm is
+in internal rewriting
 of the grammar.  Aycock and Horspool call their rewriting
 NNF (Nihilist Normal Form).  Earley's original
-algorithms had serious issues with nullable symbols and productions,
+algorithm had serious issues with nullable symbols and productions,
 and NNF fixes most of them.  (A nullable symbol or production is
 one which could eventually parse out to the empty string.) Importantly,
 NNF also allows complete and easy mapping of the semantics of the
@@ -45,48 +117,24 @@ rewrite process can be made invisible to the user.
 My problem with NNF grammar is that the rewritten grammar is
 exponentially larger than the original in the theoretical worst
 case, and I just don't like exponential explosion, even as a
-theoretical possibility in pre-processing.  Furthermore, I think
-that in some cases likely to arise in practice (Perl 6 "rules" with
-significant whitespace, for example), the size explosion, while not
-exponential, is linear with a very large multiplier.
+theoretical possibility in pre-processing.  I also think
+that there are cases likely to arise in practice
+where the size explosion, if not exponential,
+is linear with a very large multiplier.
+Perl 6 "rules" where whitespace is significant, but also optional,
+may be an example.
 
-My solution is Chomsky-Horspool-Aycock Form (CHAF).  This is
+My solution is Chomsky-Horspool-Aycock Form (CHAF).
+This is
 Horspool and Aycock's NNF, but with the further restriction that
 no more than two nullable symbols may appear in any production.
-(In the literature, the discovery that any context-free grammar can
-be rewritten into productions of at most a small fixed size is
-credited to Noam Chomsky.) The shortened CHAF production maps back
+(The idea that any context-free grammar can
+be rewritten into productions of at most a small fixed size appears to
+originate, like so much else, with Noam Chomsky.)
+The shortened CHAF production maps back
 to the original grammar, so that like NNF, the CHAF rewrite can be
-made invisible to the user.  With CHAF, the theoretical worst
+made invisible to the user.
+With CHAF, the theoretical worst
 behavior is linear, and in those difficult cases likely to arise
-in practice the multiplier is smaller.
-
-My second improvement was to extend
-the scanning step of Earley's algorithm, and to
-introduce the "earleme" (named after Jay Earley).  Previous
-implementations required the Earley grammar's input to be broken
-up into tokens, presumably by lexical analysis of the input using
-DFA's (deterministic finite automata, which are the equivalent of
-regular expressions when that term is used in the strictest sense).
-Requiring that the first level of analysis
-be performed by a DFA hobbles a general parser like Earley's.
-
-Marpa loosens the restriction, by allowing the scanning phase of
-Earley's algorithm to add items not just to the current Earley set
-and the next one, but to any later Earley set.  Since items can be
-scanned onto several different Earley sets, so that the input to
-the Earley scanning step no longer has to be deterministic.  Several
-alternative scans of the input can be put into the Earley sets, and
-the power of Earley's algorithm harnessed to deal with the
-indeterminism.
-
-In the new Marpa scanner, each scanned item has a length in "earlemes",
-call it C<l>.  If the current Earley set is C<i>, a newly scanned
-Earley item is added to Earley set C<l+i>.  The B<earleme> is the
-distance measured in Earley sets, and an implementation can sync
-earlemes up with any measure that's convenient.  For example, the
-distance in earlemes may be the length of a string, as measured
-either in ASCII characters, or UNICODE graphemes.  Another
-implementation may define the earleme length as the distance in a
-token stream, measured in tokens.
+in practice the multiplier is much smaller.
 

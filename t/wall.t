@@ -24,44 +24,55 @@ BEGIN {
 my $g = new Parse::Marpa(
     start => "E",
     rules => [
-        [ "E", [qw/E Minus E/], sub {
-            my ($right_string, $right_value)
-                = ($Parse::Marpa::This::v->[2] =~ /^(.*)==(.*)$/);
-            my ($left_string, $left_value)
-                = ($Parse::Marpa::This::v->[0] =~ /^(.*)==(.*)$/);
-            my $value = $left_value - $right_value;
-            "(" . $left_string . "-" . $right_string . ")==" . $value;
-        } ],
-        [ "E", [qw/E Minus Minus/], sub {
-            my ($string, $value)
-                = ($Parse::Marpa::This::v->[0] =~ /^(.*)==(.*)$/);
-            "(" . $string . "--" . ")==" . $value--;
-        } ],
-        [ "E", [qw/Minus Minus E/], sub {
-            my ($string, $value)
-                = ($Parse::Marpa::This::v->[2] =~ /^(.*)==(.*)$/);
-            "(" . "--" . $string . ")==" . --$value;
-        } ],
-        [ "E", [qw/Minus E/], sub {
-            my ($string, $value)
-                = ($Parse::Marpa::This::v->[1] =~ /^(.*)==(.*)$/);
-            "(" . "-" . $string . ")==" . -$value;
-        } ],
-        [ "E", [qw/Number/], sub {
+        [ "E", [qw/E Minus E/],
+<<'EOCODE'
+    my ($right_string, $right_value)
+        = ($Parse::Marpa::This::v->[2] =~ /^(.*)==(.*)$/);
+    my ($left_string, $left_value)
+        = ($Parse::Marpa::This::v->[0] =~ /^(.*)==(.*)$/);
+    my $value = $left_value - $right_value;
+    "(" . $left_string . "-" . $right_string . ")==" . $value;
+EOCODE
+        ],
+        [ "E", [qw/E Minus Minus/],
+<<'EOCODE'
+    my ($string, $value)
+        = ($Parse::Marpa::This::v->[0] =~ /^(.*)==(.*)$/);
+    "(" . $string . "--" . ")==" . $value--;
+EOCODE
+        ],
+        [ "E", [qw/Minus Minus E/],
+<<'EOCODE'
+    my ($string, $value)
+        = ($Parse::Marpa::This::v->[2] =~ /^(.*)==(.*)$/);
+    "(" . "--" . $string . ")==" . --$value;
+EOCODE
+        ],
+        [ "E", [qw/Minus E/],
+<<'EOCODE'
+    my ($string, $value)
+        = ($Parse::Marpa::This::v->[1] =~ /^(.*)==(.*)$/);
+    "(" . "-" . $string . ")==" . -$value;
+EOCODE
+        ],
+        [ "E", [qw/Number/],
+<<'EOCODE'
             my $value = $Parse::Marpa::This::v->[0];
             "$value==$value";
-        } ],
+EOCODE
+        ],
     ],
     terminals => [
         [ "Number" => [qr/\d+/] ],
         [ "Minus" => [qr/[-] /] ],
     ],
-    default_closure => sub {
-         my $v_count = scalar @$Parse::Marpa::This::v;
-         return "" if $v_count <= 0;
-         return $Parse::Marpa::This::v->[0] if $v_count == 1;
-         "(" . join(";", @$Parse::Marpa::This::v) . ")";
-    },
+    default_closure =>
+<<'EOCODE'
+     my $v_count = scalar @$Parse::Marpa::This::v;
+     return "" if $v_count <= 0;
+     return $Parse::Marpa::This::v->[0] if $v_count == 1;
+     "(" . join(";", @$Parse::Marpa::This::v) . ")";
+EOCODE
 );
 
 my @expected = qw(0 1 1 3 4 8 12 21 33 55 88 144 232 );

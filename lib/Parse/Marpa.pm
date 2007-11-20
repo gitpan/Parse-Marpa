@@ -21,13 +21,14 @@ require 5.009005;
 
 use feature ":5.10";
 use warnings;
+no warnings "recursion";
 use strict;
 
 use Carp;
 use Scalar::Util qw(weaken);
 use Data::Dumper;
 
-our $VERSION = '0.001_044';
+our $VERSION = '0.001_045';
 $VERSION = eval $VERSION;
 
 =begin Apology:
@@ -179,6 +180,7 @@ use constant DEFAULT_NULL_VALUE => 12; # default value for nulling symbols
 use constant DEFAULT_CLOSURE    => 13; # closure for rules without one
 use constant DEFAULT_LEX_PREFIX => 14; # default prefix for lexing
 use constant DEFAULT_LEX_SUFFIX => 15; # default suffix for lexing
+use constant AMBIGUOUS_LEX      => 16; # lex ambiguously? (the default)
 
 package Parse::Marpa::This;
 
@@ -192,8 +194,6 @@ my $grammar_number = 0;
 # first, so running out of numbers is not likely to be
 # an issue.
 my $terminal_number = 0;
-
-my $default_default_closure = sub { "" };
 
 my $default_default_lex_prefix = "";
 my $default_default_lex_suffix = "";
@@ -219,10 +219,11 @@ sub new {
     # to debug the NFA and SDFA logic.  We leave it unchanged.  Since we don't augment it, we can't
     # parse with this grammar.  It's only useful to test the NFA and SDFA logic
     my $academic = 0;
-    my $default_null_value = "";
-    my $default_closure = $default_default_closure;
+    my $default_null_value;
+    my $default_closure;
     my $default_lex_prefix = $default_default_lex_prefix;
     my $default_lex_suffix = $default_default_lex_suffix;
+    my $ambiguous_lex = 1;
 
     my %arg_logic = (
         "rules"              => sub { $rules     = $_[0] },
@@ -233,6 +234,7 @@ sub new {
         "default_closure"    => sub { $default_closure = $_[0] },
         "default_lex_prefix" => sub { $default_lex_prefix = $_[0] },
         "default_lex_suffix" => sub { $default_lex_suffix = $_[0] },
+        "ambiguous_lex"      => sub { $ambiguous_lex = $_[0] },
     );
 
     while ( my ( $arg, $value ) = each %args ) {
@@ -263,6 +265,7 @@ sub new {
         Parse::Marpa::Grammar::DEFAULT_CLOSURE,
         Parse::Marpa::Grammar::DEFAULT_LEX_PREFIX,
         Parse::Marpa::Grammar::DEFAULT_LEX_SUFFIX,
+        Parse::Marpa::Grammar::AMBIGUOUS_LEX,
         ] = (
             $grammar_number++,
             $namespace,
@@ -272,6 +275,7 @@ sub new {
             $default_closure,
             $default_lex_prefix,
             $default_lex_suffix,
+            $ambiguous_lex,
         );
     bless( $grammar, $class );
 
@@ -760,7 +764,13 @@ sub add_rule {
     my $rhs     = shift;
     my $closure = shift;
 
-    my ( $rules ) = @{$grammar}[ Parse::Marpa::Grammar::RULES ];
+    my (
+        $rules,
+        $grammar_name,
+    ) = @{$grammar}[
+        Parse::Marpa::Grammar::RULES,
+        Parse::Marpa::Grammar::NAME,
+    ];
     my $rule_count = @$rules;
     my $new_rule   = [];
     my $nulling = @$rhs ? undef : 1;
@@ -787,7 +797,11 @@ sub add_rule {
     # we get the null_value of the lhs from that
     if ($nulling and $closure) {
         local($Parse::Marpa::This::v) = [];
-        $lhs->[ Parse::Marpa::Symbol::NULL_VALUE ] = $closure->();
+        my $package = "Parse::Marpa::" . $grammar_name;
+        if (defined $closure) {
+            $lhs->[ Parse::Marpa::Symbol::NULL_VALUE ]
+                = create_user_closure($closure, $package)->();
+        }
     }
 
     push( @$rules, $new_rule );
@@ -856,20 +870,44 @@ sub add_user_terminal {
     add_terminal( $grammar, canonical_name($lhs_name), $lexer );
 }
 
+# given a closure as provided by the user,
+# return a "safe" Marpa closure
+sub create_user_closure {
+    my $closure = shift;
+    my $package = shift;
+
+    $closure = eval
+        "sub { package Parse::Marpa::" . $package .";\n"
+        . $closure
+        . "\n}" ;
+    croak($@) if $@;
+    $closure;
+}
+
 sub set_closures {
     my $grammar    = shift;
     my (
         $rules,
         $default_closure,
+        $name,
     ) = @{$grammar}[
         Parse::Marpa::Grammar::RULES,
         Parse::Marpa::Grammar::DEFAULT_CLOSURE,
+        Parse::Marpa::Grammar::NAME,
     ];
 
+    my $package = "Parse::Marpa::$name";
+    $default_closure 
+        = defined $default_closure
+        ? create_user_closure($default_closure, $package)
+        : undef;
+        ;
     for my $rule (@$rules) {
         my $closure = $rule->[ Parse::Marpa::Rule::ORIGINAL_CLOSURE ];
-        $closure ||= $default_closure;
-        $rule->[ Parse::Marpa::Rule::CLOSURE ] = $closure;
+        $rule->[ Parse::Marpa::Rule::CLOSURE ]
+            = defined $closure
+            ? create_user_closure($closure, $package)
+            : $default_closure;
     }
 }
 
@@ -1759,7 +1797,6 @@ sub create_SDFA {
             [ map { $_->[Parse::Marpa::Symbol::NAME] }
                 @{$symbols}[ grep { $lhs_list->[$_] } ( 0 .. $#$lhs_list ) ] ];
         $state->[Parse::Marpa::SDFA::LEXABLES] = [
-             sort { $a->[Parse::Marpa::Symbol::ORDER] <=> $b->[Parse::Marpa::Symbol::ORDER] }
              grep { $_->[Parse::Marpa::Symbol::CLOSURE] // $_->[Parse::Marpa::Symbol::REGEX] }
              map { $symbol_hash->{$_} }
              grep { $_ ne "" }
@@ -1782,11 +1819,10 @@ sub setup_academic_grammar {
 sub alias_symbol {
     my $grammar         = shift;
     my $nullable_symbol = shift;
-    my ( $symbol, $symbols, $default_null_value ) =
+    my ( $symbol, $symbols, ) =
         @{$grammar}[
             Parse::Marpa::Grammar::SYMBOL_HASH,
             Parse::Marpa::Grammar::SYMBOLS,
-            Parse::Marpa::Grammar::DEFAULT_NULL_VALUE,
         ];
     my ( $start_reachable, $input_reachable, $name, $null_value ) = @{$nullable_symbol}[
         Parse::Marpa::Symbol::START_REACHABLE,
@@ -1841,20 +1877,33 @@ that the semantics of the original grammar are not affected.
 
 =cut
 
-sub chaf_head_only { $Parse::Marpa::This::v; }
+# For efficiency, steps in the CHAF evaluation
+# work on a last-is-rest principle -- productions
+# with a CHAF head always return reference to an array
+# of values, of which the last value is (in turn)
+# a reference to an array with the "rest" of the values.
+# An empty array signals that there are no more.
+
+sub chaf_head_only {
+    push(@$Parse::Marpa::This::v, []);
+    $Parse::Marpa::This::v;
+}
 
 sub chaf_head_and_tail {
-    my $tail = pop @$Parse::Marpa::This::v;
-    push (@$Parse::Marpa::This::v, @$tail );
     $Parse::Marpa::This::v;
 }
 
 sub chaf_tail_only {
     my $original
         = $Parse::Marpa::This::rule->[ Parse::Marpa::Rule::ORIGINAL_RULE ];
-    my $tail = pop @$Parse::Marpa::This::v;
-    push(@$Parse::Marpa::This::v, @$tail);
-    $original->[ Parse::Marpa::Rule::CLOSURE ]->();
+    my $closure = $original->[ Parse::Marpa::Rule::CLOSURE ];
+    return unless defined $closure;
+    TAIL: for (;;) {
+        my $tail = pop @$Parse::Marpa::This::v;
+        last TAIL unless scalar @$tail;
+        push(@$Parse::Marpa::This::v, @$tail);
+    }
+    $closure->();
 }
 
 # rewrite as Chomsky-Horspool-Aycock Form
@@ -2040,7 +2089,7 @@ sub rewrite_as_CHAF {
                     ]
                     = (
                         1, 1, 1, 0,
-                        [ @{$rhs_null_value}[ ($subp_end+1) .. $#$rhs_null_value] ],
+                        [ @{$rhs_null_value}[ ($subp_end+1) .. $#$rhs_null_value], [] ],
                     );
                 alias_symbol( $grammar, $next_subp_lhs );
                 $subp_factor0_rhs =
@@ -2096,26 +2145,34 @@ sub rewrite_as_CHAF {
             for (my $ix = 0; $ix <= $#$factored_rhs; $ix++) {
                 my $factor_rhs = $factored_rhs->[$ix];
 
-                my $chaf_closure = \&Parse::Marpa::chaf_stub;
+                my $chaf_closure = $rule->[ Parse::Marpa::Rule::CLOSURE ];
 
-                # figure out which closure to use
-                # if the LHS is the not LHS of the original rule, we have a
-                # special CHAF header
-                my $has_chaf_head = ($subp_lhs != $lhs);
+                # No need to bother putting together values
+                # if the rule's closure is not defined
+                # and the values would all be discarded
 
-                # if a CHAF LHS was created for the next subproduction,
-                # there is a CHAF continuation for this subproduction.
-                # It applies to this factor if there is one of the first two
-                # factors of more than two.
-                my $has_chaf_tail = $next_subp_lhs;
+                if (defined $chaf_closure) {
 
-                if ($has_chaf_head and not $has_chaf_tail) {
-                    $chaf_closure = \&chaf_head_only;
-                } elsif ($has_chaf_head and $has_chaf_tail) {
-                    $chaf_closure = \&chaf_head_and_tail;
-                } elsif ($has_chaf_tail) {
-                    $chaf_closure = \&chaf_tail_only;
-                }
+                    # figure out which closure to use
+                    # if the LHS is the not LHS of the original rule, we have a
+                    # special CHAF header
+                    my $has_chaf_head = ($subp_lhs != $lhs);
+
+                    # if a CHAF LHS was created for the next subproduction,
+                    # there is a CHAF continuation for this subproduction.
+                    # It applies to this factor if there is one of the first two
+                    # factors of more than two.
+                    my $has_chaf_tail = $next_subp_lhs;
+
+                    if ($has_chaf_head and not $has_chaf_tail) {
+                        $chaf_closure = \&chaf_head_only;
+                    } elsif ($has_chaf_head and $has_chaf_tail) {
+                        $chaf_closure = \&chaf_head_and_tail;
+                    } elsif ($has_chaf_tail) {
+                        $chaf_closure = \&chaf_tail_only;
+                    }
+
+                } # if defined $chaf_closure;
 
                 my $new_rule = add_rule( $grammar, $subp_lhs, $factor_rhs );
                 @{$new_rule}[
@@ -2167,7 +2224,10 @@ sub rewrite_as_CHAF {
         Parse::Marpa::Rule::USEFUL,
         Parse::Marpa::Rule::CLOSURE,
         ]
-        = ( $input_reachable, 1, 1, \&Parse::Marpa::chaf_stub );
+        = (
+            $input_reachable, 1, 1,
+            sub { $Parse::Marpa::This::v->[0] }
+        );
 
     # If we created a null alias for the original start symobl, we need
     # to create a nulling start rule
@@ -2493,15 +2553,15 @@ sub lex_string {
 
     my (
         $symbols,
-    ) = $grammar->[
+        $ambiguous_lex,
+    ) = @{$grammar}[
         Parse::Marpa::Grammar::SYMBOLS,
+        Parse::Marpa::Grammar::AMBIGUOUS_LEX,
     ];
 
     $length = length $$input_ref unless defined $length;
 
     POS: for (my $pos = (pos $$input_ref // 0); $pos < $length; $pos++) {
-        my @lexable_seen;
-        $#lexable_seen = $#$symbols;
         my @alternatives;
 
         # NOTE: Often the number of the earley set, and the idea of
@@ -2524,17 +2584,21 @@ sub lex_string {
 
             pos $$input_ref = $pos;
             if (defined $regex) {
-                if ($$input_ref =~ /$regex/p) {
+                if ($$input_ref =~ /$regex/g) {
                     my $match = $+{mArPa_match};
                     # my $prefix = $+{mArPa_prefix};
                     # my $suffix = $+{mArPa_suffix};
-                    my $length = length(${^MATCH});
+                    # my $length = length(${^MATCH});
+                    my $length = (pos $$input_ref) - $pos;
+                    croak("Internal error, zero length token -- this is a Marpa bug")
+                        unless $length;
                     push(@alternatives, [ $lexable, $match, $length ]);
                     if ($Parse::Marpa::This::trace_lex_matches) {
                         print $Parse::Marpa::This::trace_fh
                             "Matched Regex for ", $lexable->[ Parse::Marpa::Symbol::NAME ],
                             " at $pos: ", $match, "\n";
                     }
+                    last LEXABLE unless $ambiguous_lex;
                 } # if match
 
                 next LEXABLE;
@@ -2553,6 +2617,7 @@ sub lex_string {
                         "Matched Closure for ", $lexable->[ Parse::Marpa::Symbol::NAME ],
                         " at $pos: ", $match, "\n";
                 }
+                last LEXABLE unless $ambiguous_lex;
             }
 
         } # LEXABLE
@@ -2853,8 +2918,13 @@ sub complete_set {
         print $trace_fh show_earley_set($earley_set);
     }
 
-    my $lexables
-        = [ map { $symbols->[$_] } grep { $lexable_seen->[$_] } (0 .. $#$symbols) ];
+    # Dream up some efficiency hack here.  Memoize sorted lexables by state?
+    my $lexables = [
+        sort { $a->[Parse::Marpa::Symbol::ORDER] <=> $b->[Parse::Marpa::Symbol::ORDER] }
+        map { $symbols->[$_] }
+        grep { $lexable_seen->[$_] }
+        (0 .. $#$symbols)
+    ];
     return $lexables;
 
 } # sub complete_set
@@ -3254,7 +3324,9 @@ sub initialize_children {
 
     }
 
-    $rule->[ Parse::Marpa::Rule::CLOSURE ]->();
+    my $closure = $rule->[ Parse::Marpa::Rule::CLOSURE ];
+    return $closure unless defined $closure;
+    $closure->();
 
 }
 

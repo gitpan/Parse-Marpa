@@ -24,12 +24,14 @@ my $g = new Parse::Marpa(
     terminals => [
         [ "a" => ["a"] ],
     ],
-    default_closure => sub {
-         my $v_count = scalar @$Parse::Marpa::This::v;
-         return "" if $v_count <= 0;
-         return $Parse::Marpa::This::v->[0] if $v_count == 1;
-         "(" . join(";", @$Parse::Marpa::This::v) . ")";
-    },
+    default_null_value => "",
+    default_closure =>
+<<'EOCODE'
+     my $v_count = scalar @$Parse::Marpa::This::v;
+     return "" if $v_count <= 0;
+     return $Parse::Marpa::This::v->[0] if $v_count == 1;
+     "(" . join(";", @$Parse::Marpa::This::v) . ")";
+EOCODE
 );
 
 is( $g->show_rules(), <<'EOS', "Aycock/Horspool Rules" );

@@ -1,29 +1,23 @@
-* Major surgery; v (values) array must be changed to array REFERENCE.
+* Write unified "counted rule" subroutine
 
-* Enforce order on lexables.  Use order in which their regex or closures were defined.
+* First-rest sequences for efficiency.  Ability to specify flat lists?
 
-* Comments in # form.
+* Allow closures for lexing
 
-* Code blocks in { } or %{ }% (yacc) form?
+* Speed-up for pre-computing lexables.  Grammar::LEXABLES, etc.
 
-* Change "internal" grammar definition mechanism, so that it allows closures as strings.
-
-* Have string closures run in special per grammar namespace
-
-* Test lexing prefixes, suffixes
+* Test lexing suffixes
 
 * Allow macros:
-     @LHS
-     $LHS_REF
-     $LHS[n]
-     $LHS{NAME}
-     $LHS{NAME}[n]
+     @VALUE
+     $VALUE_REF
+     $VALUE[n]
+     $VALUE{NAME}
+     $VALUE{NAME}[n]
      @RULE
      $RULE_REF
 
-* Allow POD
-
-* Add lex unambigious option
+* Prohibit nullable symbols on rhs of counted production
 
 * (Someday) precedence declarations, a la yacc
 

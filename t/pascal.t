@@ -7,7 +7,7 @@ use 5.009005;
 use strict;
 use warnings;
 
-use Test::More tests => 12;
+use Test::More tests => 8;
 
 BEGIN {
 	use_ok( 'Parse::Marpa' );
@@ -27,12 +27,13 @@ sub ah_extended {
         terminals => [
             [ "a" => [qr/a/] ],
         ],
-        default_closure => sub {
-             my $v_count = scalar @$Parse::Marpa::This::v;
-             return "" if $v_count <= 0;
-             return $Parse::Marpa::This::v->[0] if $v_count == 1;
-             "(" . join(";", @$Parse::Marpa::This::v) . ")";
-        },
+        # default_closure =>
+# <<'EOCODE',
+     # my $v_count = scalar @$Parse::Marpa::This::v;
+     # return "" if $v_count <= 0;
+     # return $Parse::Marpa::This::v->[0] if $v_count == 1;
+     # "(" . join(";", @$Parse::Marpa::This::v) . ")";
+# EOCODE
     );
 
     my $parse = new Parse::Marpa::Parse($g);
@@ -70,7 +71,7 @@ my @answers = (
 "1 10 45 120 210 252 210 120 45 10 1",
 );
 
-for $a (0 .. 10) {
+for $a (0 .. 5, 10) {
   is(ah_extended($a), $answers[$a], "Row $a of Pascal's triangle matches parse counts");
 }
 

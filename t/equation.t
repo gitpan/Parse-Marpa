@@ -22,7 +22,8 @@ BEGIN {
 my $g = new Parse::Marpa(
     start => "E",
     rules => [
-	[ "E", [qw/E Op E/], sub {
+	[ "E", [qw/E Op E/],
+<<'EOCODE'
             my ($right_string, $right_value)
                 = ($Parse::Marpa::This::v->[2] =~ /^(.*)==(.*)$/);
             my ($left_string, $left_value)
@@ -39,11 +40,14 @@ my $g = new Parse::Marpa(
                croak("Unknown op: $op");
             }
             "(" . $left_string . $op . $right_string . ")==" . $value;
-        } ],
-	[ "E", [qw/Number/], sub {
+EOCODE
+        ],
+	[ "E", [qw/Number/],
+<<'EOCODE'
            my $v0 = pop @$Parse::Marpa::This::v;
            $v0 . "==" . $v0;
-        } ],
+EOCODE
+        ],
     ],
     terminals => [
 	[ "Number" => [qr/\d+/] ],
