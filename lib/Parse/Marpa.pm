@@ -28,7 +28,7 @@ use Carp;
 use Scalar::Util qw(weaken);
 use Data::Dumper;
 
-our $VERSION = '0.001_045';
+our $VERSION = '0.001_046';
 $VERSION = eval $VERSION;
 
 =begin Apology:
@@ -115,6 +115,7 @@ use constant NULL_ALIAS      => 11;   # for a non-nulling symbol,
 use constant TERMINAL        => 12;   # terminal?
 use constant CLOSURE         => 13;   # closure to do lexing
 use constant ORDER           => 14;   # order, for lexing
+use constant COUNTED         => 15;   # used on rhs of counted rule?
 
 package Parse::Marpa::Rule;
 
@@ -181,6 +182,9 @@ use constant DEFAULT_CLOSURE    => 13; # closure for rules without one
 use constant DEFAULT_LEX_PREFIX => 14; # default prefix for lexing
 use constant DEFAULT_LEX_SUFFIX => 15; # default suffix for lexing
 use constant AMBIGUOUS_LEX      => 16; # lex ambiguously? (the default)
+use constant TRACE_RULES        => 17; 
+use constant TRACE_FILE_HANDLE  => 18; 
+use constant LOCATION_CALLBACK  => 19; # default callback for showing location
 
 package Parse::Marpa::This;
 
@@ -224,6 +228,12 @@ sub new {
     my $default_lex_prefix = $default_default_lex_prefix;
     my $default_lex_suffix = $default_default_lex_suffix;
     my $ambiguous_lex = 1;
+    my $trace_fh = *STDERR;
+    my $trace_rules = 0;
+    my $location_callback = sub {
+        my $earleme = shift;
+        "Earleme " . $earleme;
+    };
 
     my %arg_logic = (
         "rules"              => sub { $rules     = $_[0] },
@@ -235,6 +245,9 @@ sub new {
         "default_lex_prefix" => sub { $default_lex_prefix = $_[0] },
         "default_lex_suffix" => sub { $default_lex_suffix = $_[0] },
         "ambiguous_lex"      => sub { $ambiguous_lex = $_[0] },
+        "trace_file_handle"  => sub { $trace_fh = $_[0] },
+        "trace_rules"        => sub { $trace_rules = $_[0] },
+        "location_callback"  => sub { $location_callback = $_[0] },
     );
 
     while ( my ( $arg, $value ) = each %args ) {
@@ -266,6 +279,8 @@ sub new {
         Parse::Marpa::Grammar::DEFAULT_LEX_PREFIX,
         Parse::Marpa::Grammar::DEFAULT_LEX_SUFFIX,
         Parse::Marpa::Grammar::AMBIGUOUS_LEX,
+        Parse::Marpa::Grammar::TRACE_FILE_HANDLE,
+        Parse::Marpa::Grammar::TRACE_RULES,
         ] = (
             $grammar_number++,
             $namespace,
@@ -276,6 +291,8 @@ sub new {
             $default_lex_prefix,
             $default_lex_suffix,
             $ambiguous_lex,
+            $trace_fh,
+            $trace_rules,
         );
     bless( $grammar, $class );
 
@@ -745,12 +762,13 @@ sub add_user_rule {
     my ( $rule_hash ) = @{$grammar}[ Parse::Marpa::Grammar::RULE_HASH ];
 
     my $lhs_symbol = assign_symbol( $grammar, canonical_name($lhs_name) );
+    $rhs_names //= [];
     my $rhs_symbols = [ map { assign_symbol( $grammar, canonical_name($_) ); } @$rhs_names ];
 
     # Don't allow the user to duplicate a rule
     my $rule_key =
-        join( ",", map { $_->[Parse::Marpa::Symbol::ID] } ( $lhs_symbol, @$rhs_symbols ) );
-    croak( "Duplicate rule: " . $lhs_name . " -> " . join(" ", @$rhs_names ) )
+        join( ",", map { $_->[Parse::Marpa::Symbol::ID ] } ( $lhs_symbol, @$rhs_symbols ) );
+    croak( "Duplicate rule: ", $lhs_name, " -> ", join(" ", @$rhs_names ) )
         if exists $rule_hash->{$rule_key};
 
     $rule_hash->{$rule_key} = 1;
@@ -767,9 +785,13 @@ sub add_rule {
     my (
         $rules,
         $grammar_name,
+        $trace_rules,
+        $trace_fh,
     ) = @{$grammar}[
         Parse::Marpa::Grammar::RULES,
         Parse::Marpa::Grammar::NAME,
+        Parse::Marpa::Grammar::TRACE_RULES,
+        Parse::Marpa::Grammar::TRACE_FILE_HANDLE,
     ];
     my $rule_count = @$rules;
     my $new_rule   = [];
@@ -825,27 +847,204 @@ sub add_rule {
             $last_symbol = $symbol;
         }
     }
+    if ($trace_rules) {
+        print $trace_fh
+            "Added rule #", $#$rules, ": ",
+                 $lhs->[ Parse::Marpa::Symbol::NAME ], " -> ",
+                 join(" ", map { $_->[ Parse::Marpa::Symbol::NAME ]} @$rhs),
+                 "\n";
+    }
     $new_rule;
 }
 
 # add one or more rules
 sub add_user_rules {
-    my $grammar  = shift;
+    my $grammar = shift;
     my $rules = shift;
 
     RULE: for my $rule (@$rules) {
-        my $arg_count = @$rule;
-        if ( $arg_count > 3 or $arg_count < 1) {
-            croak("Rule has $arg_count arguments: "
-                . join(", ", map { defined $_ ? $_ : "undef" } @$rule) . "\n"
-                . "Rule must have from 1 to 3 arguments"
-            );
-        }
-        my ($lhs, $rhs, $closure) = @$rule;
-        $rhs = [] unless defined $rhs;
 
-        add_user_rule( $grammar, $lhs, $rhs, $closure);
+	given (ref $rule) {
+	    when ("ARRAY") {
+		my $arg_count = @$rule;
+		# This warning can be removed if this interface remains
+		# internal
+		if ( $arg_count > 3 or $arg_count < 1) {
+		    croak("Rule has $arg_count arguments: "
+			. join(", ", map { defined $_ ? $_ : "undef" } @$rule) . "\n"
+			. "Rule must have from 1 to 3 arguments"
+		    );
+		}
+		my ($lhs, $rhs, $closure) = @$rule;
+                add_user_rule( $grammar, $lhs, $rhs, $closure);
+
+	    }
+	    when ("HASH") {
+	        add_rules_from_hash($grammar, $rule)
+	    }
+	    default { croak("Invalid rule reftype ", ($_ ? $_ : "undefined")) }
+	}
+
+    } # RULE
+
+}
+
+sub add_rules_from_hash {
+    my $grammar = shift;
+    my $options = shift;
+
+    my ($lhs_name, $rhs_names, $closure);
+    my ($min, $max, $separator_name);
+
+    while (my ($option, $value) = each(%$options)) {
+	given ($option) {
+	    when ("rhs") { $rhs_names = $value }
+	    when ("lhs") { $lhs_name = $value }
+	    when ("closure") { $closure = $value }
+	    when ("min") { $min = $value }
+	    when ("max") { $max = $value }
+	    when ("separator") { $separator_name = $value }
+	    default { croak("Unknown option in counted rule: $option") }
+	}
     }
+
+    # Take care of nulling rules
+    if (scalar @$rhs_names == 0) {
+	add_user_rule($grammar, $lhs_name, $rhs_names, $closure);
+        return;
+    }
+
+    # Take of obviously bad min, max values
+    if (defined $max and $max <= 0) {
+       croak("rule max count is $max, not greater than zero");
+    }
+    if (defined $min and $min < 0) {
+       croak("rule min count is $min, less than zero");
+    }
+
+    # Ensure min is correctly defined
+    if (not defined $min) {
+        given($max) {
+	    when (undef) { $min = $max = 1; }
+	    default {
+	       croak("rule max count is defined ($max), but no rule minium");
+	    }
+	}
+    }
+
+    if (defined $max) {
+	croak("rule max count ($max) count is less than minium ($min)")
+	   if $max < $min;
+	if ($max <= 1 and defined $separator_name) {
+	    croak("separator defined for rule without repetitions");
+	}
+	croak("Too many symbols on rhs for counted rule") if scalar @$rhs_names != 1;
+	my $rhs_name = pop @$rhs_names;
+
+	# specifically counted rules
+        my $new_rule;
+	for my $count ( $min .. $max ) {
+	    my $counted_rhs;
+	    my @separated_rhs = ($rhs_name);
+	    push(@separated_rhs, $separator_name) if defined $separator_name;
+	    given ($count) {
+	        when (0) { $counted_rhs = [ ] }
+	        default {
+		    $counted_rhs = [ (@separated_rhs) x ($count - 1), $rhs_name ]
+		}
+	    }
+            # no change to @Parse::Marpa::This::v needed for closure
+	    $new_rule = add_user_rule($grammar, $lhs_name, $counted_rhs, $closure);
+	}
+
+        # There will be at least one rhs symbol since we take the last rule created
+        # and max >= 1
+        my $rhs = $new_rule->[Parse::Marpa::Rule::RHS]->[0];
+        $rhs->[Parse::Marpa::Symbol::COUNTED] = 1;
+        if (defined $separator_name)
+        {
+            my $separator = $new_rule->[Parse::Marpa::Rule::RHS]->[1];
+            $separator->[Parse::Marpa::Symbol::COUNTED] = 1;
+        }
+
+        return;
+
+    } # min and max both defined
+
+    # At this point we know that max is undefined, and that min must be
+
+    # Right now we're doing this right associative.  Add option later to be
+    # left associative?
+
+    # nulling rule is special case
+    if ($min == 0) {
+	add_user_rule($grammar, $lhs_name, [ ], q{ $Parse::Marpa::This::v = []; } . $closure);
+        $min = 1;
+    }
+
+    croak("Too many symbols on rhs for counted rule") if scalar @$rhs_names != 1;
+
+    my $rhs = assign_symbol($grammar, canonical_name(pop @$rhs_names));
+    $rhs->[ Parse::Marpa::Symbol::COUNTED ] = 1;
+    my $separator;
+    if (defined $separator_name) {
+        $separator
+            = assign_symbol($grammar, canonical_name($separator_name));
+        $separator->[ Parse::Marpa::Symbol::COUNTED ] = 1;
+    }
+    my $sequence = assign_symbol($grammar, $lhs_name . "[Seq-$min-*]");
+    my $lhs = assign_symbol($grammar, canonical_name($lhs_name));
+
+    # Don't allow the user to duplicate a rule
+    # I'm pretty general here -- I consider a sequence rule a duplicate is rhs, lhs
+    # and separator are the same.  I may want to get more fancy, but save that
+    # for later.
+    {
+        my $rule_hash = $grammar->[ Parse::Marpa::Grammar::RULE_HASH ];
+        my @key_rhs = defined $separator ? ($rhs, $separator, $rhs) : ($rhs);
+        my $rule_key = join( ",", map { $_->[Parse::Marpa::Symbol::ID] } ($lhs, @key_rhs) );
+        croak( "Duplicate rule: ", $lhs_name, " -> ", join(",", @$rhs_names) )
+            if exists $rule_hash->{$rule_key};
+        $rule_hash->{$rule_key} = 1;
+    }
+
+    add_rule(
+        $grammar,
+        $lhs,
+        [ $sequence ],
+        q{
+            TAIL: for (;;) {
+                my $tail = pop @$Parse::Marpa::This::v;
+                last TAIL unless scalar @$tail;
+                push(@$Parse::Marpa::This::v, @$tail);
+            }
+        }
+        . $closure
+    );
+
+    my @separated_rhs = ($rhs);
+    push(@separated_rhs, $separator) if defined $separator;
+
+    # minimal sequence rule
+    my $counted_rhs = [ (@separated_rhs) x ($min - 1), $rhs ];
+    add_rule(
+        $grammar,
+        $sequence,
+        $counted_rhs,
+        q{
+            push(@$Parse::Marpa::This::v, []);
+            $Parse::Marpa::This::v 
+        }
+    );
+
+    # iterating sequence rule
+    add_rule(
+        $grammar,
+        $sequence,
+        [ @separated_rhs, $sequence ],
+        q{ $Parse::Marpa::This::v }
+    );
+
 }
 
 sub add_user_terminals {
@@ -1410,6 +1609,26 @@ sub nullable {
         }    # RULE
 
     }    # work_to_do loop
+
+    my $counted_nullable_count;
+    for my $symbol (@$symbols) {
+        my (
+            $name,
+            $nullable,
+            $counted,
+        ) = @{$symbol}[
+            Parse::Marpa::Symbol::NAME,
+            Parse::Marpa::Symbol::NULLABLE,
+            Parse::Marpa::Symbol::COUNTED,
+        ];
+        if ($nullable and $counted) {
+            carp("Nullable symbol $name is on rhs of counted rule");
+            $counted_nullable_count++;
+        }
+    }
+    if ($counted_nullable_count) {
+        croak("Counted nullable confuse Marpa -- please rewrite the grammar");
+    }
 
 }
 
@@ -2291,18 +2510,18 @@ use constant EARLEY_HASHES => 3;    # the array of hashes used
                                   # to build the Earley sets
 use constant CURRENT_PARSE_SET    => 4;    # the set being taken as the end of
                                   # parse for an evaluation
-use constant START_ITEM  => 5;    # the start item for the current evaluation
-use constant TRACE       => 6;    # trace level
-use constant FURTHEST_SET             => 7;    # last earley set with a token
+use constant START_ITEM               => 5;    # the start item for the current evaluation
+use constant TRACE                    => 6;    # trace level
+use constant FURTHEST_EARLEME         => 7;    # last earley set with a token
 use constant EXHAUSTED                => 8;    # last earley set with a token
 
-use constant TRACE_LEX_TRIES       => 9; 
+use constant TRACE_LEX_TRIES          => 9; 
 use constant TRACE_LEX_MATCHES        => 10; 
 use constant TRACE_ITERATION_SEARCHES => 11; 
 use constant TRACE_ITERATION_CHANGES  => 12; 
-use constant TRACE_FILE_HANDLE        => 13; 
 use constant DEFAULT_PARSE_SET        => 14;
-use constant TRACE_COMPLETIONS  => 15; 
+use constant TRACE_COMPLETIONS        => 15; 
+use constant LOCATION_CALLBACK        => 16;
 
 # implementation dependent constant, used below in unpack
 use constant J_LENGTH => ( length pack( "J", 0, 0 ) );
@@ -2319,7 +2538,14 @@ sub new {
         "Don't recognize parse() grammar arg has wrong class: $grammar_class")
         unless $grammar_class eq "Parse::Marpa";
 
-    my $SDFA = $grammar->[Parse::Marpa::Grammar::SDFA];
+    my (
+        $SDFA,
+        $location_callback,
+    ) = @{$grammar}[
+        Parse::Marpa::Grammar::SDFA,
+        Parse::Marpa::Grammar::LOCATION_CALLBACK,
+    ];
+
     croak("Attempt to parse grammar with empty SDFA")
         if not defined $SDFA
             or not scalar @$SDFA;
@@ -2359,13 +2585,13 @@ sub new {
     }
 
     @{$parse}[
-        DEFAULT_PARSE_SET, CURRENT_SET, FURTHEST_SET,
+        DEFAULT_PARSE_SET, CURRENT_SET, FURTHEST_EARLEME,
         EARLEY_HASHES, GRAMMAR, EARLEY_SETS,
-        TRACE_FILE_HANDLE,
+        LOCATION_CALLBACK,
     ] = (
         0, 0, 0,
         [$earley_hash], $grammar, [$earley_set],
-        *STDERR
+        $location_callback,
     );
 
     bless $parse, $class;
@@ -2386,7 +2612,7 @@ sub brief_earley_item {
         Parse::Marpa::SDFA::TAG
     ];
     my $text = $set . ":";
-    $text .= ($ii and defined $tag) ? "St" . $tag : $id;
+    $text .= ($ii and defined $tag) ? ("St" . $tag) : ("S" . $id);
     $text .= "," . $parent;
 }
 
@@ -2478,11 +2704,11 @@ sub show_earley_set_list {
 sub show_status {
     my $parse = shift;
     my $ii = shift;
-    my ( $current_set, $furthest_set, $earley_set_list ) =
-        @{$parse}[ CURRENT_SET, FURTHEST_SET, EARLEY_SETS ];
+    my ( $current_set, $furthest_earleme, $earley_set_list ) =
+        @{$parse}[ CURRENT_SET, FURTHEST_EARLEME, EARLEY_SETS ];
     my $text
         = "Current Earley Set: " . $current_set
-        . "; Furthest: " . $furthest_set. "\n";
+        . "; Furthest: " . $furthest_earleme. "\n";
     $text .= show_earley_set_list($earley_set_list, $ii);
 }
 
@@ -2537,27 +2763,28 @@ sub lex_string {
         $current_set,
         $trace_lex_tries,
         $trace_lex_matches,
-        $trace_fh,
     ) = @{$parse}[
         Parse::Marpa::Parse::GRAMMAR,
         Parse::Marpa::Parse::EARLEY_SETS,
         Parse::Marpa::Parse::CURRENT_SET,
         Parse::Marpa::Parse::TRACE_LEX_TRIES,
         Parse::Marpa::Parse::TRACE_LEX_MATCHES,
-        Parse::Marpa::Parse::TRACE_FILE_HANDLE,
     ];
 
     local($Parse::Marpa::This::trace_lex_tries) = $trace_lex_tries;
     local($Parse::Marpa::This::trace_lex_matches) = $trace_lex_matches;
-    local($Parse::Marpa::This::trace_fh) = $trace_fh;
 
     my (
         $symbols,
         $ambiguous_lex,
+        $trace_fh,
     ) = @{$grammar}[
         Parse::Marpa::Grammar::SYMBOLS,
         Parse::Marpa::Grammar::AMBIGUOUS_LEX,
+        Parse::Marpa::Grammar::TRACE_FILE_HANDLE,
     ];
+
+    local($Parse::Marpa::This::trace_fh) = $trace_fh;
 
     $length = length $$input_ref unless defined $length;
 
@@ -2660,10 +2887,10 @@ sub scan_set {
 
     my (
         $earley_set_list, $earley_hash_list, $grammar,
-        $current_set, $furthest_set, $exhausted,
+        $current_set, $furthest_earleme, $exhausted,
     ) = @{$parse}[
         EARLEY_SETS, EARLEY_HASHES, GRAMMAR,
-        CURRENT_SET, FURTHEST_SET, EXHAUSTED ];
+        CURRENT_SET, FURTHEST_EARLEME, EXHAUSTED ];
     croak("Attempt to scan tokens on an exhausted parse") if $exhausted;
     my $SDFA = $grammar->[Parse::Marpa::Grammar::SDFA];
 
@@ -2671,7 +2898,7 @@ sub scan_set {
 
     if ( not defined $earley_set ) {
         $earley_set_list->[$current_set] = [];
-        if ($current_set >= $furthest_set) {
+        if ($current_set >= $furthest_earleme) {
             $parse->[ Parse::Marpa::Parse::EXHAUSTED ]
                 = $exhausted
                 =  1;
@@ -2723,9 +2950,9 @@ sub scan_set {
             my $target_earley_hash =
                 ( $earley_hash_list->[$target_ix] ||= {} );
             my $target_earley_set = ( $earley_set_list->[$target_ix] ||= [] );
-            if ($target_earley_set > $furthest_set) {
-                $parse->[ Parse::Marpa::Parse::FURTHEST_SET ]
-                    = $furthest_set
+            if ($target_ix > $furthest_earleme) {
+                $parse->[ Parse::Marpa::Parse::FURTHEST_EARLEME ]
+                    = $furthest_earleme
                     = $target_ix;
             }
             my $key = pack( "JJ", $kernel_state, $parent );
@@ -2793,14 +3020,12 @@ sub complete_set {
 
     my (
         $earley_set_list, $earley_hash_list, $grammar,
-        $current_set, $furthest_set, $exhausted,
+        $current_set, $furthest_earleme, $exhausted,
         $trace_completions,
-        $trace_fh,
     ) = @{$parse}[
         EARLEY_SETS, EARLEY_HASHES, GRAMMAR,
-        CURRENT_SET, FURTHEST_SET, EXHAUSTED,
+        CURRENT_SET, FURTHEST_EARLEME, EXHAUSTED,
         TRACE_COMPLETIONS,
-        TRACE_FILE_HANDLE,
     ];
     croak("Attempt to complete another earley set in an exhausted parse") if $exhausted;
 
@@ -2810,10 +3035,11 @@ sub complete_set {
     $earley_set ||= [];
 
     my (
-        $SDFA, $symbols,
+        $SDFA, $symbols, $trace_fh
     ) = @{$grammar}[
         Parse::Marpa::Grammar::SDFA,
         Parse::Marpa::Grammar::SYMBOLS,
+        Parse::Marpa::Grammar::TRACE_FILE_HANDLE,
     ];
 
     my $lexable_seen = [];
@@ -2930,9 +3156,9 @@ sub complete_set {
 } # sub complete_set
 
 sub trace_file_handle {
-    my $parse = shift;
+    my $grammar = shift;
     my $fh = shift;
-    $parse->[ Parse::Marpa::Parse::TRACE_FILE_HANDLE ] = $fh;
+    $grammar->[ Parse::Marpa::Grammar::TRACE_FILE_HANDLE ] = $fh;
 }
 
 sub trace {
@@ -3062,7 +3288,7 @@ sub initial {
     # TODO: At some point I may need to ensure that evaluation notations are
     # cleared, rather than just assume it.
 
-    # Is the correct way to do this?
+    # Is the best way to do this?
     my $parse_class = ref $parse;
     my $right_class = "Parse::Marpa::Parse";
     croak("Don't parse argument is class: $parse_class; should be: $right_class")
@@ -3075,7 +3301,6 @@ sub initial {
         $current_parse_set, $default_parse_set,
         $trace_iteration_searches,
         $trace_iteration_changes,
-        $trace_fh,
     ) = @{$parse}[
         Parse::Marpa::Parse::GRAMMAR,
         Parse::Marpa::Parse::EARLEY_SETS,
@@ -3084,13 +3309,14 @@ sub initial {
         Parse::Marpa::Parse::DEFAULT_PARSE_SET,
         Parse::Marpa::Parse::TRACE_ITERATION_SEARCHES,
         Parse::Marpa::Parse::TRACE_ITERATION_CHANGES,
-        Parse::Marpa::Parse::TRACE_FILE_HANDLE,
     ];
     local($Parse::Marpa::This::grammar) = $grammar;
     local($Parse::Marpa::This::trace_iteration_searches) = $trace_iteration_searches;
     local($Parse::Marpa::This::trace_iteration_changes) = $trace_iteration_changes;
-    local($Parse::Marpa::This::trace_fh) = $trace_fh;
     local($Data::Dumper::Terse) = 1;
+
+    my $trace_fh = $grammar-> [ Parse::Marpa::Grammar::TRACE_FILE_HANDLE ];
+    local($Parse::Marpa::This::trace_fh) = $trace_fh;
 
     if (defined $parse_set_arg and
         (not defined $current_parse_set
@@ -3170,7 +3396,7 @@ sub initial {
              $lhs->[ Parse::Marpa::Symbol::NAME ],
              " to ", Dumper($null_value);
          }
-         return;
+         return 1;
     }
 
     my $value = initialize_children($start_item, $lhs);
@@ -3192,6 +3418,8 @@ sub initial {
          $lhs->[ Parse::Marpa::Symbol::NAME ],
          " to ", Dumper($value);
      }
+
+     1;
 
 }
 
@@ -3357,14 +3585,12 @@ sub next {
         $current_parse_set,
         $trace_iteration_searches,
         $trace_iteration_changes,
-        $trace_fh,
     ) = @{$parse}[
         Parse::Marpa::Parse::GRAMMAR,
         Parse::Marpa::Parse::START_ITEM,
         Parse::Marpa::Parse::CURRENT_PARSE_SET,
         Parse::Marpa::Parse::TRACE_ITERATION_SEARCHES,
         Parse::Marpa::Parse::TRACE_ITERATION_CHANGES,
-        Parse::Marpa::Parse::TRACE_FILE_HANDLE,
     ];
     croak("Parse not initialized: no start item") unless defined $start_item;
     my $start_value = $start_item->[ Parse::Marpa::Earley_item::VALUE ];
@@ -3372,8 +3598,10 @@ sub next {
     local($Parse::Marpa::This::grammar) = $grammar;
     local($Parse::Marpa::This::trace_iteration_searches) = $trace_iteration_searches;
     local($Parse::Marpa::This::trace_iteration_changes) = $trace_iteration_changes;
-    local($Parse::Marpa::This::trace_fh) = $trace_fh;
     local($Data::Dumper::Terse) = 1;
+
+    my $trace_fh = $grammar-> [ Parse::Marpa::Grammar::TRACE_FILE_HANDLE ];
+    local($Parse::Marpa::This::trace_fh) = $trace_fh;
 
     # find the "bottom left corner item", by following predecessors,
     # and causes when there is no predecessor
@@ -3732,14 +3960,15 @@ L<http://search.cpan.org/dist/Parse-Marpa>
 
 =head1 ACKNOWLEDGMENTS
 
-Marpa is, with minor changes,
+Marpa is
 the parser described in John Aycock and R.
 Nigel Horspool's "Practical Earley Parsing",
 I<The Computer Journal>,
 Vol. 45, No. 6, 2002, pp. 620-630.
-Aycock and Horspool's work, in turn,
-builds on the general parsing algorithm
-discovered by Jay Earley,
+I've made significant changes to it,
+which are documented separately (L<Parse::Marpa::ALGORITHM>).
+Aycock and Horspool, for their part,
+built on the algorithm discovered by Jay Earley,
 and described in his
 "An efficient context-free parsing algorithm",
 I<Communications of the

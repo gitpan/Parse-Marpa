@@ -5,7 +5,9 @@
 
 use 5.009005;
 use strict;
+use feature ":5.10";
 use warnings;
+use lib "../lib";
 
 use Test::More tests => 16;
 

@@ -1,6 +1,6 @@
 =head1 NAME
 
-Parse::Marpa::ALGORITHM - Description of the Marpa Algorithm
+Parse::Marpa::ALGORITHM - The Marpa Algorithm
 
 =head1 THE ALGORITHM
 
@@ -24,15 +24,21 @@ I have a degree in the subject, and have been following
 this particular topic on and off for years.
 Nonetheless I found the Aycock and Horspool paper very difficult going.
 
-Earley's algorithm is documented in many places and
-Aycock and Horspool have documented their contribution in the paper
-cited above.
-In what follows,
-I'll briefly describe the more significant ideas that are new with Marpa.
+Someday I'd like to describe the whole algorithm,
+including the core contributions of Aycock, Horspool and Earley.
+at a level that
+someone who has not taken a course in parsing could understand.
+This algorithm includes so many parsing techniques, that a full
+description of it would be a small textbook on parsing in itself.
+For now, I have to content myself
+with briefly describing the more significant ideas new with Marpa,
+assuming that the reader is familiar with parsing in general and
+Earley parsing in particular, so that he understands
+terms like Earley set and Earley item.
 
 =head2 Upside-down and Inside-out
 
-Perhaps the most central change in Marpa is that it takes the parse engine as
+Marpa taken the parse engine as
 described by Horspool and Aycock
 and literally turns it inside out and upside down.
 In the Horspool and Aycock version of Earley's,
@@ -44,33 +50,33 @@ Earley items,
 the first of which completes the current earley set,
 and the second of which scans for tokens.
 
-The advantage of this double inversion is that lexical analysis
+The advantage of this double inversion is that the lexical analysis
 can be put between the two loops,
-after completion,
+-- after completion,
 but before scanning.
 This makes predictive lexing possible.
 Being able to predict which lexables are legal at a given
 point in the parse can save a lot of processing,
-especially if the lexical level is complex.
+especially if the lexing is complex.
 Any lexemes
 which are not predicted by 
 items in the current
 Earley set do not need to be scanned for.
 Now that Hayspool and Aycock have sped up Earley's algorithm,
 the time spent lexing is a significant factor in overall speed.
-Predictive lexing can easily reduce lexing time to a fraction of the original.
+Predictive lexing can reduce lexing time to a fraction of the original.
 
 =head2 Earlemes
 
 Marpa allows ambiguous lexing,
-including recognition of lexemes of different length at the
-same point in the lexing,
+including recognition of lexemes of different lengths beginning at the
+same lexical position,
 and recognition of overlapping lexemes.
 To facilitate this,
 Marpa introduces the "earleme" (named after Jay Earley).
 Previous
-implementations required the Earley grammar's input to be broken
-up into tokens, presumably by lexical analysis of the input using
+implementations required the Earley parser's input to be broken
+up into tokens, usually by lexical analysis of the input using
 DFA's.
 (DFA's -- deterministic finite automata -- are the equivalent of
 regular expressions when that term is used in the strictest sense).
@@ -121,8 +127,9 @@ theoretical possibility in pre-processing.  I also think
 that there are cases likely to arise in practice
 where the size explosion, if not exponential,
 is linear with a very large multiplier.
-Perl 6 "rules" where whitespace is significant, but also optional,
-may be an example.
+A Perl 6 rule which treats whitespace is significant,
+but also allows it to be optional,
+would be such a case if it was of even moderate length.
 
 My solution is Chomsky-Horspool-Aycock Form (CHAF).
 This is

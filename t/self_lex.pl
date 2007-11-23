@@ -4,6 +4,7 @@ use strict;
 use warnings;
 use feature ":5.10";
 use English;
+use lib "../lib";
 
 use Test::More tests => 1;
 
@@ -11,13 +12,12 @@ BEGIN {
 	use_ok( 'Parse::Marpa' );
 }
 
-my $discard = q{ "" };
+my $discard = q{ undef };
 
 my $default_closure = q{
     my $v_count = scalar @$Parse::Marpa::This::v;
-    return "" if $v_count <= 0;
-    return $Parse::Marpa::This::v->[0] if $v_count == 1;
-    "(" . join(";", map { defined $_ ? $_ : "undef" } @$Parse::Marpa::This::v) . ")";
+    return undef if $v_count <= 0;
+    join("\n", grep { $_ } @$Parse::Marpa::This::v);
 };
 
 # The inefficiency (at least some of it) is deliberate.
@@ -29,138 +29,32 @@ my $default_closure = q{
 
 sub canonical_symbol_name {
     my $symbol = lc shift;
-    $symbol =~ s/[-\s]+/-/g;
+    $symbol =~ s/[-_\s]+/-/g;
     $symbol;
 }
 
-sub counted_rule {
-    my $lhs = shift;
-    my $rhs = shift;
-    my $closure = shift;
-    my $options = shift;
-    my ($min, $max, $separator);
-    my $return;
-
-    while (my ($option, $value) = each(%$options)) {
-	given ($option) {
-	    when ("min") { $min = $value }
-	    when ("max") { $max = $value }
-	    when ("separator") { $separator = $value }
-	    default { croak("Unknown option in counted rule: $option") }
-	}
-    }
-
-    if (not defined $min
-        or $max <= $min and $max < 2
-	or defined $max and $max < $min) {
-	croak("Illegal min, max in counted rule: ",
-	    ($min // "undef"), " ", 
-	    ($max // "undef")
-	)
-    }
-
-    # specifically counted rules
-    for my $count ( ($min ? $min : 1) .. ($max // 1) ) {
-	my @separated_rhs;
-	push(@separated_rhs, $separator) if defined $separator;
-	push(@separated_rhs, $rhs) if defined $separator;
-	push (@$return,
-	    [
-	       $lhs, [ $rhs, @separated_rhs x ($count - 1) ],
-		    # no change to @Parse::Marpa::This::v
-	       $closure,
-	    ],
-	);
-    }
-
-    # nulling rule
-    if ($min <= 0) {
-	push (@$return,
-	    [
-	        $lhs, [ ],
-	        (defined $closure
-	            ? ( q{ $Parse::Marpa::This::v = []; } . $closure )
-		    : undef
-		)
-	    ],
-	);
-    }
-
-    my $sequence = ($lhs . ":Seq 1-*");
-
-}
-
-
-sub one_or_more {
-    my $lhs = shift;
-    my $rhs = shift;
-    my $closure = shift;
-
-    my $sequence = ($lhs . ":Seq 1-*");
-    my $main_rule = [
-       $lhs, [ $sequence ],
-        q{ $Parse::Marpa::This::v = $Parse::Marpa::This::v->[0]; }
-            . $closure
-    ];
-    my $more_rule = [
-        $sequence, [ $sequence, $rhs ],
-        q{ 
-            my $r = $Parse::Marpa::This::v->[0];
-            push(@$r, $Parse::Marpa::This::v->[1]);
-	    $r;
-        }
-    ];
-    my $one_rule = [
-        $sequence, [ $rhs ],
-        q{ $Parse::Marpa::This::v }
-    ];
-    return ($main_rule, $one_rule, $more_rule);
-}
-
-sub zero_or_more {
-    my $lhs = shift;
-    my $rhs = shift;
-    my $closure = shift;
-
-    my $sequence = ($lhs . ":Seq 0-*");
-    my $main_rule = [
-       $lhs, [ $sequence ],
-        q{ $Parse::Marpa::This::v = $Parse::Marpa::This::v->[0]; }
-	. $closure
-    ];
-    my $more_rule = [
-        $sequence, [ $sequence, $rhs ],
-        q{ 
-            my $r = $Parse::Marpa::This::v->[0];
-            push(@$r, $Parse::Marpa::This::v->[1]);
-	    $r;
-        }
-    ];
-    my $one_rule = [
-        $sequence, [ $rhs ],
-        q{ $Parse::Marpa::This::v }
-    ];
-    my $nulling_rule = [
-       $lhs, [ ],
-        q{ @Parse::Marpa::This::v = (); }
-	. $closure
-    ];
-    return ($main_rule, $nulling_rule, $one_rule, $more_rule);
-}
-
 my $rules = [
-    [ "stuff", [ "pod block" ], $discard, ],
-    [ "stuff", [ "urtoken" ], $default_closure, ],
-    [ "stuff", [ "whitespace" ], $default_closure, ],
-    [ "stuff", [ "comment" ], $discard, ],
-    [ "stuff", [ "q square bracket string" ], $default_closure, ],
-    [ "stuff", [ "q curly bracket string" ], $default_closure, ],
-    [ "stuff", [ "q angle bracket string" ], $default_closure, ],
-    [ "stuff", [ "q parenthesis string" ], $default_closure, ],
-    [ "stuff", [ "q string" ], $default_closure, ],
-    [ "stuff", [ "double quoted string" ], $default_closure, ],
-    [ "stuff", [ "single quoted string" ], $default_closure, ],
-    [ "stuff", [ "code block" ], $default_closure, ],
+    {
+       lhs => "grammar",
+       rhs => [ "text segment" ],
+       closure => $default_closure,
+       min => 0,
+    },
+    [ "text segment", [ "statement", "optional period" ], $default_closure, ],
+    [ "text segment", [ "pod block" ], $discard, ],
+    # [ "stuff", [ "urtoken" ], $default_closure, ],
+    [ "text segment", [ "whitespace" ], $default_closure, ],
+    [ "text segment", [ "comment" ], $discard, ],
+    # [ "stuff", [ "string" ], $default_closure, ],
+    [ "string", [ "q square bracket string" ], $default_closure, ],
+    [ "string", [ "q curly bracket string" ], $default_closure, ],
+    [ "string", [ "q angle bracket string" ], $default_closure, ],
+    [ "string", [ "q parenthesis string" ], $default_closure, ],
+    [ "string", [ "q string" ], $default_closure, ],
+    [ "string", [ "double quoted string" ], $default_closure, ],
+    [ "string", [ "single quoted string" ], $default_closure, ],
+    # [ "stuff", [ "code block" ], $default_closure, ],
+    # [ "stuff", [ "symbol" ], $default_closure ],
     [ "pod block",
         [
 	    "pod head",
@@ -169,10 +63,57 @@ my $rules = [
 	],
 	$discard,
     ],
+    {
+       lhs => "pod body",
+       rhs => [ "pod line" ],
+       closure => $discard,
+       min => 0,
+    },
+    [ "statement", [ "production" ],  $default_closure, ],
+    [ "production", [ "lhs", "colon", "rhs" ], $default_closure ],
+    {
+	lhs => "symbol phrase",
+	rhs => [ "symbol word" ],
+	closure => q{ "SYMBOL=" . ::canonical_symbol_name(join("-", @$Parse::Marpa::This::v)) },
+	min => 1,
+    },
+    {
+        lhs => "lhs",
+	rhs => [ "symbol phrase" ],
+	closure => q{ "LHS?=" . join(", ", @$Parse::Marpa::This::v) },
+    },
+    {
+        lhs => "rhs",
+	rhs => [ "rhs element" ],
+	closure => q{ "RHS?=" . join(", ", @$Parse::Marpa::This::v) },
+	min => 1,
+    },
+    {
+        lhs => "rhs",
+	rhs => [ "rhs element" ],
+	closure => q{ "RHS?=" . join(", ", @$Parse::Marpa::This::v) },
+	min => 1,
+	separator => "comma",
+    },
+    {
+        lhs => "rhs element",
+	rhs => [ "symbol phrase" ],
+	closure => $default_closure,
+    },
+    {
+        lhs => "rhs element",
+	rhs => [ "string", ],
+	closure => $default_closure,
+    },
+    {
+        lhs => "optional period",
+	rhs => [ "period" ],
+	closure => $discard,
+	min => 0,
+	max => 1,
+    }
 ];
 
-push(@$rules, zero_or_more("start", "stuff", $default_closure));
-push(@$rules, zero_or_more("pod body", "pod line", $discard));
 
 my $terminals = [
     [ "code block"           => [ qr/%{.*?}%/s ] ],
@@ -187,6 +128,10 @@ my $terminals = [
     [ "pod cut"              => [qr/^=cut.*$/m ] ],
     [ "pod line"             => [qr/.*\n/m ] ],
     [ "comment"              => [qr/#.*\n/], ],
+    [ "symbol word"          => [ qr/[a-zA-Z_][a-zA-Z0-9_-]+/ ], ], 
+    [ "period"               => [ qr/\./ ], ], 
+    [ "colon"                => [ qr/\:/ ], ], 
+    [ "comma"                => [ qr/\,/ ], ], 
     [ "urtoken"              => [qr/\S+/ ] ],
     [ "whitespace"           => [qr/\s+/ ] ], # when in doubt, throw away whitespcae
 ];
@@ -196,41 +141,103 @@ for my $terminal_rule (@$terminals) {
 }
 
 for my $rule (@$rules) {
-    $rule->[0] = canonical_symbol_name($rule->[0]);
-    my $rhs = $rule->[1];
-    for my $ix (0 .. $#$rhs) {
-        $rhs->[$ix] = canonical_symbol_name($rhs->[$ix]);
+    given (ref $rule) {
+        when ("ARRAY") {
+	    $rule->[0] = canonical_symbol_name($rule->[0]);
+	    my $rhs = $rule->[1];
+	    my $new_rhs = [];
+	    for my $symbol (@$rhs) {
+		push(@$new_rhs, canonical_symbol_name($symbol));
+	    }
+	    $rule->[1] = $new_rhs;
+	}
+	when ("HASH") {
+	     for (keys %$rule) {
+	         when ("lhs") { $rule->{$_} = canonical_symbol_name($rule->{$_}) }
+	         when ("rhs") {
+		     my $new_rhs = [];
+		     for my $symbol (@{$rule->{$_}}) {
+			 push(@$new_rhs, canonical_symbol_name($symbol));
+		     }
+		     $rule->{$_} = $new_rhs;
+		 }
+	         when ("separator") { $rule->{$_} = canonical_symbol_name($rule->{$_}) }
+	     }
+	}
+	default { croak ("Invalid rule ref: ", ($_ ? $_ : "undefined")) }
     }
 }
 
 my $g = new Parse::Marpa(
-    start => canonical_symbol_name("start"),
+    start => canonical_symbol_name("grammar"),
     rules => $rules,
     terminals => $terminals,
     default_closure => $default_closure,
-    ambiguous_lex => 0,
+    # ambiguous_lex => 0,
     default_lex_prefix => qr/\s*/,
+    # trace_rules => 1,
 );
 
 my $parse = new Parse::Marpa::Parse($g);
-$parse->trace("lex");
+$parse->trace("iterations");
 
 # print $g->show_rules(), "\n";
 
-# print $g->show_SDFA(), "\n";
+print $g->show_SDFA(), "\n";
+
+sub binary_search {
+    my ($target, $data) = @_;  
+    my ($lower, $upper) = (0, $#$data); 
+    my $i;                       
+    while ($lower <= $upper) {
+	my $i = int(($lower + $upper)/2);
+	given ($data->[$i]) {
+	    when ($_ < $target) { $lower = $i; }
+	    when ($_ > $target) { $upper = $i; }
+	    default { return $i }
+	} 
+    }
+    $lower
+}
+
+sub locator {
+    my $earleme = shift;
+    my $string = shift;
+
+    state @lines = (0);
+    my $pos = 0;
+    NL: while ($$string =~ /\n/g) {
+	$pos = pos $$string;
+        push(@lines, $pos);
+	last NL if $pos > $earleme;
+    }
+    my $line = @lines - ($pos > $earleme ? 2 : 1);
+    my $line_start = $lines[$line];
+    return ($line, $line_start);
+}
 
 {
     local($RS) = undef;
     my $spec = <DATA>;
-    if ($parse->lex_string(\$spec) >= 0) {
-	print $parse->show_status();
-	print "Parse exhausted\n";
+    if ((my $earleme = $parse->lex_string(\$spec)) >= 0) {
+	# print $parse->show_status();
+	my ($line, $line_start) = locator($earleme, \$spec);
+	print "Parse exhausted at line $line, earleme $earleme\n";
+	given (index($spec, "\n", $line_start)) {
+	    when (undef) { say substr($spec, $line_start) }
+	    default { say substr($spec, $line_start, $_-$line_start) }
+	}
+	say +(" " x ($earleme-$line_start)), "^";
 	exit 1;
     }
     $parse->lex_end();
 }
 
-$parse->initial();
+unless ($parse->initial()) {
+    print $parse->show_status();
+    say "No parse";
+    exit 1;
+}
 
 my $value = $parse->value();
 print $value, "\n";

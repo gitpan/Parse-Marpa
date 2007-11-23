@@ -1,12 +1,8 @@
-* Write unified "counted rule" subroutine
-
-* First-rest sequences for efficiency.  Ability to specify flat lists?
-
-* Allow closures for lexing
+* Allow closures for lexing.
 
 * Speed-up for pre-computing lexables.  Grammar::LEXABLES, etc.
 
-* Test lexing suffixes
+* Test lexing suffixes.
 
 * Allow macros:
      @VALUE
@@ -17,10 +13,14 @@
      @RULE
      $RULE_REF
 
-* Prohibit nullable symbols on rhs of counted production
+* Add locations for earlemes.  Also for rules?  Use in Carp messages.
 
-* (Someday) precedence declarations, a la yacc
+* Distinguish proper separator rules?
 
-* (Later) Look at Yacc macros yyerrok YYERROR YYACCEPT YYABORT YYRECOVERING
+* Allow alternation.
+
+* (Someday) precedence declarations, a la yacc.
+
+* (Later) Look at Yacc macros yyerrok YYERROR YYACCEPT YYABORT YYRECOVERING.
 
 * (Later) Look at error recovery.   Is anything in Parse::Yapp or yacc useful?
