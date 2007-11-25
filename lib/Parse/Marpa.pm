@@ -28,7 +28,7 @@ use Carp;
 use Scalar::Util qw(weaken);
 use Data::Dumper;
 
-our $VERSION = '0.001_046';
+our $VERSION = '0.001_047';
 $VERSION = eval $VERSION;
 
 =begin Apology:
@@ -128,11 +128,13 @@ use constant START_REACHABLE          => 5;    # reachable from start symbol?
 use constant INPUT_REACHABLE          => 6;    # reachable from input symbol?
 use constant NULLING                  => 7;    # always matches null?
 use constant USEFUL                   => 8;    # use this rule in NFA?
-use constant ORIGINAL_CLOSURE         => 9;    # closure assigned when rule created
-use constant CLOSURE                  => 10;   # closure to use
+use constant ACTION                   => 9;    # action for this rule
+use constant CLOSURE                  => 10;   # closure for evaluating this rule
 use constant ORIGINAL_RULE            => 11;   # for a rewritten rule, the original
 use constant ORDER                    => 12;   # the order in which rules are to
                                                # be tried -- not necessarily unique
+use constant HAS_CHAF_LHS             => 13;   # has CHAF internal symbol as lhs?
+use constant HAS_CHAF_RHS             => 14;   # has CHAF internal symbol on rhs?
 
 package Parse::Marpa::NFA;
 
@@ -178,7 +180,7 @@ use constant ACADEMIC        => 11;    # true if this is a textbook grammar,
                                        # for checking the NFA and SDFA, and NOT
                                        # for actual Earley parsing
 use constant DEFAULT_NULL_VALUE => 12; # default value for nulling symbols
-use constant DEFAULT_CLOSURE    => 13; # closure for rules without one
+use constant DEFAULT_ACTION     => 13; # action for rules without one
 use constant DEFAULT_LEX_PREFIX => 14; # default prefix for lexing
 use constant DEFAULT_LEX_SUFFIX => 15; # default suffix for lexing
 use constant AMBIGUOUS_LEX      => 16; # lex ambiguously? (the default)
@@ -202,13 +204,6 @@ my $terminal_number = 0;
 my $default_default_lex_prefix = "";
 my $default_default_lex_suffix = "";
 
-sub chaf_stub {
-         my $v_count = scalar @$Parse::Marpa::This::v;
-         return "" if $v_count <= 0;
-         return $Parse::Marpa::This::v->[0] if $v_count == 1;
-         "(" . join(";", @$Parse::Marpa::This::v) . ")";
-};
-
 # Constructor
 
 sub new {
@@ -224,7 +219,7 @@ sub new {
     # parse with this grammar.  It's only useful to test the NFA and SDFA logic
     my $academic = 0;
     my $default_null_value;
-    my $default_closure;
+    my $default_action;
     my $default_lex_prefix = $default_default_lex_prefix;
     my $default_lex_suffix = $default_default_lex_suffix;
     my $ambiguous_lex = 1;
@@ -241,7 +236,7 @@ sub new {
         "start"              => sub { $start     = $_[0] },
         "academic"           => sub { $academic  = $_[0] },
         "default_null_value" => sub { $default_null_value = $_[0] },
-        "default_closure"    => sub { $default_closure = $_[0] },
+        "default_action"    => sub { $default_action = $_[0] },
         "default_lex_prefix" => sub { $default_lex_prefix = $_[0] },
         "default_lex_suffix" => sub { $default_lex_suffix = $_[0] },
         "ambiguous_lex"      => sub { $ambiguous_lex = $_[0] },
@@ -252,7 +247,7 @@ sub new {
 
     while ( my ( $arg, $value ) = each %args ) {
         my $closure = $arg_logic{$arg};
-        croak("Undefined argument to new $class: $arg")
+        croak("Undefined argument to ", $class, "::new: ", $arg)
             unless defined $closure;
         $closure->($value);
     }
@@ -264,7 +259,7 @@ sub new {
     my $grammar = [];
     # Note: this limits the number of grammar to the number of integers --
     # not likely to be a big problem.
-    my $namespace = sprintf("X%x", $grammar_number);
+    my $namespace = sprintf("Parse::Marpa::G_%x", $grammar_number);
     @{$grammar}[
         Parse::Marpa::Grammar::ID,
         Parse::Marpa::Grammar::NAME,
@@ -275,7 +270,7 @@ sub new {
         Parse::Marpa::Grammar::SDFA_BY_NAME,
         Parse::Marpa::Grammar::ACADEMIC,
         Parse::Marpa::Grammar::DEFAULT_NULL_VALUE,
-        Parse::Marpa::Grammar::DEFAULT_CLOSURE,
+        Parse::Marpa::Grammar::DEFAULT_ACTION,
         Parse::Marpa::Grammar::DEFAULT_LEX_PREFIX,
         Parse::Marpa::Grammar::DEFAULT_LEX_SUFFIX,
         Parse::Marpa::Grammar::AMBIGUOUS_LEX,
@@ -287,7 +282,7 @@ sub new {
             [], {}, [], {}, {},
             $academic,
             $default_null_value,
-            $default_closure,
+            $default_action,
             $default_lex_prefix,
             $default_lex_suffix,
             $ambiguous_lex,
@@ -312,7 +307,6 @@ sub compile {
     input_reachable($grammar);
     set_start( $grammar, $start );
     start_reachable($grammar);
-    set_closures($grammar);
     if ($academic) {
         setup_academic_grammar($grammar);
     }
@@ -632,14 +626,12 @@ sub add_terminal {
     }
 
     my ( $symbol_hash, $symbols,
-        $private_package,
         $default_null_value,
         $default_lex_prefix,
         $default_lex_suffix,
     ) = @{$grammar}[
             Parse::Marpa::Grammar::SYMBOL_HASH,
             Parse::Marpa::Grammar::SYMBOLS,
-            Parse::Marpa::Grammar::NAME,
             Parse::Marpa::Grammar::DEFAULT_NULL_VALUE,
             Parse::Marpa::Grammar::DEFAULT_LEX_PREFIX,
             Parse::Marpa::Grammar::DEFAULT_LEX_SUFFIX,
@@ -659,11 +651,7 @@ sub add_terminal {
             (?<mArPa_suffix>$suffix)
         /xms;
     } elsif (defined $closure) {
-       my $closure = eval
-           'sub { use ' . $private_package . ';'
-               . $closure
-           . '}';
-        croak($@) if $@;
+       croak("Terminal closures not yet implemented");
     }
 
     # I allow redefinition of a LHS symbol as a terminal
@@ -758,7 +746,7 @@ sub add_user_rule {
     my $grammar      = shift;
     my $lhs_name  = shift;
     my $rhs_names = shift;
-    my $closure   = shift;
+    my $action    = shift;
     my ( $rule_hash ) = @{$grammar}[ Parse::Marpa::Grammar::RULE_HASH ];
 
     my $lhs_symbol = assign_symbol( $grammar, canonical_name($lhs_name) );
@@ -773,18 +761,18 @@ sub add_user_rule {
 
     $rule_hash->{$rule_key} = 1;
 
-    add_rule( $grammar, $lhs_symbol, $rhs_symbols, $closure);
+    add_rule( $grammar, $lhs_symbol, $rhs_symbols, $action);
 }
 
 sub add_rule {
     my $grammar = shift;
     my $lhs     = shift;
     my $rhs     = shift;
-    my $closure = shift;
+    my $action  = shift;
 
     my (
         $rules,
-        $grammar_name,
+        $package,
         $trace_rules,
         $trace_fh,
     ) = @{$grammar}[
@@ -804,25 +792,32 @@ sub add_rule {
         Parse::Marpa::Rule::NULLABLE,
         Parse::Marpa::Rule::INPUT_REACHABLE,
         Parse::Marpa::Rule::NULLING,
-        Parse::Marpa::Rule::ORIGINAL_CLOSURE,
+        Parse::Marpa::Rule::ACTION,
         Parse::Marpa::Rule::ORDER,
         ]
         = (
         $rule_count, "rule $rule_count",
         $lhs, $rhs,
         $nulling, $nulling, $nulling,
-        $closure,
+        $action,
         $rule_count,
         );
 
-    # if this is a nulling rule with a closure,
+    # if this is a nulling rule with an action,
     # we get the null_value of the lhs from that
-    if ($nulling and $closure) {
+    if ($nulling and $action) {
         local($Parse::Marpa::This::v) = [];
-        my $package = "Parse::Marpa::" . $grammar_name;
-        if (defined $closure) {
+        if (defined $action) {
             $lhs->[ Parse::Marpa::Symbol::NULL_VALUE ]
-                = create_user_closure($closure, $package)->();
+                = eval (
+                    "package " . $package . ";\n"
+                    . $action
+                );
+            if ($@) {
+                croak("Compile time error evaluating null value for ",
+                    $lhs->[ Parse::Marpa::Symbol::NAME ],
+                    ":\n", $@);
+            }
         }
     }
 
@@ -875,8 +870,8 @@ sub add_user_rules {
 			. "Rule must have from 1 to 3 arguments"
 		    );
 		}
-		my ($lhs, $rhs, $closure) = @$rule;
-                add_user_rule( $grammar, $lhs, $rhs, $closure);
+		my ($lhs, $rhs, $action) = @$rule;
+                add_user_rule( $grammar, $lhs, $rhs, $action);
 
 	    }
 	    when ("HASH") {
@@ -893,24 +888,28 @@ sub add_rules_from_hash {
     my $grammar = shift;
     my $options = shift;
 
-    my ($lhs_name, $rhs_names, $closure);
+    my ($lhs_name, $rhs_names, $action);
     my ($min, $max, $separator_name);
+    my $proper_separation = 0;
+    my $keep_separation = 0;
 
     while (my ($option, $value) = each(%$options)) {
 	given ($option) {
 	    when ("rhs") { $rhs_names = $value }
 	    when ("lhs") { $lhs_name = $value }
-	    when ("closure") { $closure = $value }
+	    when ("action") { $action = $value }
 	    when ("min") { $min = $value }
 	    when ("max") { $max = $value }
 	    when ("separator") { $separator_name = $value }
+	    when ("proper_separation") { $proper_separation = $value }
+	    when ("keep_separation") { $keep_separation = $value }
 	    default { croak("Unknown option in counted rule: $option") }
 	}
     }
 
     # Take care of nulling rules
     if (scalar @$rhs_names == 0) {
-	add_user_rule($grammar, $lhs_name, $rhs_names, $closure);
+	add_user_rule($grammar, $lhs_name, $rhs_names, $action);
         return;
     }
 
@@ -932,12 +931,19 @@ sub add_rules_from_hash {
 	}
     }
 
-    if (defined $max) {
-	croak("rule max count ($max) count is less than minium ($min)")
-	   if $max < $min;
+    # This is an ordinary, non-counted rule,
+    # which we'll take care of first as a special case
+    if (defined $max and $max == 1 and $min == 1) {
 	if ($max <= 1 and defined $separator_name) {
 	    croak("separator defined for rule without repetitions");
 	}
+        add_user_rule( $grammar, $lhs_name, $rhs_names, $action );
+        return;
+    }
+
+    if (defined $max) {
+	croak("rule max count ($max) count is less than minium ($min)")
+	   if $max < $min;
 	croak("Too many symbols on rhs for counted rule") if scalar @$rhs_names != 1;
 	my $rhs_name = pop @$rhs_names;
 
@@ -953,8 +959,17 @@ sub add_rules_from_hash {
 		    $counted_rhs = [ (@separated_rhs) x ($count - 1), $rhs_name ]
 		}
 	    }
-            # no change to @Parse::Marpa::This::v needed for closure
-	    $new_rule = add_user_rule($grammar, $lhs_name, $counted_rhs, $closure);
+            # no change to @Parse::Marpa::This::v needed for action
+            if (defined $separator_name and not $keep_separation) {
+                $action =
+                    q{ $Parse::Marpa::This::v = [
+                        @{$Parse::Marpa::This:v}[
+                           grep { !($_ % 2) } (0 .. $#$Parse::Marpa::This::v)
+                        ]
+                    }
+                    . $action;
+            }
+	    $new_rule = add_user_rule($grammar, $lhs_name, $counted_rhs, $action);
 	}
 
         # There will be at least one rhs symbol since we take the last rule created
@@ -978,21 +993,39 @@ sub add_rules_from_hash {
 
     # nulling rule is special case
     if ($min == 0) {
-	add_user_rule($grammar, $lhs_name, [ ], q{ $Parse::Marpa::This::v = []; } . $closure);
+        my $rule_action;
+        given ($action) {
+            when (undef) { $rule_action = undef }
+            default {
+               $rule_action = q{ $Parse::Marpa::This::v = []; } . $action
+            }
+        }
+	add_user_rule($grammar, $lhs_name, [ ], $rule_action);
         $min = 1;
     }
 
-    croak("Too many symbols on rhs for counted rule") if scalar @$rhs_names != 1;
+    croak("Only one rhs symbol allowed for counted rule") if scalar @$rhs_names != 1;
 
-    my $rhs = assign_symbol($grammar, canonical_name(pop @$rhs_names));
+    # create the rhs symbol
+    my $rhs_name = pop @$rhs_names;
+    my $canonical_rhs_name = canonical_name($rhs_name);
+    my $rhs = assign_symbol($grammar, $canonical_rhs_name);
     $rhs->[ Parse::Marpa::Symbol::COUNTED ] = 1;
+
+    # create the separator symbol, if we're using one
     my $separator;
+    my $canonical_separator_name;
     if (defined $separator_name) {
-        $separator
-            = assign_symbol($grammar, canonical_name($separator_name));
+        $canonical_separator_name = canonical_name($separator_name);
+        $separator = assign_symbol($grammar, $canonical_separator_name);
         $separator->[ Parse::Marpa::Symbol::COUNTED ] = 1;
     }
-    my $sequence = assign_symbol($grammar, $lhs_name . "[Seq-$min-*]");
+
+    # create the sequence symbol
+    my $sequence_name = $canonical_rhs_name . "[Seq][$min-*]";
+    $sequence_name .= "[Sep][" . $canonical_separator_name . "]" if defined $separator_name;
+    my $sequence = assign_symbol($grammar, $sequence_name);
+
     my $lhs = assign_symbol($grammar, canonical_name($lhs_name));
 
     # Don't allow the user to duplicate a rule
@@ -1008,18 +1041,25 @@ sub add_rules_from_hash {
         $rule_hash->{$rule_key} = 1;
     }
 
+    my $rule_action;
+    given ($action) {
+        when (undef) { $rule_action = undef; }
+        default {
+            $rule_action = q{
+                TAIL: for (;;) {
+                    my $tail = pop @$Parse::Marpa::This::v;
+                    last TAIL unless scalar @$tail;
+                    push(@$Parse::Marpa::This::v, @$tail);
+                }
+            }
+            . $action
+        }
+    }
     add_rule(
         $grammar,
         $lhs,
         [ $sequence ],
-        q{
-            TAIL: for (;;) {
-                my $tail = pop @$Parse::Marpa::This::v;
-                last TAIL unless scalar @$tail;
-                push(@$Parse::Marpa::This::v, @$tail);
-            }
-        }
-        . $closure
+        $rule_action,
     );
 
     my @separated_rhs = ($rhs);
@@ -1027,22 +1067,45 @@ sub add_rules_from_hash {
 
     # minimal sequence rule
     my $counted_rhs = [ (@separated_rhs) x ($min - 1), $rhs ];
+    $rule_action =
+        (defined $separator and not $keep_separation)
+        ?  q{
+            [
+                @{$Parse::Marpa::This::v}[
+                   grep { !($_ % 2) } (0 .. $#$Parse::Marpa::This::v)
+                ],
+                []
+            ]
+        }
+        : q{
+            push(@$Parse::Marpa::This::v, []);
+            $Parse::Marpa::This::v 
+        };
     add_rule(
         $grammar,
         $sequence,
         $counted_rhs,
-        q{
-            push(@$Parse::Marpa::This::v, []);
-            $Parse::Marpa::This::v 
-        }
+        $rule_action,
     );
 
     # iterating sequence rule
+    $rule_action =
+        (defined $separator and not $keep_separation)
+        ?  q{
+            [
+                @{$Parse::Marpa::This::v}[
+                   grep { !($_ % 2) } (0 .. $#$Parse::Marpa::This::v)
+                ],
+            ]
+        }
+        : q{
+            $Parse::Marpa::This::v
+        };
     add_rule(
         $grammar,
         $sequence,
         [ @separated_rhs, $sequence ],
-        q{ $Parse::Marpa::This::v }
+        $rule_action,
     );
 
 }
@@ -1067,47 +1130,6 @@ sub add_user_terminal {
     my $lexer = shift;
 
     add_terminal( $grammar, canonical_name($lhs_name), $lexer );
-}
-
-# given a closure as provided by the user,
-# return a "safe" Marpa closure
-sub create_user_closure {
-    my $closure = shift;
-    my $package = shift;
-
-    $closure = eval
-        "sub { package Parse::Marpa::" . $package .";\n"
-        . $closure
-        . "\n}" ;
-    croak($@) if $@;
-    $closure;
-}
-
-sub set_closures {
-    my $grammar    = shift;
-    my (
-        $rules,
-        $default_closure,
-        $name,
-    ) = @{$grammar}[
-        Parse::Marpa::Grammar::RULES,
-        Parse::Marpa::Grammar::DEFAULT_CLOSURE,
-        Parse::Marpa::Grammar::NAME,
-    ];
-
-    my $package = "Parse::Marpa::$name";
-    $default_closure 
-        = defined $default_closure
-        ? create_user_closure($default_closure, $package)
-        : undef;
-        ;
-    for my $rule (@$rules) {
-        my $closure = $rule->[ Parse::Marpa::Rule::ORIGINAL_CLOSURE ];
-        $rule->[ Parse::Marpa::Rule::CLOSURE ]
-            = defined $closure
-            ? create_user_closure($closure, $package)
-            : $default_closure;
-    }
 }
 
 sub set_start {
@@ -2103,28 +2125,6 @@ that the semantics of the original grammar are not affected.
 # a reference to an array with the "rest" of the values.
 # An empty array signals that there are no more.
 
-sub chaf_head_only {
-    push(@$Parse::Marpa::This::v, []);
-    $Parse::Marpa::This::v;
-}
-
-sub chaf_head_and_tail {
-    $Parse::Marpa::This::v;
-}
-
-sub chaf_tail_only {
-    my $original
-        = $Parse::Marpa::This::rule->[ Parse::Marpa::Rule::ORIGINAL_RULE ];
-    my $closure = $original->[ Parse::Marpa::Rule::CLOSURE ];
-    return unless defined $closure;
-    TAIL: for (;;) {
-        my $tail = pop @$Parse::Marpa::This::v;
-        last TAIL unless scalar @$tail;
-        push(@$Parse::Marpa::This::v, @$tail);
-    }
-    $closure->();
-}
-
 # rewrite as Chomsky-Horspool-Aycock Form
 sub rewrite_as_CHAF {
     my $grammar = shift;
@@ -2364,34 +2364,20 @@ sub rewrite_as_CHAF {
             for (my $ix = 0; $ix <= $#$factored_rhs; $ix++) {
                 my $factor_rhs = $factored_rhs->[$ix];
 
-                my $chaf_closure = $rule->[ Parse::Marpa::Rule::CLOSURE ];
-
                 # No need to bother putting together values
                 # if the rule's closure is not defined
                 # and the values would all be discarded
 
-                if (defined $chaf_closure) {
+                # figure out which closure to use
+                # if the LHS is the not LHS of the original rule, we have a
+                # special CHAF header
+                my $has_chaf_lhs = ($subp_lhs != $lhs);
 
-                    # figure out which closure to use
-                    # if the LHS is the not LHS of the original rule, we have a
-                    # special CHAF header
-                    my $has_chaf_head = ($subp_lhs != $lhs);
-
-                    # if a CHAF LHS was created for the next subproduction,
-                    # there is a CHAF continuation for this subproduction.
-                    # It applies to this factor if there is one of the first two
-                    # factors of more than two.
-                    my $has_chaf_tail = $next_subp_lhs;
-
-                    if ($has_chaf_head and not $has_chaf_tail) {
-                        $chaf_closure = \&chaf_head_only;
-                    } elsif ($has_chaf_head and $has_chaf_tail) {
-                        $chaf_closure = \&chaf_head_and_tail;
-                    } elsif ($has_chaf_tail) {
-                        $chaf_closure = \&chaf_tail_only;
-                    }
-
-                } # if defined $chaf_closure;
+                # if a CHAF LHS was created for the next subproduction,
+                # there is a CHAF continuation for this subproduction.
+                # It applies to this factor if there is one of the first two
+                # factors of more than two.
+                my $has_chaf_rhs = $next_subp_lhs;
 
                 my $new_rule = add_rule( $grammar, $subp_lhs, $factor_rhs );
                 @{$new_rule}[
@@ -2401,13 +2387,20 @@ sub rewrite_as_CHAF {
                     Parse::Marpa::Rule::NULLABLE,
                     Parse::Marpa::Rule::NULLING,
                     Parse::Marpa::Rule::ORDER,
+                    Parse::Marpa::Rule::HAS_CHAF_LHS,
+                    Parse::Marpa::Rule::HAS_CHAF_RHS,
                     ] = (
                         1, 1, 1, 0, 0,
                         $rule_id,
+                        $has_chaf_lhs,
+                        $has_chaf_rhs,
                     );
-                $new_rule->[ Parse::Marpa::Rule::CLOSURE ] = $chaf_closure;
+
                 $new_rule->[ Parse::Marpa::Rule::ORIGINAL_RULE ] = $rule;
-            }
+                $new_rule->[ Parse::Marpa::Rule::ACTION ]
+                    = $rule->[ Parse::Marpa::Rule::ACTION ];
+
+            } # for each factored rhs
 
             # no more
             last SUBPRODUCTION unless $next_subp_lhs;
@@ -2441,11 +2434,11 @@ sub rewrite_as_CHAF {
         Parse::Marpa::Rule::INPUT_REACHABLE,
         Parse::Marpa::Rule::START_REACHABLE,
         Parse::Marpa::Rule::USEFUL,
-        Parse::Marpa::Rule::CLOSURE,
+        Parse::Marpa::Rule::ACTION,
         ]
         = (
             $input_reachable, 1, 1,
-            sub { $Parse::Marpa::This::v->[0] }
+            q{ $Parse::Marpa::This::v->[0] }
         );
 
     # If we created a null alias for the original start symobl, we need
@@ -2502,6 +2495,8 @@ use Scalar::Util qw(weaken);
 use Data::Dumper;
 use Carp;
 
+my $parse_number = 0;
+
 # Elements of the PARSE structure
 use constant GRAMMAR     => 0;    # the grammar used
 use constant CURRENT_SET => 1;    # index of the first incomplete Earley set
@@ -2511,9 +2506,9 @@ use constant EARLEY_HASHES => 3;    # the array of hashes used
 use constant CURRENT_PARSE_SET    => 4;    # the set being taken as the end of
                                   # parse for an evaluation
 use constant START_ITEM               => 5;    # the start item for the current evaluation
-use constant TRACE                    => 6;    # trace level
+use constant TRACE_FILE_HANDLE        => 6;    # trace level
 use constant FURTHEST_EARLEME         => 7;    # last earley set with a token
-use constant EXHAUSTED                => 8;    # last earley set with a token
+use constant EXHAUSTED                => 8;    # parse can't continue?
 
 use constant TRACE_LEX_TRIES          => 9; 
 use constant TRACE_LEX_MATCHES        => 10; 
@@ -2522,21 +2517,183 @@ use constant TRACE_ITERATION_CHANGES  => 12;
 use constant DEFAULT_PARSE_SET        => 14;
 use constant TRACE_COMPLETIONS        => 15; 
 use constant LOCATION_CALLBACK        => 16;
+use constant PACKAGE                  => 17; # special "safe" namespace
+use constant TRACE_ACTIONS            => 18;
+use constant AMBIGUOUS_LEX            => 19;
+use constant DEFAULT_ACTION           => 20;
 
 # implementation dependent constant, used below in unpack
 use constant J_LENGTH => ( length pack( "J", 0, 0 ) );
 
 # Constructor method
 
+# Set rule actions
+sub set_actions {
+    my $grammar           = shift;
+    my $package           = shift;
+    my $default_action    = shift;
+
+    my (
+        $rules,
+    ) = @{$grammar}[
+        Parse::Marpa::Grammar::RULES,
+    ];
+
+    RULE: for my $rule (@$rules) {
+
+        next RULE unless $rule->[ Parse::Marpa::Rule::USEFUL ];
+
+        my $action = $rule->[ Parse::Marpa::Rule::ACTION ];
+
+        ACTION: {
+
+            $action //= $default_action;
+            last ACTION unless defined $action;
+        
+            # HAS_CHAF_RHS and HAS_CHAF_LHS would work well as a bit
+            # mask in a C implementation
+            my $has_chaf_lhs = $rule->[ Parse::Marpa::Rule::HAS_CHAF_LHS ];
+            my $has_chaf_rhs = $rule->[ Parse::Marpa::Rule::HAS_CHAF_RHS ];
+
+            last ACTION unless $has_chaf_lhs or $has_chaf_rhs;
+
+            if ($has_chaf_rhs and $has_chaf_lhs) {
+                $action = q{ $Parse::Marpa::This::v };
+                last ACTION;
+            }
+
+            # At this point has chaf rhs or lhs but not both
+            if ($has_chaf_lhs) {
+
+                $action =
+                    q{
+                        push(@$Parse::Marpa::This::v, []);
+                        $Parse::Marpa::This::v;
+                    };
+                last ACTION;
+
+            }
+
+            # at this point must have chaf rhs and not a chaf lhs
+
+            my $original_rule
+                = $Parse::Marpa::This::rule->[ Parse::Marpa::Rule::ORIGINAL_RULE ];
+
+            $action = q{
+                TAIL: for (;;) {
+                    my $tail = pop @$Parse::Marpa::This::v;
+                    last TAIL unless scalar @$tail;
+                    push(@$Parse::Marpa::This::v, @$tail);
+                }
+            } # q string
+            . $action;
+
+        } # ACTION
+
+        next RULE unless defined $action;
+
+        my $code = 
+            "sub {\n"
+            . "    package " . $package . ";\n"
+            . $action
+            . "\n}";
+
+        if ($Parse::Marpa::This::trace_actions) {
+            print $Parse::Marpa::This::trace_fh
+                "Setting action for rule ",
+                Parse::Marpa::brief_rule($rule), " to\n",
+                $code,
+                "\n"
+        }
+
+        my $closure = eval $code;
+        if ($@) {
+            croak("Failed to compile action closure for ",
+                Parse::Marpa::brief_rule($rule),
+                "\n",
+                $@
+            );
+        }
+
+        $rule->[ Parse::Marpa::Rule::CLOSURE ] = $closure;
+
+    } # RULE
+}
+
 sub new {
     my $class   = shift;
-    my $grammar = shift;
+
     my $parse   = [];
-    croak("No grammar supplied for new $class") unless defined $grammar;
+
+    my $grammar;
+    my $default_action;
+    my $trace_actions = 0;
+    my $trace_fh;
+    my $ambiguous_lex;
+
+    given (scalar @_) {
+        when (1) {
+            $grammar = shift;
+        }
+        default {
+            my %args  = @_;
+
+            my %arg_logic = (
+                "grammar"              => sub { $grammar     = $_[0] },
+                "default_action"    => sub { $default_action = $_[0] },
+                "ambiguous_lex"      => sub { $ambiguous_lex = $_[0] },
+                "trace_file_handle"  => sub { $trace_fh = $_[0] },
+                "trace_actions"        => sub { $trace_actions = $_[0] },
+            );
+
+            while ( my ( $arg, $value ) = each %args ) {
+                my $closure = $arg_logic{$arg};
+                croak("Undefined argument to ", $class, "::new: ", $arg)
+                    unless defined $closure;
+                $closure->($value);
+            }
+
+        }
+    }
+
+    croak("No grammar specified")        unless defined $grammar;
+
     my $grammar_class = ref $grammar;
     croak(
         "Don't recognize parse() grammar arg has wrong class: $grammar_class")
         unless $grammar_class eq "Parse::Marpa";
+
+    # deep copy grammar
+    # works, but strengthens weak refs
+
+    # This could be made more efficient with a custom routine
+
+    my $grammar_copy;
+    my $d = Data::Dumper->new([$grammar], ["grammar_copy"]);
+    $d->Purity(1);
+    eval $d->Dump();
+    $grammar = $grammar_copy;
+
+    # Eliminate or weaken all circular references
+    my $symbol_hash = $grammar->[ Parse::Marpa::Grammar::SYMBOL_HASH ];
+    while (my ($name, $ref) = each %{$symbol_hash}) {
+        weaken($symbol_hash->{$name} = $ref);
+    }
+    for my $symbol (@{$grammar->[ Parse::Marpa::Grammar::SYMBOLS]}) {
+        $symbol->[Parse::Marpa::Symbol::LHS] = undef;
+        $symbol->[Parse::Marpa::Symbol::RHS] = undef;
+    }
+
+    $ambiguous_lex = $grammar->[ Parse::Marpa::Grammar::AMBIGUOUS_LEX ]
+        unless defined $ambiguous_lex;
+
+    $trace_fh = $grammar->[ Parse::Marpa::Grammar::TRACE_FILE_HANDLE ]
+        unless defined $trace_fh;
+    local($Parse::Marpa::This::trace_fh) = $trace_fh;
+    local($Parse::Marpa::This::trace_actions) = $trace_actions;
+
+    $default_action = $grammar->[ Parse::Marpa::Grammar::DEFAULT_ACTION ]
+        unless defined $default_action;
 
     my (
         $SDFA,
@@ -2549,6 +2706,12 @@ sub new {
     croak("Attempt to parse grammar with empty SDFA")
         if not defined $SDFA
             or not scalar @$SDFA;
+
+    my $package = sprintf("Parse::Marpa::P_%x", $parse_number++);
+
+    # I should do (or at least allow) a deep copy of the grammar
+    # rather than creating closures "in place"
+    set_actions($grammar, $package, $default_action);
 
     my $earley_hash;
     my $earley_set;
@@ -2586,12 +2749,26 @@ sub new {
 
     @{$parse}[
         DEFAULT_PARSE_SET, CURRENT_SET, FURTHEST_EARLEME,
-        EARLEY_HASHES, GRAMMAR, EARLEY_SETS,
+        EARLEY_HASHES,
+        GRAMMAR,
+        EARLEY_SETS,
         LOCATION_CALLBACK,
+        PACKAGE,
+        DEFAULT_ACTION,
+        AMBIGUOUS_LEX,
+        TRACE_FILE_HANDLE,
+        TRACE_ACTIONS,
     ] = (
         0, 0, 0,
-        [$earley_hash], $grammar, [$earley_set],
+        [$earley_hash],
+        $grammar,
+        [$earley_set],
         $location_callback,
+        $package,
+        $default_action,
+        $ambiguous_lex,
+        $trace_fh,
+        $trace_actions,
     );
 
     bless $parse, $class;
@@ -2761,14 +2938,18 @@ sub lex_string {
         $grammar,
         $earley_sets,
         $current_set,
+        $trace_fh,
         $trace_lex_tries,
         $trace_lex_matches,
+        $ambiguous_lex,
     ) = @{$parse}[
         Parse::Marpa::Parse::GRAMMAR,
         Parse::Marpa::Parse::EARLEY_SETS,
         Parse::Marpa::Parse::CURRENT_SET,
+        Parse::Marpa::Parse::TRACE_FILE_HANDLE,
         Parse::Marpa::Parse::TRACE_LEX_TRIES,
         Parse::Marpa::Parse::TRACE_LEX_MATCHES,
+        Parse::Marpa::Parse::AMBIGUOUS_LEX,
     ];
 
     local($Parse::Marpa::This::trace_lex_tries) = $trace_lex_tries;
@@ -2776,12 +2957,8 @@ sub lex_string {
 
     my (
         $symbols,
-        $ambiguous_lex,
-        $trace_fh,
     ) = @{$grammar}[
         Parse::Marpa::Grammar::SYMBOLS,
-        Parse::Marpa::Grammar::AMBIGUOUS_LEX,
-        Parse::Marpa::Grammar::TRACE_FILE_HANDLE,
     ];
 
     local($Parse::Marpa::This::trace_fh) = $trace_fh;
@@ -3331,12 +3508,14 @@ sub initial {
         $current_parse_set = $default_parse_set;
     }
 
+    # If we already have a start item, use it
     my $start_rule;
     if (defined $start_item) {
         my $state = $start_item->[ Parse::Marpa::Earley_item::STATE ];
         $start_rule = $state->[Parse::Marpa::SDFA::START_RULE];
     }
 
+    # Otherwise, look for the start item and start rule
     if (not defined $start_rule) {
         my $earley_set = $earley_sets->[$current_parse_set];
 
@@ -3390,7 +3569,7 @@ sub initial {
              0, 0, 0, [ $start_rule ],
              $lhs,
          );
-         if ($Parse::Marpa::This::trace_iteration_tries) {
+         if ($Parse::Marpa::This::trace_iteration_changes) {
              print $Parse::Marpa::This::trace_fh "Setting nulling start value of ",
              brief_earley_item($start_item), ", ",
              $lhs->[ Parse::Marpa::Symbol::NAME ],
@@ -3412,7 +3591,7 @@ sub initial {
          0, 0, 0, [ $start_rule ],
          $lhs,
     );
-     if ($Parse::Marpa::This::trace_iteration_actions) {
+     if ($Parse::Marpa::This::trace_iteration_changes) {
          print $Parse::Marpa::This::trace_fh "Setting start value of ",
          brief_earley_item($start_item), ", ",
          $lhs->[ Parse::Marpa::Symbol::NAME ],
@@ -3421,6 +3600,49 @@ sub initial {
 
      1;
 
+}
+
+sub find_complete_rule {
+    my $parse = shift;
+    my $start_earleme = shift;
+    my $symbol = shift;
+    my $last_earleme = shift;
+
+    my (
+        $default_parse_set,
+        $earley_sets,
+    ) = @{$parse}[
+        Parse::Marpa::Parse::DEFAULT_PARSE_SET,
+        Parse::Marpa::Parse::EARLEY_SETS,
+    ];
+
+    # Set up the defaults for undefined arguments
+    $start_earleme //= 0;
+    $last_earleme //= $default_parse_set;
+    $last_earleme = $default_parse_set if $last_earleme > $default_parse_set;
+
+    # We symbol from the user, so we need to canonicalize it.
+    $symbol = canonical_name($symbol) if defined $symbol;
+
+    EARLEME: for (my $earleme = $last_earleme; $earleme >= $start_earleme; $earleme--) {
+        my $earley_set = $earley_sets->[ $earleme ];
+
+        ITEM: for my $earley_item (@$earley_set) {
+            my ($state, $parent) = @{$earley_item}[
+                Parse::Marpa::Earley_item::STATE,
+                Parse::Marpa::Earley_item::PARENT,
+            ];
+            next ITEM unless $parent == $start_earleme;
+            if (defined $symbol) {
+                my $complete_rules = $state->[ Parse::Marpa::SDFA::COMPLETE_RULES ]->{$symbol};
+                next ITEM unless $complete_rules;
+            }
+            my $complete_lhs = $state->[ Parse::Marpa::SDFA::COMPLETE_LHS ];
+            next ITEM unless scalar @$complete_lhs;
+            return ($earleme, $complete_lhs);
+        } # ITEM
+    } # EARLEME
+    return;
 }
 
 sub initialize_children {
@@ -3498,7 +3720,7 @@ sub initialize_children {
                 \$value, $predecessor,
                 $child_symbol,
             );
-            if ($Parse::Marpa::This::trace_iteration_actions) {
+            if ($Parse::Marpa::This::trace_iteration_changes) {
                  my $predecessor_set = $predecessor->[
                     Parse::Marpa::Earley_item::SET,
                  ];
@@ -3535,7 +3757,7 @@ sub initialize_children {
             \$value, $predecessor,
             $child_symbol,
         );
-        if ($Parse::Marpa::This::trace_iteration_tries) {
+        if ($Parse::Marpa::This::trace_iteration_searches) {
              my $predecessor_set = $predecessor->[
                 Parse::Marpa::Earley_item::SET,
              ];
@@ -3692,7 +3914,7 @@ sub next {
                      ++$rule_choice, 0, 0,
                 );
 
-                if ($Parse::Marpa::This::trace_iteration_actions) {
+                if ($Parse::Marpa::This::trace_iteration_changes) {
                      print $Parse::Marpa::This::trace_fh
                          "Incremented rule choice for ",
                          brief_earley_item($item), ", ",
@@ -3721,7 +3943,7 @@ sub next {
 
             if (defined $successor) {
                 $item = $successor;
-                if ($Parse::Marpa::This::trace_iteration_actions) {
+                if ($Parse::Marpa::This::trace_iteration_changes) {
                      print $Parse::Marpa::This::trace_fh
                          "Trying to iterate successor ", brief_earley_item($item), "\n";
                 }
@@ -3792,7 +4014,7 @@ sub next {
                         \$value,
                         $predecessor,
                     );
-                    if ($Parse::Marpa::This::trace_iteration_actions) {
+                    if ($Parse::Marpa::This::trace_iteration_changes) {
                          my $predecessor_set = $predecessor->[
                             Parse::Marpa::Earley_item::SET,
                          ];
@@ -3819,7 +4041,7 @@ sub next {
                         \$value,
                         $predecessor,
                     );
-                    if ($Parse::Marpa::This::trace_iteration_actions) {
+                    if ($Parse::Marpa::This::trace_iteration_changes) {
                          my $predecessor_set = $predecessor->[
                             Parse::Marpa::Earley_item::SET,
                          ];

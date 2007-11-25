@@ -1,10 +1,10 @@
 
-
 use 5.009005;
 # An ambiguous equation
 
 use strict;
 use warnings;
+use lib "../lib";
 
 use Test::More tests => 11;
 
@@ -64,7 +64,7 @@ EOCODE
 	[ "Number" => [qr/\d+/] ],
 	[ "Minus" => [qr/[-] /] ],
     ],
-    default_closure =>
+    default_action =>
 <<'EOCODE'
          my $v_count = scalar @$Parse::Marpa::This::v;
          return "" if $v_count <= 0;

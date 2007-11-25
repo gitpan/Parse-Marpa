@@ -2,6 +2,7 @@
 use 5.009005;
 use strict;
 use warnings;
+use lib "../lib";
 
 use Test::More tests => 9;
 

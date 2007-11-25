@@ -6,6 +6,7 @@ use 5.009005;
 
 use strict;
 use warnings;
+use lib "../lib";
 
 use Test::More tests => 8;
 
@@ -27,13 +28,6 @@ sub ah_extended {
         terminals => [
             [ "a" => [qr/a/] ],
         ],
-        # default_closure =>
-# <<'EOCODE',
-     # my $v_count = scalar @$Parse::Marpa::This::v;
-     # return "" if $v_count <= 0;
-     # return $Parse::Marpa::This::v->[0] if $v_count == 1;
-     # "(" . join(";", @$Parse::Marpa::This::v) . ")";
-# EOCODE
     );
 
     my $parse = new Parse::Marpa::Parse($g);

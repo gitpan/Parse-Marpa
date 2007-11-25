@@ -5,6 +5,7 @@
 use 5.009005;
 use strict;
 use warnings;
+use lib "../lib";
 
 use Test::More tests => 8;
 
@@ -53,7 +54,7 @@ EOCODE
 	[ "Number" => [qr/\d+/] ],
 	[ "Op" => [qr/[-+*]/] ],
     ],
-    default_closure => sub {
+    default_action => q{
          my $v_count = scalar @$Parse::Marpa::This::v;
          return "" if $v_count <= 0;
          return $Parse::Marpa::This::v->[0] if $v_count == 1;
@@ -74,14 +75,12 @@ $parse->lex_earleme([$op, "+", 1]);
 $parse->lex_earleme([$number, 1, 1]);
 $parse->lex_end();
 
-# print $g->show_rules(), "\n";
 is( $g->show_rules(), <<'END_RULES', "Ambiguous Equation Rules" );
 0: E -> E Op E
 1: E -> Number
 2: E['] -> E
 END_RULES
 
-# print $g->show_ii_SDFA(), "\n";
 is( $g->show_ii_SDFA(), <<'END_SDFA', "Ambiguous Equation SDFA" );
 St0: 1,5
 E ::= . E Op E

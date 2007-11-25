@@ -28,8 +28,8 @@ Someday I'd like to describe the whole algorithm,
 including the core contributions of Aycock, Horspool and Earley.
 at a level that
 someone who has not taken a course in parsing could understand.
-This algorithm includes so many parsing techniques, that a full
-description of it would be a small textbook on parsing in itself.
+Marpa combines many parsing techniques,
+and a full description of it would be a small textbook.
 For now, I have to content myself
 with briefly describing the more significant ideas new with Marpa,
 assuming that the reader is familiar with parsing in general and
@@ -38,7 +38,7 @@ terms like Earley set and Earley item.
 
 =head2 Upside-down and Inside-out
 
-Marpa taken the parse engine as
+Marpa takes the parse engine as
 described by Horspool and Aycock
 and literally turns it inside out and upside down.
 In the Horspool and Aycock version of Earley's,
@@ -69,7 +69,7 @@ Predictive lexing can reduce lexing time to a fraction of the original.
 =head2 Earlemes
 
 Marpa allows ambiguous lexing,
-including recognition of lexemes of different lengths beginning at the
+including recognition of lexemes of different lengths starting at the
 same lexical position,
 and recognition of overlapping lexemes.
 To facilitate this,
@@ -93,17 +93,17 @@ indeterminism.
 
 Marpa does this by allowing
 each scanned item to have a length in "earlemes",
-call it C<l>.
-If the current Earley set is C<i>, a newly scanned
-Earley item is added to Earley set C<l+i>.
+call it B<l>.
+If the current Earley set is B<i>, a newly scanned
+Earley item is added to Earley set B<i+l>.
 In other words, the B<earleme> is a unit of distance
 measured in Earley sets.
 An implementation can sync
 earlemes up with any measure that's convenient.
 For example, the
 distance in earlemes may be the length of a string, as measured
-either in ASCII characters or UNICODE graphemes.
-An implementation may mimic traditional lexing by defining
+either in bytes or UNICODE graphemes.
+An implementation may also mimic traditional lexing by defining
 the earleme to be the same as the distance in a token stream,
 measured in tokens.
 
@@ -127,9 +127,8 @@ theoretical possibility in pre-processing.  I also think
 that there are cases likely to arise in practice
 where the size explosion, if not exponential,
 is linear with a very large multiplier.
-A Perl 6 rule which treats whitespace is significant,
-but also allows it to be optional,
-would be such a case if it was of even moderate length.
+One such such case would be a
+Perl 6 rule where whitespace was significant but optional.
 
 My solution is Chomsky-Horspool-Aycock Form (CHAF).
 This is

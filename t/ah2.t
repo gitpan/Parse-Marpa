@@ -27,7 +27,7 @@ my $g = new Parse::Marpa(
         [ "a" => ["a"] ],
     ],
     default_null_value => "",
-    default_closure =>
+    default_action =>
 <<'EOCODE'
      my $v_count = scalar @$Parse::Marpa::This::v;
      return "" if $v_count <= 0;
@@ -408,7 +408,7 @@ my $failure_count = 0;
 my $total_count = 0;
 my @a = sort (0, 1, 2, 3, 4);
 my @answer = ("", qw[(a;;;) (a;a;;) (;a;a;a) (a;a;a;a)]);
-$parse->trace("all");
+
 PERMUTATION: for (;;) {
     for my $i (@a) {
         $parse->initial($i);

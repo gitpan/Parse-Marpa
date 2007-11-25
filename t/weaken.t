@@ -1,6 +1,7 @@
 use 5.009005;
 use strict;
 use warnings;
+use lib "../lib";
 
 use Scalar::Util qw(refaddr reftype isweak weaken);
 use Test::More;
@@ -49,13 +50,13 @@ cmp_ok(scalar @$unfreed_strong, "==", 0, "All strong refs freed")
     or diag("Unfreed strong refs: ", scalar @$unfreed_strong);
 
 my %weak_ok;
-for my $fn (
-    \(&Parse::Marpa::chaf_head_only),
-    \(&Parse::Marpa::chaf_head_and_tail),
-    \(&Parse::Marpa::chaf_tail_only),
-) {
-   $weak_ok{"$fn"} = 1;
-}
+# for my $fn (
+    # \(&Parse::Marpa::chaf_head_only),
+    # \(&Parse::Marpa::chaf_head_and_tail),
+    # \(&Parse::Marpa::chaf_tail_only),
+# ) {
+   # $weak_ok{"$fn"} = 1;
+# }
 
 my $unexpected_weak = [ grep { ! $weak_ok{$_ . ""}++ } @$unfreed_weak ];
     

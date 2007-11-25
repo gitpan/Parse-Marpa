@@ -1,3 +1,7 @@
+* Add (and test) right and left association in counted rules
+
+* Add proper and Wall separation
+
 * Allow closures for lexing.
 
 * Speed-up for pre-computing lexables.  Grammar::LEXABLES, etc.
@@ -15,9 +19,16 @@
 
 * Add locations for earlemes.  Also for rules?  Use in Carp messages.
 
-* Distinguish proper separator rules?
+* Volatile option for evaluation?
 
 * Allow alternation.
+
+* Allow compiled grammars (also, inplace option?)
+
+* Add to test set
+   - basic test for all branches of counted rules: matrix is
+     keep/no-keep, separated yes/no, right/left,
+     0-1, 1-1, 0-2, 0-5, 1-2, 1-5, 0-*, 1-*, 2-*, 5-*
 
 * (Someday) precedence declarations, a la yacc.
 
