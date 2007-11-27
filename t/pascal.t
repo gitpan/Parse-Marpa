@@ -28,6 +28,7 @@ sub ah_extended {
         terminals => [
             [ "a" => [qr/a/] ],
         ],
+        volatile => 1,
     );
 
     my $parse = new Parse::Marpa::Parse($g);

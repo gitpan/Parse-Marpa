@@ -1,16 +1,19 @@
-#!perl
-
-# An ambiguous equation,
-# this time using the lexer
+# Marpa compiling its own specification language
 
 use strict;
 use warnings;
+use feature ":5.10";
+use English;
+use lib "../lib";
+use Parse::Marpa;
 
-use Test::More tests => 1;
+my $discard = undef;
 
-BEGIN {
-	use_ok( 'Parse::Marpa' );
-}
+my $concatenate_lines = q{
+    my $v_count = scalar @$Parse::Marpa::This::v;
+    return undef if $v_count <= 0;
+    join("\n", grep { $_ } @$Parse::Marpa::This::v);
+};
 
 # The inefficiency (at least some of it) is deliberate.
 # Passing up a duples of [ string, value ] and then
@@ -21,98 +24,173 @@ BEGIN {
 
 sub canonical_symbol_name {
     my $symbol = lc shift;
-    $symbol =~ s/[-\s]+/-/g;
+    $symbol =~ s/[-_\s]+/-/g;
     $symbol;
 }
 
-sub optional {
-    my $lhs = shift;
-    my $rhs = shift;
-    my $closure = shift;
-
-    my $main_rule = [
-       $lhs,
-        [ $rhs ],
-        sub {
-            # no change to @Parse::Marpa::This::v
-            $closure->();
-        }
-    ];
-    my $nulling_rule = [
-       $lhs,
-        [ ],
-        sub { "" }
-    ];
-    return ($main_rule, $nulling_rule);
-}
-
-sub one_or_more {
-    my $lhs = shift;
-    my $rhs = shift;
-    my $closure = shift;
-
-    my $sequence = $lhs . ":Seq 1-*";
-    my $main_rule = [
-       $lhs,
-        [ $sequence ],
-        sub {
-            @Parse::Marpa::This::v = @{$Parse::Marpa::This::v[0]};
-            $closure->();
-        }
-    ];
-    my $more_rule = [
-        $sequence,
-        [ $sequence, $rhs ],
-        sub { [
-            @{$Parse::Marpa::This::v[0]},
-            $Parse::Marpa::This::v[1]
-        ] }
-    ];
-    my $one_rule = [
-        $sequence,
-        [ $rhs ],
-        sub { [ $Parse::Marpa::This::v[0] ] }
-    ];
-    return ($main_rule, $one_rule, $more_rule);
-}
-
 my $rules = [
-    [ "S", [
-        "optional whitespace",
-        "left hand side",
-        "optional whitespace",
-        "colon",
-        "optional whitespace",
-        "right hand side",
-        "optional whitespace",
-        ],
-        sub {
-           join(" ", @Parse::Marpa::This::v[1,3,5])
-        }
+    {
+        lhs => "grammar",
+        rhs => [ "text segment" ],
+        action => q{
+	    q{
+		use 5.9.5;
+		use strict;
+		use warnings;
+		use Parse::Marpa;
+
+		sub canonical_symbol_name {
+		    my $symbol = lc shift;
+		    $symbol =~ s/[-_\s]+/-/g;
+		    $symbol;
+		}
+
+		my $terminals = [];
+		my $rules = [];
+	    }
+	    . join("\n", grep { $_ } @$Parse::Marpa::This::v)
+	    . "\n"
+	    .q{
+		my $g = new Parse::Marpa(
+		    start => canonical_symbol_name("grammar"),
+		    rules => $rules,
+		    terminals => $terminals,
+		    default_lex_prefix => qr/\s*/,
+		);
+
+		my $parse = new Parse::Marpa::Parse(
+		   grammar=> $g,
+		);
+	    }
+	   },
+	   min => 0,
+    },
+    [ "text segment", [ "statement", "optional period" ], $concatenate_lines, ],
+    [ "text segment", [ "pod block" ], $discard, ],
+    [ "text segment", [ "comment" ], $discard, ],
+    [ "string", [ "q square bracket string" ], $concatenate_lines, ],
+    [ "string", [ "q curly bracket string" ], $concatenate_lines, ],
+    [ "string", [ "q angle bracket string" ], $concatenate_lines, ],
+    [ "string", [ "q parenthesis string" ], $concatenate_lines, ],
+    [ "string", [ "q string" ], $concatenate_lines, ],
+    [ "string", [ "double quoted string" ], $concatenate_lines, ],
+    [ "string", [ "single quoted string" ], $concatenate_lines, ],
+    [ "pod block",
+        [
+	    "pod head",
+	    "pod body",
+	    "pod cut",
+	],
+	$discard,
     ],
-    [ "left hand side",
-        [ "symbol" ]
-    ],
-    [ "right hand side",
-        [ "symbol" ]
-    ],
-    [ "optional whitespace" ],
-    [ "optional whitespace", [ "whitespace" ] ]
+    {
+       lhs => "pod body",
+       rhs => [ "pod line" ],
+       action => $discard,
+       min => 0,
+    },
+    [ "statement", [ "production" ],  $concatenate_lines, ],
+    [ "statement", [ "terminal declaration" ],  $concatenate_lines, ],
+    [ "statement", [ "null statement" ],  $discard, ],
+    {
+	lhs => "production",
+	rhs => [ "lhs", "colon", "rhs" ],
+	# tell perl NNN counter is in special package
+	action => q{
+	    'push(@$rules, '
+	    . "{\n"
+	    . join(",\n", @{$Parse::Marpa::This::v}[0,2])
+	    . "\n});" 
+	},
+    },
+    {
+	lhs => "symbol phrase",
+	rhs => [ "symbol word" ],
+	action => q{ q{"} . ::canonical_symbol_name(join("-", @$Parse::Marpa::This::v)) . q{"} },
+	min => 1,
+    },
+    {
+        lhs => "lhs",
+	rhs => [ "symbol phrase" ],
+	action => q{ "    lhs => " . join("-", @$Parse::Marpa::This::v) },
+    },
+    {
+        lhs => "rhs",
+	rhs => [ "rhs element" ],
+	action => q{ "    rhs => [" . join(", ", @$Parse::Marpa::This::v) . "]" },
+	min => 1,
+    },
+    {
+        lhs => "rhs",
+	rhs => [ "rhs element" ],
+	action => q{ "    rhs => [" . join(", ", @$Parse::Marpa::This::v) . "]" },
+	min => 1,
+	separator => "comma",
+    },
+    {
+        lhs => "rhs element",
+	rhs => [ "symbol phrase" ],
+	action => $concatenate_lines,
+    },
+    {
+        lhs => "rhs element",
+	rhs => [ "string", ],
+	action => $concatenate_lines,
+    },
+    {
+        lhs => "optional period",
+	rhs => [ "period" ],
+	action => $discard,
+	min => 0,
+	max => 1,
+    },
+    {
+        lhs => "terminal declaration",
+	rhs => [ "symbol phrase", "matches keyword", "string", ],
+	action => q{
+	    '{ my $regex_string = '
+	    . $Parse::Marpa::This::v->[2]
+	    . ";\n"
+	    . 'push(@$terminals, '
+	    . '[ '
+	    . $Parse::Marpa::This::v->[0]
+	    . ' => [ qr/$regex_string/ ] ]);'
+	    . "\n}"
+	}
+    },
+    {
+        lhs => "terminal declaration",
+	rhs => [ "symbol phrase", "matches keyword", "code block", ],
+	action => $concatenate_lines,
+    },
+    {
+        lhs => "null statement",
+	rhs => [ "whitespace", ],
+	action => $discard,
+    },
 ];
 
-my $default_closure = sub {
-     my $v_count = scalar @Parse::Marpa::This::v;
-     return "" if $v_count <= 0;
-     return $Parse::Marpa::This::v[0] if $v_count == 1;
-     "(" . join(";", map { defined $_ ? $_ : "undef" } @Parse::Marpa::This::v) . ")";
-};
-
-push(@$rules, one_or_more("symbol", "symbol word", $default_closure));
 
 my $terminals = [
-    [ "symbol word" => qr/\w+/ ],
-    [ "colon" => qr/[:]/ ],
-    [ "whitespace" => qr/\s+/ ],
+    [ "matches keyword"      => [ qr/matches/i ] ],
+    [ "code block"           => [ qr/%{.*?}%/s ] ],
+    [ "q square bracket string" => [ qr/q\[.*?\]/s ] ],
+    [ "q curly bracket string" => [ qr/q\{.*?\}/s ] ],
+    [ "q angle bracket string" => [ qr/q\<.*?\>/s ] ],
+    [ "q parenthesis string" => [ qr/q\(.*?\)/s ] ],
+    [ "q string" => [ qr/q(\S).*?\g{-1}/s ] ],
+    [ "double quoted string" => [ qr/\".*?\"/s ] ],
+    [ "single quoted string" => [ qr/\'.*?\'/s ] ],
+    [ "pod head"             => [qr/^=[a-zA-Z_].*$/m ] ],
+    [ "pod cut"              => [qr/^=cut.*$/m ] ],
+    [ "pod line"             => [qr/.*\n/m ] ],
+    [ "comment"              => [qr/#.*\n/], ],
+    [ "symbol word"          => [ qr/[a-zA-Z_][a-zA-Z0-9_-]+/ ], ], 
+    [ "period"               => [ qr/\./ ], ], 
+    [ "colon"                => [ qr/\:/ ], ], 
+    [ "comma"                => [ qr/\,/ ], ], 
+    [ "urtoken"              => [qr/\S+/ ] ],
+    [ "whitespace"           => [qr/\s+/ ] ], # when in doubt, throw away whitespcae
 ];
 
 for my $terminal_rule (@$terminals) {
@@ -120,36 +198,124 @@ for my $terminal_rule (@$terminals) {
 }
 
 for my $rule (@$rules) {
-    $rule->[0] = canonical_symbol_name($rule->[0]);
-    my $rhs = $rule->[1];
-    for my $ix (0 .. $#$rhs) {
-        $rhs->[$ix] = canonical_symbol_name($rhs->[$ix]);
+    given (ref $rule) {
+        when ("ARRAY") {
+	    $rule->[0] = canonical_symbol_name($rule->[0]);
+	    my $rhs = $rule->[1];
+	    my $new_rhs = [];
+	    for my $symbol (@$rhs) {
+		push(@$new_rhs, canonical_symbol_name($symbol));
+	    }
+	    $rule->[1] = $new_rhs;
+	}
+	when ("HASH") {
+	     for (keys %$rule) {
+	         when ("lhs") { $rule->{$_} = canonical_symbol_name($rule->{$_}) }
+	         when ("rhs") {
+		     my $new_rhs = [];
+		     for my $symbol (@{$rule->{$_}}) {
+			 push(@$new_rhs, canonical_symbol_name($symbol));
+		     }
+		     $rule->{$_} = $new_rhs;
+		 }
+	         when ("separator") { $rule->{$_} = canonical_symbol_name($rule->{$_}) }
+	     }
+	}
+	default { croak ("Invalid rule ref: ", ($_ ? $_ : "undefined")) }
     }
 }
 
 my $g = new Parse::Marpa(
-    start => canonical_symbol_name("S"),
+    start => canonical_symbol_name("grammar"),
     rules => $rules,
     terminals => $terminals,
-    default_closure => $default_closure
+    # default_action => $default_action,
+    # ambiguous_lex => 0,
+    default_lex_prefix => qr/\s*/,
+    # trace_rules => 1,
 );
 
-my $parse = new Parse::Marpa::Parse($g);
+my $parse = new Parse::Marpa::Parse(
+   grammar=> $g,
+   # trace_actions => 1,
+);
+# $parse->trace("all");
 
 # print $g->show_rules(), "\n";
 
 # print $g->show_SDFA(), "\n";
 
-$parse->lex_string(\("lhs : rhs"));
-$parse->lex_end();
+sub binary_search {
+    my ($target, $data) = @_;  
+    my ($lower, $upper) = (0, $#$data); 
+    my $i;                       
+    while ($lower <= $upper) {
+	my $i = int(($lower + $upper)/2);
+	given ($data->[$i]) {
+	    when ($_ < $target) { $lower = $i; }
+	    when ($_ > $target) { $upper = $i; }
+	    default { return $i }
+	} 
+    }
+    $lower
+}
 
-$parse->initial();
+sub locator {
+    my $earleme = shift;
+    my $string = shift;
+
+    state @lines = (0);
+    my $pos = pos $$string = 0;
+    NL: while ($$string =~ /\n/g) {
+	$pos = pos $$string;
+        push(@lines, $pos);
+	last NL if $pos > $earleme;
+    }
+    my $line = @lines - ($pos > $earleme ? 2 : 1);
+    my $line_start = $lines[$line];
+    return ($line, $line_start);
+}
+
+my $spec;
+
+{
+    local($RS) = undef;
+    $spec = <DATA>;
+    if ((my $earleme = $parse->lex_string(\$spec)) >= 0) {
+	# print $parse->show_status();
+	my ($line, $line_start) = locator($earleme, \$spec);
+	print "Parse exhausted at line $line, earleme $earleme\n";
+	given (index($spec, "\n", $line_start)) {
+	    when (undef) { say substr($spec, $line_start) }
+	    default { say substr($spec, $line_start, $_-$line_start) }
+	}
+	say +(" " x ($earleme-$line_start)), "^";
+	exit 1;
+    }
+    $parse->lex_end();
+}
+
+unless ($parse->initial()) {
+    say "No parse";
+    my ($earleme, $lhs) = $parse->find_complete_rule();
+    unless (defined $earleme) {
+	say "No rules completed";
+	exit 1;
+    }
+    my ($line, $line_start) = locator($earleme, \$spec);
+    say "Parses completed at line $line, earleme $earleme for symbols:";
+    say join(", ", @$lhs);
+    given (index($spec, "\n", $line_start)) {
+	when (undef) { say substr($spec, $line_start) }
+	default { say substr($spec, $line_start, $_-$line_start) }
+    }
+    say +(" " x ($earleme-$line_start)), "^";
+    exit 1;
+}
 
 my $value = $parse->value();
 print $value, "\n";
-
 # print $parse->show();
-# print $parse->show_status();
 
 # Local Variables:
 #   mode: cperl
@@ -160,7 +326,15 @@ print $value, "\n";
 
 __DATA__
 
-specification: statement sequence
+=begin Some Pod
+
+Some pod text for testing
+
+=end Some Pod
+
+=cut 
+
+grammar: statement sequence
 
 statement: production.
 
@@ -196,17 +370,11 @@ terminal: string.
 
 terminal: "optional" string.
 
-word matches "[-\w]+"
+word matches q{[-\w]+}
 
 terminal declaration: symbol "matches" string.
 
 terminal declaration: symbol "matches" closure.
-
-closure matches { # TO DO
-}
-
-string matches { # TO DO
-}
 
 period matches "[.]"
 

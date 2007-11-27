@@ -24,6 +24,7 @@ BEGIN {
 
 my $g = new Parse::Marpa(
     start => "E",
+    volatile => 0,
     rules => [
         [ "E", [qw/E Minus E/],
 <<'EOCODE'

@@ -28,7 +28,7 @@ use Carp;
 use Scalar::Util qw(weaken);
 use Data::Dumper;
 
-our $VERSION = '0.001_047';
+our $VERSION = '0.001_048';
 $VERSION = eval $VERSION;
 
 =begin Apology:
@@ -187,6 +187,7 @@ use constant AMBIGUOUS_LEX      => 16; # lex ambiguously? (the default)
 use constant TRACE_RULES        => 17; 
 use constant TRACE_FILE_HANDLE  => 18; 
 use constant LOCATION_CALLBACK  => 19; # default callback for showing location
+use constant VOLATILE           => 20; # default callback for showing location
 
 package Parse::Marpa::This;
 
@@ -229,6 +230,7 @@ sub new {
         my $earleme = shift;
         "Earleme " . $earleme;
     };
+    my $volatile = 1;
 
     my %arg_logic = (
         "rules"              => sub { $rules     = $_[0] },
@@ -243,6 +245,7 @@ sub new {
         "trace_file_handle"  => sub { $trace_fh = $_[0] },
         "trace_rules"        => sub { $trace_rules = $_[0] },
         "location_callback"  => sub { $location_callback = $_[0] },
+        "volatile"           => sub { $volatile = $_[0] },
     );
 
     while ( my ( $arg, $value ) = each %args ) {
@@ -808,11 +811,14 @@ sub add_rule {
     if ($nulling and $action) {
         local($Parse::Marpa::This::v) = [];
         if (defined $action) {
-            $lhs->[ Parse::Marpa::Symbol::NULL_VALUE ]
-                = eval (
-                    "package " . $package . ";\n"
-                    . $action
-                );
+            {
+                local $SIG{__WARN__} = sub {0};
+                $lhs->[ Parse::Marpa::Symbol::NULL_VALUE ]
+                    = eval (
+                        "package " . $package . ";\n"
+                        . $action
+                    );
+            }
             if ($@) {
                 croak("Compile time error evaluating null value for ",
                     $lhs->[ Parse::Marpa::Symbol::NAME ],
@@ -892,6 +898,7 @@ sub add_rules_from_hash {
     my ($min, $max, $separator_name);
     my $proper_separation = 0;
     my $keep_separation = 0;
+    my $left_associative = 1;
 
     while (my ($option, $value) = each(%$options)) {
 	given ($option) {
@@ -903,6 +910,8 @@ sub add_rules_from_hash {
 	    when ("separator") { $separator_name = $value }
 	    when ("proper_separation") { $proper_separation = $value }
 	    when ("keep_separation") { $keep_separation = $value }
+	    when ("left_associative") { $left_associative = $value }
+	    when ("right_associative") { $left_associative = !$value }
 	    default { croak("Unknown option in counted rule: $option") }
 	}
     }
@@ -950,13 +959,17 @@ sub add_rules_from_hash {
 	# specifically counted rules
         my $new_rule;
 	for my $count ( $min .. $max ) {
-	    my $counted_rhs;
+	    my $proper_counted_rhs;
+	    my $separator_terminated_rhs;
 	    my @separated_rhs = ($rhs_name);
 	    push(@separated_rhs, $separator_name) if defined $separator_name;
 	    given ($count) {
-	        when (0) { $counted_rhs = [ ] }
+	        when (0) { $proper_counted_rhs = [ ] }
 	        default {
-		    $counted_rhs = [ (@separated_rhs) x ($count - 1), $rhs_name ]
+		    $proper_counted_rhs = [ (@separated_rhs) x ($count - 1), $rhs_name ];
+                    if (not $proper_separation and defined $separator_name) {
+                        $separator_terminated_rhs = [ (@separated_rhs) x ($count) ];
+                    }
 		}
 	    }
             # no change to @Parse::Marpa::This::v needed for action
@@ -969,7 +982,10 @@ sub add_rules_from_hash {
                     }
                     . $action;
             }
-	    $new_rule = add_user_rule($grammar, $lhs_name, $counted_rhs, $action);
+	    $new_rule = add_user_rule($grammar, $lhs_name, $proper_counted_rhs, $action);
+            if ($separator_terminated_rhs) {
+                add_user_rule($grammar, $lhs_name, $separator_terminated_rhs, $action);
+            }
 	}
 
         # There will be at least one rhs symbol since we take the last rule created
@@ -1041,18 +1057,32 @@ sub add_rules_from_hash {
         $rule_hash->{$rule_key} = 1;
     }
 
+    # The following rules make evaluations volatile
+    $grammar->[ Parse::Marpa::Grammar::VOLATILE ] = 1;
+
     my $rule_action;
     given ($action) {
         when (undef) { $rule_action = undef; }
         default {
-            $rule_action = q{
-                TAIL: for (;;) {
-                    my $tail = pop @$Parse::Marpa::This::v;
-                    last TAIL unless scalar @$tail;
-                    push(@$Parse::Marpa::This::v, @$tail);
+            if ($left_associative) {
+                # more efficient way to do this?
+                $rule_action = q{
+                    HEAD: for (;;) {
+                        my $head = shift @$Parse::Marpa::This::v;
+                        last HEAD unless scalar @$head;
+                        unshift(@$Parse::Marpa::This::v, @$head);
+                    }
+                }
+            } else {
+                $rule_action = q{
+                    TAIL: for (;;) {
+                        my $tail = pop @$Parse::Marpa::This::v;
+                        last TAIL unless scalar @$tail;
+                        push(@$Parse::Marpa::This::v, @$tail);
+                    }
                 }
             }
-            . $action
+            $rule_action .= $action
         }
     }
     add_rule(
@@ -1061,26 +1091,60 @@ sub add_rules_from_hash {
         [ $sequence ],
         $rule_action,
     );
+    if (defined $separator and not $proper_separation) {
+        unless ($keep_separation) {
+            $rule_action =
+                q{ pop @$Parse::Marpa::This::v; } .
+                $rule_action
+        }
+        add_rule(
+            $grammar,
+            $lhs,
+            [ $sequence, $separator, ],
+            $rule_action,
+        );
+    }
 
     my @separated_rhs = ($rhs);
     push(@separated_rhs, $separator) if defined $separator;
 
     # minimal sequence rule
     my $counted_rhs = [ (@separated_rhs) x ($min - 1), $rhs ];
-    $rule_action =
-        (defined $separator and not $keep_separation)
-        ?  q{
-            [
-                @{$Parse::Marpa::This::v}[
-                   grep { !($_ % 2) } (0 .. $#$Parse::Marpa::This::v)
-                ],
-                []
-            ]
+ 
+    if ($left_associative) {
+        if (defined $separator and not $keep_separation) {
+            $rule_action = q{
+                [
+                    [],
+                    @{$Parse::Marpa::This::v}[
+                        grep { !($_ % 2) } (0 .. $#$Parse::Marpa::This::v)
+                    ]
+                ]
+            }
+        } else {
+            $rule_action = q{
+                unshift(@$Parse::Marpa::This::v, []);
+                $Parse::Marpa::This::v 
+            }
         }
-        : q{
-            push(@$Parse::Marpa::This::v, []);
-            $Parse::Marpa::This::v 
-        };
+    } else {
+        if (defined $separator and not $keep_separation) {
+            $rule_action = q{
+                [
+                    @{$Parse::Marpa::This::v}[
+                        grep { !($_ % 2) } (0 .. $#$Parse::Marpa::This::v)
+                    ],
+                    []
+                ]
+            }
+        } else {
+            $rule_action = q{
+                push(@$Parse::Marpa::This::v, []);
+                $Parse::Marpa::This::v 
+            }
+        }
+    }
+ 
     add_rule(
         $grammar,
         $sequence,
@@ -1101,14 +1165,18 @@ sub add_rules_from_hash {
         : q{
             $Parse::Marpa::This::v
         };
+    my @iterating_rhs = (@separated_rhs, $sequence);
+    if ($left_associative) {
+        @iterating_rhs = reverse @iterating_rhs;
+    }
     add_rule(
         $grammar,
         $sequence,
-        [ @separated_rhs, $sequence ],
+        (\@iterating_rhs),
         $rule_action,
     );
 
-}
+} # sub add_rules_from_hash
 
 sub add_user_terminals {
     my $grammar  = shift;
@@ -2505,11 +2573,12 @@ use constant EARLEY_HASHES => 3;    # the array of hashes used
                                   # to build the Earley sets
 use constant CURRENT_PARSE_SET    => 4;    # the set being taken as the end of
                                   # parse for an evaluation
+                                  # only undef if there are no evaluation
+                                  # notations in the earley items
 use constant START_ITEM               => 5;    # the start item for the current evaluation
 use constant TRACE_FILE_HANDLE        => 6;    # trace level
 use constant FURTHEST_EARLEME         => 7;    # last earley set with a token
 use constant EXHAUSTED                => 8;    # parse can't continue?
-
 use constant TRACE_LEX_TRIES          => 9; 
 use constant TRACE_LEX_MATCHES        => 10; 
 use constant TRACE_ITERATION_SEARCHES => 11; 
@@ -2521,6 +2590,7 @@ use constant PACKAGE                  => 17; # special "safe" namespace
 use constant TRACE_ACTIONS            => 18;
 use constant AMBIGUOUS_LEX            => 19;
 use constant DEFAULT_ACTION           => 20;
+use constant VOLATILE                 => 21;
 
 # implementation dependent constant, used below in unpack
 use constant J_LENGTH => ( length pack( "J", 0, 0 ) );
@@ -2606,12 +2676,18 @@ sub set_actions {
                 "\n"
         }
 
-        my $closure = eval $code;
+        my $closure;
+        {
+            local $SIG{__WARN__} = sub {0};
+            $closure = eval $code;
+        }
         if ($@) {
-            croak("Failed to compile action closure for ",
-                Parse::Marpa::brief_rule($rule),
-                "\n",
-                $@
+            croak("Problem compiling action:\n"
+                , $code
+                , "\nFailed to compile closure for ",
+                , Parse::Marpa::brief_rule($rule),
+                , "\n"
+                , $@
             );
         }
 
@@ -2631,6 +2707,10 @@ sub new {
     my $trace_fh;
     my $ambiguous_lex;
 
+    # default for parse is non-volatile, but grammar setting
+    # and explicit setting both override
+    my $volatile = 0;
+
     given (scalar @_) {
         when (1) {
             $grammar = shift;
@@ -2644,6 +2724,7 @@ sub new {
                 "ambiguous_lex"      => sub { $ambiguous_lex = $_[0] },
                 "trace_file_handle"  => sub { $trace_fh = $_[0] },
                 "trace_actions"        => sub { $trace_actions = $_[0] },
+                "volatile"        => sub { $volatile = $_[0] },
             );
 
             while ( my ( $arg, $value ) = each %args ) {
@@ -2694,6 +2775,10 @@ sub new {
 
     $default_action = $grammar->[ Parse::Marpa::Grammar::DEFAULT_ACTION ]
         unless defined $default_action;
+
+    # volatile can be set, but never unset
+    $volatile = $grammar->[ Parse::Marpa::Grammar::VOLATILE ]
+        unless $volatile;
 
     my (
         $SDFA,
@@ -2915,7 +3000,65 @@ sub clear_notations {
     }
 }
 
-# Mutator methods
+sub gen_bracket_regex {
+    my ($left, $right) = @_;
+    qr/\G[^\Q$left$right\E\\\\]*(\Q$left\E|\Q$right\E|[\\\\]\Q$left\E|[\\\\]\Q$right\E)/;
+}
+
+my %regex_data = (
+    '{' => ['}', gen_bracket_regex('{', '}') ],
+    '<' => ['>', gen_bracket_regex('<', '>') ],
+    '[' => [']', gen_bracket_regex('[', ']') ],
+    '(' => [')', gen_bracket_regex('(', ')') ],
+);
+
+# This is POSIX "punct" character class, except for backslash,
+# and the right side bracketing symbols.
+# \043 is single quote, \0133 is the left square bracket.
+my $punct = qr'[!"#$%&\043(*+,-./:;<=?\0133^_`{|~@]';
+
+sub lex_q_quote {
+    my $string = shift;
+    my $start = (pos $$string) // 0;
+    say "lex_q_quote pos=", (pos $$string);
+    $$string =~ m/\G\s*qq?([[:punct:]])/gc;
+    my $left = $1;
+    return unless defined $left;
+    say "lex_q_quote pos=", (pos $$string);
+
+    my $regex_data = $regex_data{$1};
+    if (not defined $regex_data) {
+	my $regex = qr/\G[^\Q$left\E\\\\]*(\Q$left\E|[\\\\]\Q$left\E)/;
+	$regex_data{$left} = $regex_data = [undef, $regex];
+    }
+    my ($right, $regex) = @$regex_data;
+    # unbracketed quote
+    if (not defined $right) {
+	MATCH: while ($$string =~ /\G$regex/gc) {
+	    next MATCH unless defined $1;
+	    if ($1 eq $left) {
+		my $length = (pos $$string) - $start;
+		return (substr($$string, $start, $length), $length);
+	    }
+	}
+	return;
+    }
+
+    # bracketed quote
+    my $depth=1;
+    MATCH: while ($$string =~ /\G$regex/gc) {
+	next MATCH unless defined $1;
+	given ($1) {
+	   when ($left) { $depth++; }
+	   when ($right) { $depth--; }
+	}
+	if ($depth <= 0) {
+	    my $length = (pos $$string) - $start;
+	    return (substr($$string, $start, $length), $length);
+	}
+    }
+    return;
+}
 
 # check parse? 
 sub lex_earleme {
@@ -3478,6 +3621,7 @@ sub initial {
         $current_parse_set, $default_parse_set,
         $trace_iteration_searches,
         $trace_iteration_changes,
+        $volatile,
     ) = @{$parse}[
         Parse::Marpa::Parse::GRAMMAR,
         Parse::Marpa::Parse::EARLEY_SETS,
@@ -3486,6 +3630,7 @@ sub initial {
         Parse::Marpa::Parse::DEFAULT_PARSE_SET,
         Parse::Marpa::Parse::TRACE_ITERATION_SEARCHES,
         Parse::Marpa::Parse::TRACE_ITERATION_CHANGES,
+        Parse::Marpa::Parse::VOLATILE,
     ];
     local($Parse::Marpa::This::grammar) = $grammar;
     local($Parse::Marpa::This::trace_iteration_searches) = $trace_iteration_searches;
@@ -3495,17 +3640,21 @@ sub initial {
     my $trace_fh = $grammar-> [ Parse::Marpa::Grammar::TRACE_FILE_HANDLE ];
     local($Parse::Marpa::This::trace_fh) = $trace_fh;
 
-    if (defined $parse_set_arg and
-        (not defined $current_parse_set
-            or $parse_set_arg != $current_parse_set)
-    ) {
-            $start_item = undef;
+    if (defined $current_parse_set) {
+        my $need_to_clear = $volatile;
+        if (defined $parse_set_arg
+            and $parse_set_arg != $current_parse_set
+        ) {
             $current_parse_set = $parse_set_arg;
+            $start_item = undef;
+            $need_to_clear++;
+        }
+        clear_notations($parse) if $need_to_clear;
     }
 
     if (not defined $current_parse_set) {
         $start_item = undef;
-        $current_parse_set = $default_parse_set;
+        $current_parse_set = $parse_set_arg // $default_parse_set;
     }
 
     # If we already have a start item, use it
@@ -3775,8 +3924,19 @@ sub initialize_children {
     }
 
     my $closure = $rule->[ Parse::Marpa::Rule::CLOSURE ];
+    my @warnings;
     return $closure unless defined $closure;
-    $closure->();
+
+    my $result = eval { $closure->() };
+    if ($@) {
+        croak("Problem computing value for rule ",
+            Parse::Marpa::brief_rule($rule),
+            "\n",
+            $@,
+        );
+    }
+
+    $result;
 
 }
 
@@ -3807,12 +3967,14 @@ sub next {
         $current_parse_set,
         $trace_iteration_searches,
         $trace_iteration_changes,
+        $volatile,
     ) = @{$parse}[
         Parse::Marpa::Parse::GRAMMAR,
         Parse::Marpa::Parse::START_ITEM,
         Parse::Marpa::Parse::CURRENT_PARSE_SET,
         Parse::Marpa::Parse::TRACE_ITERATION_SEARCHES,
         Parse::Marpa::Parse::TRACE_ITERATION_CHANGES,
+        Parse::Marpa::Parse::VOLATILE,
     ];
     croak("Parse not initialized: no start item") unless defined $start_item;
     my $start_value = $start_item->[ Parse::Marpa::Earley_item::VALUE ];
@@ -3824,6 +3986,8 @@ sub next {
 
     my $trace_fh = $grammar-> [ Parse::Marpa::Grammar::TRACE_FILE_HANDLE ];
     local($Parse::Marpa::This::trace_fh) = $trace_fh;
+
+    clear_notations($parse) if $volatile;
 
     # find the "bottom left corner item", by following predecessors,
     # and causes when there is no predecessor

@@ -5,12 +5,7 @@ use warnings;
 use feature ":5.10";
 use English;
 use lib "../lib";
-
-use Test::More tests => 1;
-
-BEGIN {
-	use_ok( 'Parse::Marpa' );
-}
+use Parse::Marpa;
 
 my $discard = undef;
 
@@ -35,10 +30,40 @@ sub canonical_symbol_name {
 
 my $rules = [
     {
-       lhs => "grammar",
-       rhs => [ "text segment" ],
-       action => $concatenate_lines,
-       min => 0,
+        lhs => "grammar",
+        rhs => [ "text segment" ],
+        action => q{
+	    q{
+		use 5.9.5;
+		use strict;
+		use warnings;
+		use Parse::Marpa;
+
+		sub canonical_symbol_name {
+		    my $symbol = lc shift;
+		    $symbol =~ s/[-_\s]+/-/g;
+		    $symbol;
+		}
+
+		my $terminals = [];
+		my $rules = [];
+	    }
+	    . join("\n", grep { $_ } @$Parse::Marpa::This::v)
+	    . "\n"
+	    .q{
+		my $g = new Parse::Marpa(
+		    start => canonical_symbol_name("grammar"),
+		    rules => $rules,
+		    terminals => $terminals,
+		    default_lex_prefix => qr/\s*/,
+		);
+
+		my $parse = new Parse::Marpa::Parse(
+		   grammar=> $g,
+		);
+	    }
+	   },
+	   min => 0,
     },
     [ "text segment", [ "statement", "optional period" ], $concatenate_lines, ],
     [ "text segment", [ "pod block" ], $discard, ],
@@ -71,18 +96,17 @@ my $rules = [
 	lhs => "production",
 	rhs => [ "lhs", "colon", "rhs" ],
 	# tell perl NNN counter is in special package
-	action => q(
-	    our $uniq_number;
-	    sprintf('my $rule%d', $uniq_number++)
-	    . "= {\n"
+	action => q{
+	    'push(@$rules, '
+	    . "{\n"
 	    . join(",\n", @{$Parse::Marpa::This::v}[0,2])
-	    . "\n};" 
-	),
+	    . "\n});" 
+	},
     },
     {
 	lhs => "symbol phrase",
 	rhs => [ "symbol word" ],
-	action => q{ ::canonical_symbol_name(join("-", @$Parse::Marpa::This::v)) },
+	action => q{ q{"} . ::canonical_symbol_name(join("-", @$Parse::Marpa::This::v)) . q{"} },
 	min => 1,
     },
     {
@@ -99,7 +123,7 @@ my $rules = [
     {
         lhs => "rhs",
 	rhs => [ "rhs element" ],
-	action => q{ "    rhs => " . join(", ", @$Parse::Marpa::This::v) },
+	action => q{ "    rhs => [" . join(", ", @$Parse::Marpa::This::v) . "]" },
 	min => 1,
 	separator => "comma",
     },
@@ -124,13 +148,14 @@ my $rules = [
         lhs => "terminal declaration",
 	rhs => [ "symbol phrase", "matches keyword", "string", ],
 	action => q{
-	    our $uniq_number;
-	    sprintf('my $terminal%d', $uniq_number++)
-	    . ' = [ "'
-	    . $Parse::Marpa::This::v->[0]
-	    . '" => [ qr/'
+	    '{ my $regex_string = '
 	    . $Parse::Marpa::This::v->[2]
-	    . '/ ] ];'
+	    . ";\n"
+	    . 'push(@$terminals, '
+	    . '[ '
+	    . $Parse::Marpa::This::v->[0]
+	    . ' => [ qr/$regex_string/ ] ]);'
+	    . "\n}"
 	}
     },
     {
@@ -210,8 +235,11 @@ my $g = new Parse::Marpa(
     # trace_rules => 1,
 );
 
-my $parse = new Parse::Marpa::Parse($g);
-# $parse->trace("iterations");
+my $parse = new Parse::Marpa::Parse(
+   grammar=> $g,
+   # trace_actions => 1,
+);
+# $parse->trace("all");
 
 # print $g->show_rules(), "\n";
 
@@ -268,7 +296,6 @@ my $spec;
 }
 
 unless ($parse->initial()) {
-    # print $parse->show_status();
     say "No parse";
     my ($earleme, $lhs) = $parse->find_complete_rule();
     unless (defined $earleme) {
@@ -288,6 +315,7 @@ unless ($parse->initial()) {
 
 my $value = $parse->value();
 print $value, "\n";
+# print $parse->show();
 
 # Local Variables:
 #   mode: cperl
@@ -306,7 +334,7 @@ Some pod text for testing
 
 =cut 
 
-specification: statement sequence
+grammar: statement sequence
 
 statement: production.
 
@@ -342,7 +370,7 @@ terminal: string.
 
 terminal: "optional" string.
 
-word matches "[-\w]+"
+word matches q{[-\w]+}
 
 terminal declaration: symbol "matches" string.
 

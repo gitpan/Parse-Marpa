@@ -25,6 +25,10 @@
 
 * Allow compiled grammars (also, inplace option?)
 
+* Test diagnostics for actions (including null values)
+  and all other user supplied evals
+  with warnings & syntax errors
+
 * Add to test set
    - basic test for all branches of counted rules: matrix is
      keep/no-keep, separated yes/no, right/left,

@@ -424,7 +424,6 @@ PERMUTATION: for (;;) {
             $failure_count++;
         }
     }
-    $parse->clear_notations();
     if (not NextPermute(@a)) {
         last PERMUTATION;
     }
