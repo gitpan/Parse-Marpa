@@ -28,7 +28,9 @@ use Carp;
 use Scalar::Util qw(weaken);
 use Data::Dumper;
 
-our $VERSION = '0.001_048';
+use Parse::Marpa::Lex;
+
+our $VERSION = '0.001_049';
 $VERSION = eval $VERSION;
 
 =begin Apology:
@@ -107,7 +109,7 @@ use constant START           => 6;    # is one of the start symbols?
 use constant REGEX           => 7;    # regex, for terminals; undef otherwise
 use constant NULLING         => 8;    # always is null?
 use constant NULLABLE        => 9;    # can match null?
-use constant NULL_VALUE      => 10;    # value when null
+use constant NULL_VALUE      => 10;   # value when null
 use constant NULL_ALIAS      => 11;   # for a non-nulling symbol,
                                       # ref of a its nulling alias,
                                       # if there is one
@@ -116,6 +118,7 @@ use constant TERMINAL        => 12;   # terminal?
 use constant CLOSURE         => 13;   # closure to do lexing
 use constant ORDER           => 14;   # order, for lexing
 use constant COUNTED         => 15;   # used on rhs of counted rule?
+use constant ACTION          => 16;   # lexing action specified by user
 
 package Parse::Marpa::Rule;
 
@@ -156,7 +159,6 @@ use constant COMPLETE_RULES => 5;    # an array of lists of the complete rules,
                                      # indexed by lhs
 use constant START_RULE     => 6;    # the start rule
 use constant TAG            => 7;    # implementation-independant tag
-use constant LEXABLES       => 8;    # lexable symbols for this state
 
 package Parse::Marpa::LR0_item;
 
@@ -505,7 +507,6 @@ sub show_SDFA_state {
         Parse::Marpa::SDFA::ID,         Parse::Marpa::SDFA::NAME,
         Parse::Marpa::SDFA::NFA_STATES, Parse::Marpa::SDFA::TRANSITION,
         Parse::Marpa::SDFA::TAG,
-        Parse::Marpa::SDFA::LEXABLES,
     ];
 
     $text .= defined $tags ? "St" . $tag : "S" . $id;
@@ -514,14 +515,7 @@ sub show_SDFA_state {
         my $item = $NFA_state->[Parse::Marpa::NFA::ITEM];
         $text .= show_item($item) . "\n";
     }
-    if (@$lexables) {
-        $text
-            .= "lexables: "
-            . join(" ", sort map {
-                $_->[ Parse::Marpa::Symbol::NAME ]
-            } @$lexables)
-            . "\n"
-    }
+
     for my $symbol_name ( sort keys %$transition ) {
         my ( $to_id, $to_name ) =
             @{ $transition->{$symbol_name} }[ Parse::Marpa::SDFA::ID,
@@ -620,12 +614,12 @@ sub add_terminal {
     my $name    = shift;
     my $lexer = shift;
     my ($regex, $prefix, $suffix);
-    my $closure;
+    my $action;
 
-    if (defined ref $lexer) {
-        ($regex, $prefix, $suffix) = @$lexer;
-    } else {
-        $closure = $lexer;
+    given (ref $lexer) {
+        when("") { $action = $lexer; }
+        when("ARRAY") { ($regex, $prefix, $suffix) = @$lexer; }
+        default { croak("Bad argument to add_terminal for $name"); }
     }
 
     my ( $symbol_hash, $symbols,
@@ -653,8 +647,6 @@ sub add_terminal {
             (?<mArPa_match>$regex)
             (?<mArPa_suffix>$suffix)
         /xms;
-    } elsif (defined $closure) {
-       croak("Terminal closures not yet implemented");
     }
 
     # I allow redefinition of a LHS symbol as a terminal
@@ -670,13 +662,13 @@ sub add_terminal {
             Parse::Marpa::Symbol::INPUT_REACHABLE,
             Parse::Marpa::Symbol::NULLING,
             Parse::Marpa::Symbol::REGEX,
-            Parse::Marpa::Symbol::CLOSURE,
+            Parse::Marpa::Symbol::ACTION,
             Parse::Marpa::Symbol::TERMINAL,
             Parse::Marpa::Symbol::ORDER,
         ] = (
             1, 0,
             $compiled_regex,
-            $closure,
+            $action,
             1,
             $terminal_number++,
         );
@@ -2105,12 +2097,7 @@ sub create_SDFA {
         $state->[Parse::Marpa::SDFA::COMPLETE_LHS] =
             [ map { $_->[Parse::Marpa::Symbol::NAME] }
                 @{$symbols}[ grep { $lhs_list->[$_] } ( 0 .. $#$lhs_list ) ] ];
-        $state->[Parse::Marpa::SDFA::LEXABLES] = [
-             grep { $_->[Parse::Marpa::Symbol::CLOSURE] // $_->[Parse::Marpa::Symbol::REGEX] }
-             map { $symbol_hash->{$_} }
-             grep { $_ ne "" }
-             keys %{$state->[ Parse::Marpa::SDFA::TRANSITION ]}
-        ]
+
     }    # STATE
 }
 
@@ -2591,11 +2578,10 @@ use constant TRACE_ACTIONS            => 18;
 use constant AMBIGUOUS_LEX            => 19;
 use constant DEFAULT_ACTION           => 20;
 use constant VOLATILE                 => 21;
-
-# implementation dependent constant, used below in unpack
-use constant J_LENGTH => ( length pack( "J", 0, 0 ) );
-
-# Constructor method
+use constant LEXERS                   => 22; # an array, indexed by symbol id,
+                                             # of the lexer for each symbol
+use constant LEXABLES_BY_STATE        => 23; # an array, indexed by SDFA state id,
+                                             # of the lexables belonging in it
 
 # Set rule actions
 sub set_actions {
@@ -2605,8 +2591,14 @@ sub set_actions {
 
     my (
         $rules,
+        $symbols,
+        $symbol_hash,
+        $SDFA,
     ) = @{$grammar}[
         Parse::Marpa::Grammar::RULES,
+        Parse::Marpa::Grammar::SYMBOLS,
+        Parse::Marpa::Grammar::SYMBOL_HASH,
+        Parse::Marpa::Grammar::SDFA,
     ];
 
     RULE: for my $rule (@$rules) {
@@ -2694,7 +2686,93 @@ sub set_actions {
         $rule->[ Parse::Marpa::Rule::CLOSURE ] = $closure;
 
     } # RULE
-}
+
+    my @lexers;
+    $#lexers = $#$symbols;
+
+    SYMBOL: for (my $ix = 0; $ix <= $#lexers; $ix++) {
+
+        my $symbol = $symbols->[$ix];
+        my ($name, $regex, $action) = @{$symbol}[
+            Parse::Marpa::Symbol::NAME,
+            Parse::Marpa::Symbol::REGEX,
+            Parse::Marpa::Symbol::ACTION,
+        ];
+
+        if (defined $regex) {
+            $lexers[$ix] = $regex;
+            next SYMBOL;
+        }
+
+        given ($action) {
+           when (undef) { ; } # do nothing
+           # Right now do nothing but find lex_q_quote
+           when ("Parse::Marpa::Lex::lex_q_quote") {
+               $lexers[$ix] = \&Parse::Marpa::Lex::lex_q_quote;
+           }
+           when ("Parse::Marpa::Lex::lex_regex") {
+               $lexers[$ix] = \&Parse::Marpa::Lex::lex_regex;
+           }
+           default {
+                my $code =
+                    q'
+                        sub {
+                            my $STRING = shift;
+                            my $START = (pos $$STRING) // 0;
+                     '
+                     . "package " . $package . ";\n"
+                     . $action
+                     . "; return\n}";
+
+                if ($Parse::Marpa::This::trace_actions) {
+                    print $Parse::Marpa::This::trace_fh
+                        "Setting action for terminal ",
+                        $name, " to\n", $code,
+                        "\n"
+                }
+
+                my $closure;
+                {
+                    local $SIG{__WARN__} = sub {0};
+                    $closure = eval $code;
+                }
+                if ($@) {
+                    croak("Problem compiling action:\n"
+                        , $code
+                        , "\nFailed to compile closure for ",
+                        , $name
+                        , "\n"
+                        , $@
+                    );
+                }
+
+                $lexers[$ix] = $closure;
+
+           }
+        }
+
+    } # SYMBOL
+
+
+    my @lexables_by_state;
+    $#lexables_by_state = $#$SDFA;
+
+    for my $state (@$SDFA) {
+        my ($id, $transition) = @{$state}[
+             Parse::Marpa::SDFA::ID,
+             Parse::Marpa::SDFA::TRANSITION,
+        ];
+        $lexables_by_state[ $id ] = [
+             grep { $lexers[ $_ ] }
+             map { $symbol_hash->{$_}->[ Parse::Marpa::Symbol::ID ] }
+             grep { $_ ne "" }
+             keys %$transition
+        ];
+    }
+
+    return ( \@lexers, \@lexables_by_state, );
+
+} # sub set_actions
 
 sub new {
     my $class   = shift;
@@ -2749,11 +2827,17 @@ sub new {
 
     # This could be made more efficient with a custom routine
 
-    my $grammar_copy;
-    my $d = Data::Dumper->new([$grammar], ["grammar_copy"]);
-    $d->Purity(1);
-    eval $d->Dump();
-    $grammar = $grammar_copy;
+    {
+        my $grammar_copy;
+        my $d = Data::Dumper->new([$grammar], ["grammar_copy"]);
+        $d->Purity(1);
+        local $SIG{__WARN__} = sub {
+            carp($_[0]);
+            croak("Marpa got a warning from Data::Dumper and can't continue");
+        };
+        eval $d->Dump();
+        $grammar = $grammar_copy;
+    }
 
     # Eliminate or weaken all circular references
     my $symbol_hash = $grammar->[ Parse::Marpa::Grammar::SYMBOL_HASH ];
@@ -2796,7 +2880,8 @@ sub new {
 
     # I should do (or at least allow) a deep copy of the grammar
     # rather than creating closures "in place"
-    set_actions($grammar, $package, $default_action);
+    my ($lexers, $lexables_by_state)
+        = set_actions($grammar, $package, $default_action);
 
     my $earley_hash;
     my $earley_set;
@@ -2843,6 +2928,8 @@ sub new {
         AMBIGUOUS_LEX,
         TRACE_FILE_HANDLE,
         TRACE_ACTIONS,
+        LEXERS,
+        LEXABLES_BY_STATE,
     ] = (
         0, 0, 0,
         [$earley_hash],
@@ -2854,6 +2941,8 @@ sub new {
         $ambiguous_lex,
         $trace_fh,
         $trace_actions,
+        $lexers,
+        $lexables_by_state,
     );
 
     bless $parse, $class;
@@ -3000,66 +3089,6 @@ sub clear_notations {
     }
 }
 
-sub gen_bracket_regex {
-    my ($left, $right) = @_;
-    qr/\G[^\Q$left$right\E\\\\]*(\Q$left\E|\Q$right\E|[\\\\]\Q$left\E|[\\\\]\Q$right\E)/;
-}
-
-my %regex_data = (
-    '{' => ['}', gen_bracket_regex('{', '}') ],
-    '<' => ['>', gen_bracket_regex('<', '>') ],
-    '[' => [']', gen_bracket_regex('[', ']') ],
-    '(' => [')', gen_bracket_regex('(', ')') ],
-);
-
-# This is POSIX "punct" character class, except for backslash,
-# and the right side bracketing symbols.
-# \043 is single quote, \0133 is the left square bracket.
-my $punct = qr'[!"#$%&\043(*+,-./:;<=?\0133^_`{|~@]';
-
-sub lex_q_quote {
-    my $string = shift;
-    my $start = (pos $$string) // 0;
-    say "lex_q_quote pos=", (pos $$string);
-    $$string =~ m/\G\s*qq?([[:punct:]])/gc;
-    my $left = $1;
-    return unless defined $left;
-    say "lex_q_quote pos=", (pos $$string);
-
-    my $regex_data = $regex_data{$1};
-    if (not defined $regex_data) {
-	my $regex = qr/\G[^\Q$left\E\\\\]*(\Q$left\E|[\\\\]\Q$left\E)/;
-	$regex_data{$left} = $regex_data = [undef, $regex];
-    }
-    my ($right, $regex) = @$regex_data;
-    # unbracketed quote
-    if (not defined $right) {
-	MATCH: while ($$string =~ /\G$regex/gc) {
-	    next MATCH unless defined $1;
-	    if ($1 eq $left) {
-		my $length = (pos $$string) - $start;
-		return (substr($$string, $start, $length), $length);
-	    }
-	}
-	return;
-    }
-
-    # bracketed quote
-    my $depth=1;
-    MATCH: while ($$string =~ /\G$regex/gc) {
-	next MATCH unless defined $1;
-	given ($1) {
-	   when ($left) { $depth++; }
-	   when ($right) { $depth--; }
-	}
-	if ($depth <= 0) {
-	    my $length = (pos $$string) - $start;
-	    return (substr($$string, $start, $length), $length);
-	}
-    }
-    return;
-}
-
 # check parse? 
 sub lex_earleme {
     my $parse = shift;
@@ -3085,6 +3114,7 @@ sub lex_string {
         $trace_lex_tries,
         $trace_lex_matches,
         $ambiguous_lex,
+        $lexers,
     ) = @{$parse}[
         Parse::Marpa::Parse::GRAMMAR,
         Parse::Marpa::Parse::EARLEY_SETS,
@@ -3093,6 +3123,7 @@ sub lex_string {
         Parse::Marpa::Parse::TRACE_LEX_TRIES,
         Parse::Marpa::Parse::TRACE_LEX_MATCHES,
         Parse::Marpa::Parse::AMBIGUOUS_LEX,
+        Parse::Marpa::Parse::LEXERS,
     ];
 
     local($Parse::Marpa::This::trace_lex_tries) = $trace_lex_tries;
@@ -3119,8 +3150,8 @@ sub lex_string {
         my $lexables = complete_set($parse);
 
         LEXABLE: for my $lexable (@$lexables) {
-            my ($regex) = @{$lexable}[
-                Parse::Marpa::Symbol::REGEX,
+            my ($symbol_id) = @{$lexable}[
+                Parse::Marpa::Symbol::ID
             ];
             if ($Parse::Marpa::This::trace_lex_tries) {
                 print $Parse::Marpa::This::trace_fh
@@ -3129,9 +3160,14 @@ sub lex_string {
                     " at $pos\n";
             }
 
+            my $lexer = $lexers->[ $symbol_id ];
+            my $lexer_type = ref $lexer;
+            croak("Illegal type for lexer: undefined")
+                unless defined $lexer_type;
+
             pos $$input_ref = $pos;
-            if (defined $regex) {
-                if ($$input_ref =~ /$regex/g) {
+            if ($lexer_type eq "Regexp") {
+                if ($$input_ref =~ /$lexer/g) {
                     my $match = $+{mArPa_match};
                     # my $prefix = $+{mArPa_prefix};
                     # my $suffix = $+{mArPa_suffix};
@@ -3154,8 +3190,10 @@ sub lex_string {
 
             # If it's a lexable and a regex was not defined, there must be a
             # closure
+            croak("Illegal type for lexer: $lexer_type")
+                unless $lexer_type eq "CODE";
 
-            if (my ($match, $length) = $lexable->[ Parse::Marpa::Symbol::CLOSURE ]->()) {
+            if (my ($match, $length) = $lexer->($input_ref)) {
                 $length //= length $match;
 
                 push(@alternatives, [ $lexable, $match, $length ]);
@@ -3342,10 +3380,12 @@ sub complete_set {
         $earley_set_list, $earley_hash_list, $grammar,
         $current_set, $furthest_earleme, $exhausted,
         $trace_completions,
+        $lexables_by_state,
     ) = @{$parse}[
         EARLEY_SETS, EARLEY_HASHES, GRAMMAR,
         CURRENT_SET, FURTHEST_EARLEME, EXHAUSTED,
         TRACE_COMPLETIONS,
+        LEXABLES_BY_STATE,
     ];
     croak("Attempt to complete another earley set in an exhausted parse") if $exhausted;
 
@@ -3372,9 +3412,10 @@ sub complete_set {
             Parse::Marpa::Earley_item::STATE,
             Parse::Marpa::Earley_item::PARENT
         ];
+        my $state_id = $state->[ Parse::Marpa::SDFA::ID ];
 
-        for my $lexable (@{$state->[ Parse::Marpa::SDFA::LEXABLES ]}) {
-            $lexable_seen->[ $lexable->[ Parse::Marpa::Symbol::ID ] ] = 1;
+        for my $lexable (@{$lexables_by_state->[$state_id]}) {
+            $lexable_seen->[ $lexable ] = 1;
         }
 
         next EARLEY_ITEM if $current_set == $parent;
@@ -3818,6 +3859,8 @@ sub initialize_children {
 
     local($Parse::Marpa::This::v) = []; # to store values in
 
+    my @work_entries;
+
     CHILD: for (my $child_number = $#$rhs; $child_number >= 0; $child_number--) {
 
         my $child_symbol = $rhs->[ $child_number ];
@@ -3891,36 +3934,56 @@ sub initialize_children {
 
         my ($predecessor, $cause) = @{$links->[0]};
         weaken($cause->[ Parse::Marpa::Earley_item::EFFECT ] = $item);
-        my $value = initialize_children($cause, $child_symbol);
+
+        # my $value = initialize_children($cause, $child_symbol);
+        my $work_entry = [
+                $predecessor,
+                $item,
+                $child_number,
+                $cause,
+                $child_symbol,
+        ];
+
+        # for efficiency make push (right-to-left evaluation), the default
+        unshift(@work_entries, $work_entry);
+
         @{$item}[
             Parse::Marpa::Earley_item::TOKEN_CHOICE,
             Parse::Marpa::Earley_item::LINK_CHOICE,
             Parse::Marpa::Earley_item::RULE_CHOICE,
             Parse::Marpa::Earley_item::RULES,
-            Parse::Marpa::Earley_item::VALUE,
+            # Parse::Marpa::Earley_item::VALUE,
             Parse::Marpa::Earley_item::PREDECESSOR,
             Parse::Marpa::Earley_item::POINTER,
         ] = (
             0, 0,
             $child_rule_choice, $child_rules,
-            \$value, $predecessor,
+            # \$value,
+            $predecessor,
             $child_symbol,
         );
-        if ($Parse::Marpa::This::trace_iteration_searches) {
-             my $predecessor_set = $predecessor->[
-                Parse::Marpa::Earley_item::SET,
-             ];
-             print $Parse::Marpa::This::trace_fh
-             "Initializing caused value of ",
-             brief_earley_item($item), ", ",
-             $child_symbol->[ Parse::Marpa::Symbol::NAME ],
-             " at ", $predecessor_set, "-", $item_set,
-             " to ", Dumper($value);
-        }
-        $Parse::Marpa::This::v->[ $child_number ] = $value;
+        # $Parse::Marpa::This::v->[ $child_number ] = $value;
         weaken($predecessor->[Parse::Marpa::Earley_item::SUCCESSOR] = $item);
         $item = $predecessor;
 
+    } # CHILD
+
+    for my $work_entry (reverse @work_entries) {
+        my ($predecessor_item, $effect_item, $rhs_index, $cause, $child_symbol,) = @$work_entry;
+            my $value
+                = $Parse::Marpa::This::v->[ $rhs_index ]
+                = initialize_children($cause, $child_symbol);
+            $effect_item->[ Parse::Marpa::Earley_item::VALUE ] = \$value;
+            if ($Parse::Marpa::This::trace_iteration_searches) {
+                 my $predecessor_set = $predecessor_item->[ Parse::Marpa::Earley_item::SET ];
+                 my $item_set = $effect_item->[ Parse::Marpa::Earley_item::SET ];
+                 print $Parse::Marpa::This::trace_fh
+                     "Initializing caused value of ",
+                     brief_earley_item($effect_item), ", ",
+                     $child_symbol->[ Parse::Marpa::Symbol::NAME ],
+                     " at ", $predecessor_set, "-", $item_set,
+                     " to ", Dumper($value);
+            }
     }
 
     my $closure = $rule->[ Parse::Marpa::Rule::CLOSURE ];

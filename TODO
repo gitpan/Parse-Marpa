@@ -1,8 +1,6 @@
-* Add (and test) right and left association in counted rules
+* Add right and left evaluation in rules
 
-* Add proper and Wall separation
-
-* Allow closures for lexing.
+* Test proper and perl5 separation
 
 * Speed-up for pre-computing lexables.  Grammar::LEXABLES, etc.
 
@@ -18,8 +16,6 @@
      $RULE_REF
 
 * Add locations for earlemes.  Also for rules?  Use in Carp messages.
-
-* Volatile option for evaluation?
 
 * Allow alternation.
 

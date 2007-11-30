@@ -107,7 +107,6 @@ E ::= T .
 St2: 12,14
 T ::= . n
 T ::= . ( E )
-lexables: ( n
  <(> => St4 (15)
  <n> => St3 (13)
 St3: 13
@@ -118,13 +117,11 @@ T ::= ( . E )
  <E> => St5 (16)
 St5: 16
 T ::= ( E . )
-lexables: )
  <)> => St6 (17)
 St6: 17
 T ::= ( E ) .
 St7: 2
 S' ::= S . $
-lexables: $
  <$> => St8 (3)
 St8: 3
 S' ::= S $ .
@@ -134,7 +131,6 @@ E ::= . E - T
 E ::= . T
 T ::= . n
 T ::= . ( E )
-lexables: ( n
  <(> => St4 (15)
  <E> => St10 (5,7)
  <T> => St1 (11)
@@ -142,21 +138,18 @@ lexables: ( n
 St10: 5,7
 S ::= E .
 E ::= E . - T
-lexables: -
  <-> => St13 (8)
 St11: 6,10,12,14
 E ::= . E - T
 E ::= . T
 T ::= . n
 T ::= . ( E )
-lexables: ( n
  <(> => St4 (15)
  <E> => St12 (7)
  <T> => St1 (11)
  <n> => St3 (13)
 St12: 7
 E ::= E . - T
-lexables: -
  <-> => St13 (8)
 St13: 8
 E ::= E - . T

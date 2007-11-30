@@ -96,7 +96,6 @@ E ::= . E MinusMinus
 E ::= . MinusMinus E
 E ::= . Minus E
 E ::= . Number
-lexables: Minus MinusMinus Number
  <E> => St7 (2,6)
  <Minus> => St2 (12)
  <MinusMinus> => St11 (9)
@@ -120,7 +119,6 @@ E['] ::= E .
 St7: 2,6
 E ::= E . Minus E
 E ::= E . MinusMinus
-lexables: Minus MinusMinus
  <Minus> => St8 (3)
  <MinusMinus> => St10 (7)
 St8: 3

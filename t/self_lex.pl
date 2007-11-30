@@ -97,7 +97,9 @@ my $rules = [
 	rhs => [ "lhs", "colon", "rhs" ],
 	# tell perl NNN counter is in special package
 	action => q{
-	    'push(@$rules, '
+	    our $uniq_number;
+	    '# ' . $uniq_number++ . "\n"
+	    . 'push(@$rules, '
 	    . "{\n"
 	    . join(",\n", @{$Parse::Marpa::This::v}[0,2])
 	    . "\n});" 

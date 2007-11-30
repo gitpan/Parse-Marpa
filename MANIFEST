@@ -4,9 +4,10 @@ META.yml # Will be created by "make dist"
 Makefile.PL
 README
 TODO
+lib/Parse/Marpa.pm
 lib/Parse/Marpa/ALGORITHM.pod
 lib/Parse/Marpa/WHY_CALL_IT_MARPA.pod
-lib/Parse/Marpa.pm
+lib/Parse/Marpa/Lex.pm
 t/00-load.t
 t/ah.t
 t/ah2.t

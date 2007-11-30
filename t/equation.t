@@ -85,12 +85,10 @@ is( $g->show_ii_SDFA(), <<'END_SDFA', "Ambiguous Equation SDFA" );
 St0: 1,5
 E ::= . E Op E
 E ::= . Number
-lexables: Number
  <E> => St1 (2)
  <Number> => St4 (6)
 St1: 2
 E ::= E . Op E
-lexables: Op
  <Op> => St2 (3)
 St2: 3
 E ::= E Op . E
