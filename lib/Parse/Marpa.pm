@@ -30,7 +30,7 @@ use Data::Dumper;
 
 use Parse::Marpa::Lex;
 
-our $VERSION = '0.001_049';
+our $VERSION = '0.001_050';
 $VERSION = eval $VERSION;
 
 =begin Apology:
@@ -403,6 +403,12 @@ sub brief_rule {
             . join( " ", map { $_->[Parse::Marpa::Symbol::NAME] } @$rhs );
     }
     $text;
+}
+
+sub brief_original_rule {
+    my $rule = shift;
+    my $original_rule = $rule->[ Parse::Marpa::Rule::ORIGINAL_RULE ] // $rule;
+    brief_rule($original_rule);
 }
 
 sub show_rule {
@@ -2677,7 +2683,7 @@ sub set_actions {
             croak("Problem compiling action:\n"
                 , $code
                 , "\nFailed to compile closure for ",
-                , Parse::Marpa::brief_rule($rule),
+                , Parse::Marpa::brief_original_rule($rule),
                 , "\n"
                 , $@
             );
@@ -3146,8 +3152,14 @@ sub lex_string {
         # lexical position will correspond.  Be careful that Marpa
         # imposes no such requirement, however.
 
-
         my $lexables = complete_set($parse);
+
+        if ($Parse::Marpa::This::trace_lex_tries and scalar @$lexables) {
+            my $string_to_match = substr($$input_ref, $pos, 20);
+            $string_to_match
+                =~ s/([\x00-\x1F\x7F-\xFF])/sprintf("{%#.2x}", ord($1))/ge;
+            say $Parse::Marpa::This::trace_fh "Match target at $pos: ", $string_to_match;
+        }
 
         LEXABLE: for my $lexable (@$lexables) {
             my ($symbol_id) = @{$lexable}[
@@ -3280,7 +3292,7 @@ sub scan_set {
             my ( $token, $value, $length ) = @$alternative;
 
             if ( $length <= 0 ) {
-                croack(   "Token "
+                croak(   "Token "
                         . $token->[Parse::Marpa::Symbol::NAME]
                         . " with bad length "
                         . $length );
@@ -3990,13 +4002,20 @@ sub initialize_children {
     my @warnings;
     return $closure unless defined $closure;
 
-    my $result = eval { $closure->() };
-    if ($@) {
-        croak("Problem computing value for rule ",
-            Parse::Marpa::brief_rule($rule),
-            "\n",
-            $@,
-        );
+    my $result;
+    {
+        local $SIG{__WARN__} = sub {
+            croak($_[0], "Marpa got a warning from user supplied code and will not continue", );
+        };
+        $result = eval { $closure->() };
+        if ($@) {
+            my $problem = $@;
+            croak("Problem computing value for rule ",
+                Parse::Marpa::brief_original_rule($rule),
+                "\n",
+                $@,
+            );
+        }
     }
 
     $result;

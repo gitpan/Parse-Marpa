@@ -29,18 +29,18 @@ use integer;
 # package for various lexing utilities
 package Parse::Marpa::Lex;
 
-# \0134 is backslash
+# \x{5c} is backslash
 sub gen_bracket_regex {
     my ($left, $right) = @_;
     qr/
         \G
-        [^\Q$left$right\E\0134]*
+        [^\Q$left$right\E\x{5c}]*
         (
               \Q$left\E
             | \Q$right\E
-            | \0134\Q$left\E
-            | \0134\Q$right\E
-            | \0134
+            | \x{5c}\Q$left\E
+            | \x{5c}\Q$right\E
+            | \x{5c}
         )
     /xms;
 }
@@ -54,8 +54,8 @@ my %regex_data = (
 
 # This is POSIX "punct" character class, except for backslash,
 # and the right side bracketing symbols.
-# \047 is single quote, \0133 is the left square bracket.
-my $punct = qr'[!"#$%&\047(*+,-./:;<=?\0133^_`{|~@]';
+# hex 27 is single quote, hex 5b is the left square bracket.
+my $punct = qr'[!"#$%&\x{27}(*+,-./:;<=?\x{5b}^_`{|~@]';
 
 sub lex_q_quote {
     my $string = shift;
@@ -66,14 +66,15 @@ sub lex_q_quote {
 
     my $regex_data = $regex_data{$1};
     if (not defined $regex_data) {
-        # \0134 is backslash
+        # \x{5c} is backslash
 	my $regex
             = qr/
                 \G
-                [^\Q$left\E\0134]*
+                [^\Q$left\E\x{5c}]*
                 (
                      \Q$left\E
-                    |\0134\Q$left\E
+                    |\x{5c}\Q$left\E
+                    |\x{5c}
                 )
             /xms;
 	$regex_data{$left} = $regex_data = [undef, $regex];
@@ -117,14 +118,15 @@ sub lex_regex {
 
     my $regex_data = $regex_data{$1};
     if (not defined $regex_data) {
-        # \0134 is backslash
+        # \x{5c} is backslash
 	my $regex
             = qr/
                 \G
-                [^\Q$left\E\0134]*
+                [^\Q$left\E\x{5c}]*
                 (
                      \Q$left\E
-                    |\0134\Q$left\E
+                    |\x{5c}\Q$left\E
+                    |\x{5c}
                 )
             /xms;
 	$regex_data{$left} = $regex_data = [undef, $regex];

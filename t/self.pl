@@ -16,14 +16,9 @@ my $concatenate_lines = q{
 };
 
 		    # old default_lex_prefix => qr/\s*/,
-our $default_lex_prefix = qr/[ \t]*(\#[^\n]*\n|\n)?([ \t]*\#[^\n]*\n)*[ \t]*/;
-
-# The inefficiency (at least some of it) is deliberate.
-# Passing up a duples of [ string, value ] and then
-# assembling a final string at the top would be better
-# than assembling the string then taking it
-# apart at each step.  But I wanted to test having
-# a start symbol that appears repeatedly on the RHS.
+# our $default_lex_prefix = qr/[ \t]*(\#[^\n]*\n|\n)?([ \t]*\#[^\n]*\n)*[ \t]*/;
+our $whitespace = qr/(?:[ \t]*(?:\n|(?:\#[^\n]*\n)))*[ \t]*/;
+our $default_lex_prefix = $whitespace;
 
 sub canonical_symbol_name {
     my $symbol = lc shift;
@@ -31,49 +26,62 @@ sub canonical_symbol_name {
     $symbol;
 }
 
+our $preamble =<<'EOCODE';
+use 5.9.5;
+use strict;
+use warnings;
+use Parse::Marpa;
+
+sub canonical_symbol_name {
+    my $symbol = lc shift;
+    $symbol =~ s/[-_\s]+/-/g;
+    $symbol;
+}
+
+my $terminals = [];
+my $rules = [];
+EOCODE
+
+our $compile_code = <<'EOCODE';
+my $g = new Parse::Marpa(
+    start => canonical_symbol_name("grammar"),
+    rules => $rules,
+    terminals => $terminals,
+    default_lex_prefix => $default_lex_prefix,
+);
+
+my $parse = new Parse::Marpa::Parse(
+   grammar=> $g,
+);
+EOCODE
+
 my $rules = [
+    [ "grammar", [ "paragraph sequence" ], $concatenate_lines ],
+    [ "grammar", [ "paragraph sequence", "whitespace lines" ], $concatenate_lines ],
     {
-        lhs => "grammar",
+        lhs => "paragraph sequence",
         rhs => [ "paragraph" ],
         action => q{
-	    q{
-		use 5.9.5;
-		use strict;
-		use warnings;
-		use Parse::Marpa;
-
-		sub canonical_symbol_name {
-		    my $symbol = lc shift;
-		    $symbol =~ s/[-_\s]+/-/g;
-		    $symbol;
-		}
-
-		my $terminals = [];
-		my $rules = [];
-	    }
-	    . join("\n", grep { $_ } @$Parse::Marpa::This::v)
-	    . "\n"
-	    .q{
-		my $g = new Parse::Marpa(
-		    start => canonical_symbol_name("grammar"),
-		    rules => $rules,
-		    terminals => $terminals,
-		    default_lex_prefix => $default_lex_prefix,
-		);
-
-		my $parse = new Parse::Marpa::Parse(
-		   grammar=> $g,
-		);
-	    }
-	   },
-	   min => 1,
-	   separator => "paragraph break",
-	   action => $concatenate_lines,
+            "\n$::preamble\n"
+            . join("\n", grep { $_ } @$Parse::Marpa::This::v)
+            . "\n"
+            . "\n$::compile_code\n"
+        },
+        min => 1,
+        separator => "empty line",
     },
     # change definition to another word?
+    [ "paragraph", [ "empty paragraph" ] ],
     [ "paragraph", [ "definition paragraph" ] ],
     [ "paragraph", [ "production paragraph" ], $concatenate_lines ],
     [ "paragraph", [ "terminal paragraph" ], $concatenate_lines ],
+    [ "empty paragraph", [ "whitespace" ] ],
+    {
+	lhs => "comment paragraph",
+	rhs => [ "comment" ],
+	min => 1,
+	action => $concatenate_lines,
+    },
     {
 	lhs => "definition paragraph",
 	rhs => [ "definition" ],
@@ -88,7 +96,14 @@ my $rules = [
          "optional action sentence",
 	 "non structural production sentences",
 	],
-	$concatenate_lines,
+        q{
+            my $action = $Parse::Marpa::This::v->[3];
+	    'push(@$rules, '
+	    . "{\n"
+	    . $Parse::Marpa::This::v->[1] . ",\n"
+	    . (defined $action ? ($action . ",\n") : "")
+	    . "\n});" 
+	}
     ],
     { 
        lhs => "non structural production sentences",
@@ -111,24 +126,31 @@ my $rules = [
 	    "action specifier",
 	    "period",
 	],
-	$concatenate_lines,
+	q{
+           "action => "
+           . ($Parse::Marpa::This::v->[3] // "undefined action specifier?")
+        }
     ],
     [ "action sentence",
 	[
 	    "action specifier",
 	    "period",
 	],
-	$concatenate_lines,
+	q{
+           "action => "
+           . ($Parse::Marpa::This::v->[3] // "undefined action specifier?")
+        }
     ],
-    [ "action specifier", [ "string" ], $concatenate_lines ],
-    [ "action specifier", [ "symbol phrase" ], $concatenate_lines ],
+    [ "action specifier", [ "string specifier" ], $concatenate_lines ],
+    [ "string specifier", [ "symbol phrase" ], $concatenate_lines ],
+    [ "string specifier", [ "literal string" ], $concatenate_lines ],
     [ "non-structural production sentence", [ "comment sentence", ], $concatenate_lines, ],
     [ "non-structural terminal sentence", [ "comment sentence", ], $concatenate_lines, ],
     [ "definition", [ "setting", "period" ], $concatenate_lines, ],
-    [ "definition", [ "preamble keyword", "string", "period" ], $concatenate_lines, ],
     [ "definition", [ "comment sentence", ], $concatenate_lines, ],
     [ "definition", [ "bracketed comment", ], $concatenate_lines, ],
     [ "definition", [ "string definition", ], $concatenate_lines, ],
+    [ "definition", [ "preamble definition", ], $concatenate_lines, ],
     [ "definition", [ "default action definition", ], $concatenate_lines, ],
     [ "setting", [ "semantics setting" ], $concatenate_lines, ],
     [ "setting", [ "start symbol setting" ], $concatenate_lines, ],
@@ -196,9 +218,13 @@ my $rules = [
     [ "copula", [ "is keyword" ], $concatenate_lines ],
     [ "copula", [ "are keyword" ], $concatenate_lines ],
     [ "string definition",
-	[ "define keyword", "optional the keyword", "action keyword", "symbol phrase", "as keyword", "string",
+	[ "symbol phrase", "is keyword", "literal string",
 	  "period"
         ],
+	$concatenate_lines
+    ],
+    [ "preamble definition",
+        [ "a keyword", "preamble keyword", "is keyword", "string specifier", "period" ],
 	$concatenate_lines
     ],
     [ "default action definition",
@@ -224,9 +250,9 @@ my $rules = [
     },
     [ "text segment", [ "pod block" ], $discard, ],
     [ "text segment", [ "comment" ], $discard, ],
-    [ "string", [ "q string" ], $concatenate_lines, ],
-    [ "string", [ "double quoted string" ], $concatenate_lines, ],
-    [ "string", [ "single quoted string" ], $concatenate_lines, ],
+    [ "literal string", [ "q string" ], $concatenate_lines, ],
+    [ "literal string", [ "double quoted string" ], $concatenate_lines, ],
+    [ "literal string", [ "single quoted string" ], $concatenate_lines, ],
     [ "pod block",
         [
 	    "pod head",
@@ -246,10 +272,7 @@ my $rules = [
 	rhs => [ "lhs", "colon", "rhs", "period" ],
 	# tell perl NNN counter is in special package
 	action => q{
-	    'push(@$rules, '
-	    . "{\n"
-	    . join(",\n", @{$Parse::Marpa::This::v}[0,2])
-	    . "\n});" 
+	    join(",\n", @{$Parse::Marpa::This::v}[0,2])
 	},
     },
     {
@@ -283,7 +306,7 @@ my $rules = [
     },
     {
         lhs => "rhs element",
-	rhs => [ "string", ],
+	rhs => [ "literal string", ],
 	action => $concatenate_lines,
     },
     {
@@ -321,10 +344,22 @@ my $rules = [
 	    . "\n}"
 	}
     },
+    {
+        lhs => "terminal sentence",
+	rhs => [ "match keyword", "symbol phrase", "using keyword", "string specifier", "period" ],
+	action => $concatenate_lines,
+    },
+    { 
+        lhs => "whitespace lines",
+        rhs => [ "whitespace line" ],
+        min => 1,
+        action => $discard,
+    }
 ];
 
 
 my $terminals = [
+    [ "a keyword"       => [ qr/a/ ] ],
     [ "action keyword"       => [ qr/action/ ] ],
     [ "as keyword"           => [ qr/as/ ] ],
     [ "are keyword"          => [ qr/are/ ] ],
@@ -332,6 +367,7 @@ my $terminals = [
     [ "define keyword"       => [ qr/define/ ] ],
     [ "is keyword"           => [ qr/is/ ] ],
     [ "lex keyword"          => [ qr/lex/ ] ],
+    [ "match keyword"      => [ qr/match/ ] ],
     [ "matches keyword"      => [ qr/matches/ ] ],
     [ "perl5 keyword"        => [ qr/perl5/ ] ],
     [ "preamble keyword"     => [ qr/preamble/ ] ],
@@ -340,9 +376,10 @@ my $terminals = [
     [ "start keyword"        => [ qr/start/ ] ],
     [ "symbol keyword"       => [ qr/symbol/ ] ],
     [ "the keyword"          => [ qr/the/ ] ],
+    [ "using keyword"          => [ qr/using/ ] ],
     [ "q string" => "Parse::Marpa::Lex::lex_q_quote" ],
     [ "regex" => "Parse::Marpa::Lex::lex_regex" ],
-    [ "paragraph break"       => [ qr/^[ \t]*\n\s*/m ] ],
+    [ "empty line"       => [ qr/^[ \t]*\n/m ] ],
     [ "bracketed comment"     => [ qr/\x{5b}[^\x{5d}]*\x{5d}/ ] ],
     # change to lex_q_quote
     [ "single quoted string" => q{
@@ -389,7 +426,7 @@ my $terminals = [
     [ "comment word" => [ qr/[\x{21}-\x{2d}\x{2f}-\x{7e}]+/ ], ],
 
     [ "comma"                => [ qr/\,/ ], ], 
-    [ "whitespace"           => [qr/\s+/ ] ], # when in doubt, throw away whitespcae
+    [ "whitespace line"      => [ qr/^[ \t]*(?:\#[^\n]*)?\n/m ], ],
 ];
 
 for my $terminal_rule (@$terminals) {
@@ -431,7 +468,8 @@ my $g = new Parse::Marpa(
     # default_action => $default_action,
     # ambiguous_lex => 0,
     # default_lex_prefix => qr/[ \t]*(\#.*)\n[ \t]*/,
-    default_lex_prefix => qr/[ \t]*(\#[^\n]*\n|\n)?([ \t]*\#[^\n]*\n)*[ \t]*/,
+    # default_lex_prefix => qr/[ \t]*(\#[^\n]*\n|\n)?([ \t]*\#[^\n]*\n)*[ \t]*/,
+    default_lex_prefix => $default_lex_prefix,
     # trace_rules => 1,
 );
 
@@ -480,11 +518,14 @@ my $spec;
 
 {
     local($RS) = undef;
-    $spec = <DATA>;
+    open(GRAMMAR, "<", "marpa_grammar.txt") or die("Cannot open grammar: $!");
+    $spec = <GRAMMAR>;
     if ((my $earleme = $parse->lex_string(\$spec)) >= 0) {
 	# print $parse->show_status();
+        # for the editors, line numbering starts at 1
+        # do something about this?
 	my ($line, $line_start) = locator($earleme, \$spec);
-	print "Parse exhausted at line $line, earleme $earleme\n";
+	say "Parse exhausted at line ", $line+1, ", earleme $earleme";
 	given (index($spec, "\n", $line_start)) {
 	    when (undef) { say substr($spec, $line_start) }
 	    default { say substr($spec, $line_start, $_-$line_start) }
@@ -523,149 +564,3 @@ print $value, "\n";
 #   fill-column: 100
 # End:
 # vim: expandtab shiftwidth=4:
-
-__DATA__
-
-semantics are perl5.
-
-comment: Comments can be broken with a period
-or a double newline.
-
-comment: I need to implement preamble code.
-preamble q{
-    use 5.9.5;
-    use strict;
-    use warnings;
-    use Parse::Marpa;
-
-    my $terminals = [];
-    my $rules = [];
-
-    sub canonical_symbol_name {
-	my $symbol = lc shift;
-	$symbol =~ s/[-_\s]+/-/g;
-	$symbol;
-    }
-}.
-
-define the action concatenate lines as q{
-    my $v_count = scalar @$Parse::Marpa::This::v;
-    return undef if $v_count <= 0;
-    join("\n", grep { $_ } @$Parse::Marpa::This::v);
-}.
-concatenate lines is the default action. # perl5 style comment
-grammar is the start symbol.
-
-grammar: double-newline separated paragraph sequence.
-# Traditional comments still work
-the action is
-         q{
-	    join("\n", grep { $_ } @$Parse::Marpa::This::v)
-	    . "\n"
-	    .q{
-		my $g = new Parse::Marpa(
-		    start => canonical_symbol_name("grammar"),
-		    rules => $rules,
-		    terminals => $terminals,
-		    default_lex_prefix => qr/\s*/,
-		);
-
-		my $parse = new Parse::Marpa::Parse(
-		   grammar=> $g,
-		);
-	    }
-	   }.
-
-paragraph: pod block. discard.
-
-paragraph: comment.  discard.
-
-commented paragraph: comment, uncommented paragraph.  concatenate lines.
-
-comment sentences: "comment", colon, comment sentence sequence. discard.
-
-string: q or qq string.
-
-[ q string lexer is a built-in.  match q or qq string using q string lexer. ]
-
-string: double quoted string.  concatenate lines.
-
-string: single quoted string.  concatenate lines.
-
-pod block: pod head, pod body, pod cut.  discard.
-
-pod body: optional pod line sequence.  discard.
-
-uncommmented paragraph: production, action specifier.
-
-uncommmented paragraph: terminal declaration.
-
-terminal declaration: "match" symbol-phrase "using" lexing-closure.
-
-terminal declaration: symbol-phrase "matches" string.
-	 q{
-	    '{ my $regex_string = '
-	    . $Parse::Marpa::This::v->[2]
-	    . ";\n"
-	    . 'push(@$terminals, '
-	    . '[ '
-	    . $Parse::Marpa::This::v->[0]
-	    . ' => [ qr/$regex_string/ ] ]);'
-	    . "\n}"
-	}.
-
-lexing closure: string.
-
-production: lhs ":" rhs.  q{
-	    'push(@$rules, '
-	    . "{\n"
-	    . join(",\n", @{$Parse::Marpa::This::v}[0,2])
-	    . "\n});" 
-	}.
-    
-symbol phrase: symbol word sequence.
-    q{ q{"} . ::canonical_symbol_name(join("-", @$Parse::Marpa::This::v)) . q{"} }.
-    
-lhs: symbol phrase.  q{ "    lhs => " . join("-", @$Parse::Marpa::This::v) }.
-    
-rhs: rhs element sequence.
-    q{ "    rhs => [" . join(", ", @$Parse::Marpa::This::v) . "]" }.
-    
-rhs: comma separated rhs element sequence.
-    q{ "    rhs => [" . join(", ", @$Parse::Marpa::This::v) . "]" }.
-	
-rhs element: symbol phrase.
-    
-rhs element: string.
-    
-null statement: optional whitespace.  discard.
-
-period matches qr"[.]".
-
-to do: Make regexes different from strings. 
-note: Allow qr and / form of regexes.
-to do: Have modifiers at end of regexes, a la perl5.
-double quoted string matches /\".*?\"/s.
-
-single quoted string matches /\'.*?\'/s.
-
-whitespace matches qr"\s+".
-
-comma matches qr','.
-
-colon matches qr':'.
-
-period matches qr'\.'.
-
-pod head matches qr/^=[a-zA-Z_].*$/m.
-
-pod cut matches qr/^=cut.*$/m.
-
-pod line matches qr/.*\n/m.
-
-comment matches qr/#.*\n/.
-
-symbol word matches qr/[a-zA-Z_][a-zA-Z0-9_-]+/.
-
-the default lex prefix is qr/\s*/.
-

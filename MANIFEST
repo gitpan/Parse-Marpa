@@ -21,3 +21,4 @@ t/pascal.t
 t/wall.t
 t/self.pl
 t/self_lex.pl
+t/marpa_grammar.txt
