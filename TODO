@@ -1,3 +1,8 @@
+* Include version, semantics in grammar, for checking when compiled
+  form is read.
+
+* Add tracing of rule choices
+
 * Add right and left evaluation in rules
 
 * Test proper and perl5 separation

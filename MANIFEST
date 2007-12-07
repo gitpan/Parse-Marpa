@@ -19,6 +19,6 @@ t/minus.t
 t/lex_minus.t
 t/pascal.t
 t/wall.t
-t/self.pl
-t/self_lex.pl
-t/marpa_grammar.txt
+example/self.pl
+example/self_lex.pl
+example/marpa_grammar.txt

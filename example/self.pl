@@ -6,6 +6,17 @@ use feature ":5.10";
 use English;
 use lib "../lib";
 use Parse::Marpa;
+use Carp;
+
+sub usage {
+   die("usage: $0 grammar-file\n");
+}
+
+usage() unless scalar @ARGV == 1;
+
+my $grammar_file_name = shift @ARGV;
+
+open(GRAMMAR, "<", $grammar_file_name) or die("Cannot open $grammar_file_name: $!");
 
 my $discard = undef;
 
@@ -15,8 +26,6 @@ my $concatenate_lines = q{
     join("\n", grep { $_ } @$Parse::Marpa::This::v);
 };
 
-		    # old default_lex_prefix => qr/\s*/,
-# our $default_lex_prefix = qr/[ \t]*(\#[^\n]*\n|\n)?([ \t]*\#[^\n]*\n)*[ \t]*/;
 our $whitespace = qr/(?:[ \t]*(?:\n|(?:\#[^\n]*\n)))*[ \t]*/;
 our $default_lex_prefix = $whitespace;
 
@@ -26,11 +35,22 @@ sub canonical_symbol_name {
     $symbol;
 }
 
+sub canonical_version {
+    my $version = shift;
+    my @version = split(/\./, $version);
+    my $result = sprintf("%d.", (shift @version));
+    for my $subversion (@version) {
+       $result .= sprintf("%03d", $subversion);
+    }
+    $result;
+}
+
 our $preamble =<<'EOCODE';
 use 5.9.5;
 use strict;
 use warnings;
 use Parse::Marpa;
+use Carp;
 
 sub canonical_symbol_name {
     my $symbol = lc shift;
@@ -40,11 +60,24 @@ sub canonical_symbol_name {
 
 my $terminals = [];
 my $rules = [];
+my $preamble = "";
+my %strings = ();
 EOCODE
 
 our $compile_code = <<'EOCODE';
+
+$start_symbol //= "(undefined start symbol)";
+$semantics //= "not defined";
+$version //= -1;
+
+croak("Version requested is ", $version, "\nVersion must match ", $Parse::Marpa::VERSION, " exactly.")
+   unless $version == $Parse::Marpa::VERSION;
+
+croak("Semantics are ", $semantics, "\nThe only semantics currently available are perl5.")
+   unless $semantics eq "perl5";
+
 my $g = new Parse::Marpa(
-    start => canonical_symbol_name("grammar"),
+    start => $start_symbol,
     rules => $rules,
     terminals => $terminals,
     default_lex_prefix => $default_lex_prefix,
@@ -72,7 +105,7 @@ my $rules = [
     },
     # change definition to another word?
     [ "paragraph", [ "empty paragraph" ] ],
-    [ "paragraph", [ "definition paragraph" ] ],
+    [ "paragraph", [ "definition paragraph" ], $concatenate_lines ],
     [ "paragraph", [ "production paragraph" ], $concatenate_lines ],
     [ "paragraph", [ "terminal paragraph" ], $concatenate_lines ],
     [ "empty paragraph", [ "whitespace" ] ],
@@ -127,8 +160,8 @@ my $rules = [
 	    "period",
 	],
 	q{
-           "action => "
-           . ($Parse::Marpa::This::v->[3] // "undefined action specifier?")
+           "    action => "
+           . $Parse::Marpa::This::v->[3]
         }
     ],
     [ "action sentence",
@@ -137,22 +170,25 @@ my $rules = [
 	    "period",
 	],
 	q{
-           "action => "
-           . ($Parse::Marpa::This::v->[3] // "undefined action specifier?")
+           "    action => "
+           . $Parse::Marpa::This::v->[0]
         }
     ],
     [ "action specifier", [ "string specifier" ], $concatenate_lines ],
-    [ "string specifier", [ "symbol phrase" ], $concatenate_lines ],
-    [ "string specifier", [ "literal string" ], $concatenate_lines ],
     [ "non-structural production sentence", [ "comment sentence", ], $concatenate_lines, ],
     [ "non-structural terminal sentence", [ "comment sentence", ], $concatenate_lines, ],
-    [ "definition", [ "setting", "period" ], $concatenate_lines, ],
+    [ "definition", [ "preamble definition", ], $concatenate_lines, 1000 ],
+    [
+        "definition",
+        [ "setting", "period" ],
+        q{ $Parse::Marpa::This::v->[0] }
+    ],
     [ "definition", [ "comment sentence", ], $concatenate_lines, ],
     [ "definition", [ "bracketed comment", ], $concatenate_lines, ],
-    [ "definition", [ "string definition", ], $concatenate_lines, ],
-    [ "definition", [ "preamble definition", ], $concatenate_lines, ],
     [ "definition", [ "default action definition", ], $concatenate_lines, ],
+    [ "definition", [ "string definition", ], $concatenate_lines, ],
     [ "setting", [ "semantics setting" ], $concatenate_lines, ],
+    [ "setting", [ "version setting" ], $concatenate_lines, ],
     [ "setting", [ "start symbol setting" ], $concatenate_lines, ],
     [ "setting", [ "default lex prefix setting" ], $concatenate_lines, ],
     [ "semantics setting",
@@ -162,7 +198,11 @@ my $rules = [
 	  "copula",
   	  "perl5 keyword", 
 	],
-	$concatenate_lines,
+        q{
+            q{my $semantics = '}
+            . $Parse::Marpa::This::v->[3]
+            . qq{';\n}
+        }
     ],
     [ "semantics setting",
 	[
@@ -171,7 +211,37 @@ my $rules = [
  	  "optional the keyword",
   	  "semantics keyword", 
 	],
-	$concatenate_lines,
+        q{
+            q{my $semantics = '}
+            . $Parse::Marpa::This::v->[0]
+            . qq{';\n}
+        }
+    ],
+    [ "version setting",
+	[
+ 	  "optional the keyword",
+  	  "version keyword", 
+	  "copula",
+  	  "version number", 
+	],
+        q{
+            q{my $version = '}
+            . ::canonical_version($Parse::Marpa::This::v->[3])
+            . qq{';\n}
+        }
+    ],
+    [ "version setting",
+	[
+  	  "version number", 
+	  "copula",
+ 	  "optional the keyword",
+  	  "version keyword", 
+	],
+        q{
+            q{my $version = '}
+            . ::canonical_version($Parse::Marpa::This::v->[0])
+            . qq{';\n}
+        }
     ],
     [ "start symbol setting",
 	[
@@ -181,7 +251,11 @@ my $rules = [
 	  "copula",
   	  "symbol phrase", 
 	],
-	$concatenate_lines,
+        q{
+            q{my $start_symbol = }
+            . $Parse::Marpa::This::v->[4]
+            . qq{;\n}
+        }
     ],
     [ "start symbol setting",
 	[
@@ -191,7 +265,11 @@ my $rules = [
   	  "start keyword", 
   	  "symbol keyword", 
 	],
-	$concatenate_lines,
+        q{
+            q{my $start_symbol = }
+            . $Parse::Marpa::This::v->[0]
+            . qq{;\n}
+        }
     ],
     [ "default lex prefix setting",
 	[
@@ -202,7 +280,11 @@ my $rules = [
   	  "lex keyword", 
   	  "prefix keyword", 
 	],
-	$concatenate_lines,
+        q{
+            q{my $default_lex_prefix = }
+            . $Parse::Marpa::This::v->[0]
+            . qq{;\n}
+        }
     ],
     [ "default lex prefix setting",
 	[
@@ -213,31 +295,54 @@ my $rules = [
 	  "copula",
   	  "regex", 
 	],
-	$concatenate_lines,
+        q{
+            q{my $default_lex_prefix = }
+            . $Parse::Marpa::This::v->[5]
+            . qq{;\n}
+        }
     ],
-    [ "copula", [ "is keyword" ], $concatenate_lines ],
-    [ "copula", [ "are keyword" ], $concatenate_lines ],
+    [ "copula", [ "is keyword" ] ],
+    [ "copula", [ "are keyword" ] ],
     [ "string definition",
-	[ "symbol phrase", "is keyword", "literal string",
+	[ "symbol phrase", "is keyword", "string specifier",
+	# [ "symbol phrase", "is keyword", "literal string",
 	  "period"
         ],
-	$concatenate_lines
+        q{
+            '$strings{'
+            . $Parse::Marpa::This::v->[0]
+            . '} = '
+            . $Parse::Marpa::This::v->[2]
+            . qq{;\n}
+        }
     ],
-    [ "preamble definition",
+    [
+        "preamble definition",
         [ "a keyword", "preamble keyword", "is keyword", "string specifier", "period" ],
-	$concatenate_lines
+        q{
+            q{$preamble .= }
+            . $Parse::Marpa::This::v->[3]
+            . qq{;\n}
+        }
     ],
     [ "default action definition",
-	[ "symbol phrase", "is keyword", "optional the keyword", "default keyword",
-	  "action keyword",
-	  "period",
-	  ],
-	$concatenate_lines
+	[
+            "symbol phrase",
+            "is keyword",
+            "optional the keyword",
+            "default keyword",
+            "action keyword",
+	    "period",
+	],
+        q{
+            q{my $default_action = }
+            . $Parse::Marpa::This::v->[0]
+            . qq{;\n}
+        }
     ],
     {
        lhs => "optional the keyword",
        rhs => [ "the keyword" ],
-       action => $discard,
        min => 0,
        max => 1,
     },
@@ -245,12 +350,16 @@ my $rules = [
     {
        lhs => "comment word sequence",
        rhs => [ "comment word" ],
-       action => $discard,
+       # action => $discard,
        min => 0,
     },
     [ "text segment", [ "pod block" ], $discard, ],
     [ "text segment", [ "comment" ], $discard, ],
-    [ "literal string", [ "q string" ], $concatenate_lines, ],
+    [
+        "literal string",
+        [ "q string" ],
+        q{ $Parse::Marpa::This::v->[0] }
+    ],
     [ "literal string", [ "double quoted string" ], $concatenate_lines, ],
     [ "literal string", [ "single quoted string" ], $concatenate_lines, ],
     [ "pod block",
@@ -264,7 +373,7 @@ my $rules = [
     {
        lhs => "pod body",
        rhs => [ "pod line" ],
-       action => $discard,
+       # action => $discard,
        min => 0,
     },
     {
@@ -312,7 +421,7 @@ my $rules = [
     {
         lhs => "optional period",
 	rhs => [ "period" ],
-	action => $discard,
+	# action => $discard,
 	min => 0,
 	max => 1,
     },
@@ -334,32 +443,37 @@ my $rules = [
         lhs => "terminal sentence",
 	rhs => [ "symbol phrase", "matches keyword", "regex", "period" ],
 	action => q{
-	    '{ my $regex_string = '
-	    . $Parse::Marpa::This::v->[2]
-	    . ";\n"
-	    . 'push(@$terminals, '
-	    . '[ '
+	    'push(@$terminals, [ '
 	    . $Parse::Marpa::This::v->[0]
-	    . ' => [ qr/$regex_string/ ] ]);'
-	    . "\n}"
+	    . ' => [ '
+	    . $Parse::Marpa::This::v->[2]
+            . "] ] );\n"
 	}
     },
     {
         lhs => "terminal sentence",
 	rhs => [ "match keyword", "symbol phrase", "using keyword", "string specifier", "period" ],
-	action => $concatenate_lines,
+	action => q{
+	    'push(@$terminals, [ '
+	    . $Parse::Marpa::This::v->[1]
+	    . ' => '
+	    . $Parse::Marpa::This::v->[3]
+            . " ] );\n"
+	}
     },
+    [ "string specifier", [ "literal string" ], $concatenate_lines ],
+    [ "string specifier", [ "symbol phrase" ], $concatenate_lines ],
     { 
         lhs => "whitespace lines",
         rhs => [ "whitespace line" ],
         min => 1,
-        action => $discard,
+        # action => $discard,
     }
 ];
 
 
 my $terminals = [
-    [ "a keyword"       => [ qr/a/ ] ],
+    [ "a keyword"            => [ qr/a/ ] ],
     [ "action keyword"       => [ qr/action/ ] ],
     [ "as keyword"           => [ qr/as/ ] ],
     [ "are keyword"          => [ qr/are/ ] ],
@@ -367,7 +481,7 @@ my $terminals = [
     [ "define keyword"       => [ qr/define/ ] ],
     [ "is keyword"           => [ qr/is/ ] ],
     [ "lex keyword"          => [ qr/lex/ ] ],
-    [ "match keyword"      => [ qr/match/ ] ],
+    [ "match keyword"        => [ qr/match/ ] ],
     [ "matches keyword"      => [ qr/matches/ ] ],
     [ "perl5 keyword"        => [ qr/perl5/ ] ],
     [ "preamble keyword"     => [ qr/preamble/ ] ],
@@ -376,7 +490,8 @@ my $terminals = [
     [ "start keyword"        => [ qr/start/ ] ],
     [ "symbol keyword"       => [ qr/symbol/ ] ],
     [ "the keyword"          => [ qr/the/ ] ],
-    [ "using keyword"          => [ qr/using/ ] ],
+    [ "using keyword"        => [ qr/using/ ] ],
+    [ "version keyword"      => [ qr/version/ ] ],
     [ "q string" => "Parse::Marpa::Lex::lex_q_quote" ],
     [ "regex" => "Parse::Marpa::Lex::lex_regex" ],
     [ "empty line"       => [ qr/^[ \t]*\n/m ] ],
@@ -414,6 +529,7 @@ my $terminals = [
     [ "pod head"             => [qr/^=[a-zA-Z_].*$/m ] ],
     [ "pod cut"              => [qr/^=cut.*$/m ] ],
     [ "pod line"             => [qr/.*\n/m ] ],
+    [ "version number"       => [ qr/(\d+\.)*\d+/ ], ],
     [ "comment"              => [qr/#.*\n/], ],
     [ "symbol word"          => [ qr/[a-zA-Z_][a-zA-Z0-9_-]*/ ], ], 
     [ "period"               => [ qr/\./ ], ], 
@@ -477,11 +593,11 @@ my $parse = new Parse::Marpa::Parse(
    grammar=> $g,
    # trace_actions => 1,
 );
-# $parse->trace("lex");
+# $parse->trace("evaluation choices");
 
-# print $g->show_rules(), "\n";
+# print STDERR $g->show_rules(), "\n";
 
-# print $g->show_SDFA(), "\n";
+# print STDERR $g->show_SDFA(), "\n";
 
 sub binary_search {
     my ($target, $data) = @_;  
@@ -518,7 +634,6 @@ my $spec;
 
 {
     local($RS) = undef;
-    open(GRAMMAR, "<", "marpa_grammar.txt") or die("Cannot open grammar: $!");
     $spec = <GRAMMAR>;
     if ((my $earleme = $parse->lex_string(\$spec)) >= 0) {
 	# print $parse->show_status();
@@ -556,7 +671,7 @@ unless ($parse->initial()) {
 
 my $value = $parse->value();
 print $value, "\n";
-# print $parse->show();
+# print STDERR $parse->show_status();
 
 # Local Variables:
 #   mode: cperl

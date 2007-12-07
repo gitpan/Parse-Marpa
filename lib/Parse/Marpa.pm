@@ -30,7 +30,7 @@ use Data::Dumper;
 
 use Parse::Marpa::Lex;
 
-our $VERSION = '0.001_050';
+our $VERSION = '0.001_051';
 $VERSION = eval $VERSION;
 
 =begin Apology:
@@ -138,6 +138,7 @@ use constant ORDER                    => 12;   # the order in which rules are to
                                                # be tried -- not necessarily unique
 use constant HAS_CHAF_LHS             => 13;   # has CHAF internal symbol as lhs?
 use constant HAS_CHAF_RHS             => 14;   # has CHAF internal symbol on rhs?
+use constant PRIORITY                 => 15;   # rule priority
 
 package Parse::Marpa::NFA;
 
@@ -389,6 +390,26 @@ sub show_start_reachable_symbols {
             grep { $_->[Parse::Marpa::Symbol::START_REACHABLE] } @$symbols );
 }
 
+sub inaccessible_symbols {
+    my $grammar = shift;
+    my $symbols = $grammar->[Parse::Marpa::Grammar::SYMBOLS];
+    [
+        sort map { $_->[Parse::Marpa::Symbol::NAME] }
+        grep { !$_->[Parse::Marpa::Symbol::START_REACHABLE] }
+        @$symbols
+    ]
+}
+
+sub unproductive_symbols {
+    my $grammar = shift;
+    my $symbols = $grammar->[Parse::Marpa::Grammar::SYMBOLS];
+    [
+        sort map { $_->[Parse::Marpa::Symbol::NAME] }
+        grep { !$_->[Parse::Marpa::Symbol::INPUT_REACHABLE] }
+        @$symbols
+    ]
+}
+
 sub brief_rule {
     my $rule = shift;
     my ( $lhs, $rhs, $rule_id )
@@ -415,14 +436,16 @@ sub show_rule {
     my $rule = shift;
 
     my ( $rhs, $input_reachable, $start_reachable, $nullable,
-        $nulling, $useful )
-        = @{$rule}[
+        $nulling, $useful,
+        $priority,
+    ) = @{$rule}[
         Parse::Marpa::Rule::RHS,
         Parse::Marpa::Rule::INPUT_REACHABLE,
         Parse::Marpa::Rule::START_REACHABLE,
         Parse::Marpa::Rule::NULLABLE,
         Parse::Marpa::Rule::NULLING,
-        Parse::Marpa::Rule::USEFUL
+        Parse::Marpa::Rule::USEFUL,
+        Parse::Marpa::Rule::PRIORITY,
         ];
     my $text    = brief_rule($rule);
     my @comment = ();
@@ -433,6 +456,7 @@ sub show_rule {
     if ($nullable)              { push( @comment, "nullable" ); }
     if ($nulling)               { push( @comment, "nulling" ); }
     if ( not $useful )          { push( @comment, "!useful" ); }
+    if ($priority)              { push( @comment, "priority=$priority" ); }
     if (@comment) {
         $text .= " " . join( " ", "/*", @comment, "*/" );
     }
@@ -748,6 +772,8 @@ sub add_user_rule {
     my $lhs_name  = shift;
     my $rhs_names = shift;
     my $action    = shift;
+    my $priority  = shift;
+
     my ( $rule_hash ) = @{$grammar}[ Parse::Marpa::Grammar::RULE_HASH ];
 
     my $lhs_symbol = assign_symbol( $grammar, canonical_name($lhs_name) );
@@ -762,7 +788,7 @@ sub add_user_rule {
 
     $rule_hash->{$rule_key} = 1;
 
-    add_rule( $grammar, $lhs_symbol, $rhs_symbols, $action);
+    add_rule( $grammar, $lhs_symbol, $rhs_symbols, $action, $priority);
 }
 
 sub add_rule {
@@ -770,6 +796,7 @@ sub add_rule {
     my $lhs     = shift;
     my $rhs     = shift;
     my $action  = shift;
+    my $priority = shift;
 
     my (
         $rules,
@@ -795,13 +822,14 @@ sub add_rule {
         Parse::Marpa::Rule::NULLING,
         Parse::Marpa::Rule::ACTION,
         Parse::Marpa::Rule::ORDER,
-        ]
-        = (
-        $rule_count, "rule $rule_count",
-        $lhs, $rhs,
-        $nulling, $nulling, $nulling,
-        $action,
-        $rule_count,
+        Parse::Marpa::Rule::PRIORITY,
+    ] = (
+            $rule_count, "rule $rule_count",
+            $lhs, $rhs,
+            $nulling, $nulling, $nulling,
+            $action,
+            $rule_count,
+            $priority,
         );
 
     # if this is a nulling rule with an action,
@@ -868,14 +896,14 @@ sub add_user_rules {
 		my $arg_count = @$rule;
 		# This warning can be removed if this interface remains
 		# internal
-		if ( $arg_count > 3 or $arg_count < 1) {
+		if ( $arg_count > 4 or $arg_count < 1) {
 		    croak("Rule has $arg_count arguments: "
 			. join(", ", map { defined $_ ? $_ : "undef" } @$rule) . "\n"
 			. "Rule must have from 1 to 3 arguments"
 		    );
 		}
-		my ($lhs, $rhs, $action) = @$rule;
-                add_user_rule( $grammar, $lhs, $rhs, $action);
+		my ($lhs, $rhs, $action, $priority) = @$rule;
+                add_user_rule( $grammar, $lhs, $rhs, $action, $priority);
 
 	    }
 	    when ("HASH") {
@@ -897,6 +925,7 @@ sub add_rules_from_hash {
     my $proper_separation = 0;
     my $keep_separation = 0;
     my $left_associative = 1;
+    my $priority = 0;
 
     while (my ($option, $value) = each(%$options)) {
 	given ($option) {
@@ -910,13 +939,14 @@ sub add_rules_from_hash {
 	    when ("keep_separation") { $keep_separation = $value }
 	    when ("left_associative") { $left_associative = $value }
 	    when ("right_associative") { $left_associative = !$value }
+	    when ("priority") { $priority = $value }
 	    default { croak("Unknown option in counted rule: $option") }
 	}
     }
 
     # Take care of nulling rules
     if (scalar @$rhs_names == 0) {
-	add_user_rule($grammar, $lhs_name, $rhs_names, $action);
+	add_user_rule($grammar, $lhs_name, $rhs_names, $action, $priority);
         return;
     }
 
@@ -944,7 +974,7 @@ sub add_rules_from_hash {
 	if ($max <= 1 and defined $separator_name) {
 	    croak("separator defined for rule without repetitions");
 	}
-        add_user_rule( $grammar, $lhs_name, $rhs_names, $action );
+        add_user_rule( $grammar, $lhs_name, $rhs_names, $action, $priority );
         return;
     }
 
@@ -980,9 +1010,9 @@ sub add_rules_from_hash {
                     }
                     . $action;
             }
-	    $new_rule = add_user_rule($grammar, $lhs_name, $proper_counted_rhs, $action);
+	    $new_rule = add_user_rule($grammar, $lhs_name, $proper_counted_rhs, $action, $priority);
             if ($separator_terminated_rhs) {
-                add_user_rule($grammar, $lhs_name, $separator_terminated_rhs, $action);
+                add_user_rule($grammar, $lhs_name, $separator_terminated_rhs, $action, $priority);
             }
 	}
 
@@ -1014,7 +1044,7 @@ sub add_rules_from_hash {
                $rule_action = q{ $Parse::Marpa::This::v = []; } . $action
             }
         }
-	add_user_rule($grammar, $lhs_name, [ ], $rule_action);
+	add_user_rule($grammar, $lhs_name, [ ], $rule_action, $priority);
         $min = 1;
     }
 
@@ -1088,6 +1118,7 @@ sub add_rules_from_hash {
         $lhs,
         [ $sequence ],
         $rule_action,
+        $priority,
     );
     if (defined $separator and not $proper_separation) {
         unless ($keep_separation) {
@@ -1100,6 +1131,7 @@ sub add_rules_from_hash {
             $lhs,
             [ $sequence, $separator, ],
             $rule_action,
+            $priority,
         );
     }
 
@@ -1148,6 +1180,7 @@ sub add_rules_from_hash {
         $sequence,
         $counted_rhs,
         $rule_action,
+        $priority,
     );
 
     # iterating sequence rule
@@ -1172,6 +1205,7 @@ sub add_rules_from_hash {
         $sequence,
         (\@iterating_rhs),
         $rule_action,
+        $priority,
     );
 
 } # sub add_rules_from_hash
@@ -2232,14 +2266,15 @@ sub rewrite_as_CHAF {
     RULE: for ( my $rule_id = 0; $rule_id < $rule_count; $rule_id++ ) {
         my $rule = $rules->[$rule_id];
         my ( $lhs, $rhs, $input_reachable, $start_reachable, $nulling,
-            $nullable )
+            $nullable, $priority )
             = @{$rule}[
             Parse::Marpa::Rule::LHS,
             Parse::Marpa::Rule::RHS,
             Parse::Marpa::Rule::INPUT_REACHABLE,
             Parse::Marpa::Rule::START_REACHABLE,
             Parse::Marpa::Rule::NULLING,
-            Parse::Marpa::Rule::NULLABLE
+            Parse::Marpa::Rule::NULLABLE,
+            Parse::Marpa::Rule::PRIORITY,
             ];
 
         # unreachable and nulling rules are useless
@@ -2440,7 +2475,7 @@ sub rewrite_as_CHAF {
                 # factors of more than two.
                 my $has_chaf_rhs = $next_subp_lhs;
 
-                my $new_rule = add_rule( $grammar, $subp_lhs, $factor_rhs );
+                my $new_rule = add_rule( $grammar, $subp_lhs, $factor_rhs, $priority );
                 @{$new_rule}[
                     Parse::Marpa::Rule::USEFUL,
                     Parse::Marpa::Rule::START_REACHABLE,
@@ -2490,7 +2525,7 @@ sub rewrite_as_CHAF {
         = ( $input_reachable, 1, 1, $null_value );
 
     # Create a new start rule
-    my $new_start_rule = add_rule( $grammar, $new_start_symbol, [$old_start_symbol] );
+    my $new_start_rule = add_rule( $grammar, $new_start_symbol, [$old_start_symbol], 0 );
     @{$new_start_rule}[
         Parse::Marpa::Rule::INPUT_REACHABLE,
         Parse::Marpa::Rule::START_REACHABLE,
@@ -2510,15 +2545,16 @@ sub rewrite_as_CHAF {
         @{$new_start_alias}[
             Parse::Marpa::Symbol::START,
         ] = ( 1 );
-        my $new_start_rule = add_rule( $grammar, $new_start_alias, [] );
+        my $new_start_rule = add_rule( $grammar, $new_start_alias, [], 0 );
 
         # Nulling rules are not considered useful, but the top-level one is an exception
         @{$new_start_rule}[
             Parse::Marpa::Rule::INPUT_REACHABLE,
             Parse::Marpa::Rule::START_REACHABLE,
             Parse::Marpa::Rule::USEFUL,
-            ]
-            = ( $input_reachable, 1, 1, );
+        ] = (
+            $input_reachable, 1, 1,
+        );
     }
     $grammar->[Parse::Marpa::Grammar::START] = $new_start_symbol;
 }
@@ -2576,6 +2612,7 @@ use constant TRACE_LEX_TRIES          => 9;
 use constant TRACE_LEX_MATCHES        => 10; 
 use constant TRACE_ITERATION_SEARCHES => 11; 
 use constant TRACE_ITERATION_CHANGES  => 12; 
+use constant TRACE_EVALUATION_CHOICES => 13; 
 use constant DEFAULT_PARSE_SET        => 14;
 use constant TRACE_COMPLETIONS        => 15; 
 use constant LOCATION_CALLBACK        => 16;
@@ -2588,6 +2625,8 @@ use constant LEXERS                   => 22; # an array, indexed by symbol id,
                                              # of the lexer for each symbol
 use constant LEXABLES_BY_STATE        => 23; # an array, indexed by SDFA state id,
                                              # of the lexables belonging in it
+use constant PRIORITIES               => 24; # an array, indexed by SDFA state id,
+                                             # of its priority
 
 # Set rule actions
 sub set_actions {
@@ -2780,6 +2819,47 @@ sub set_actions {
 
 } # sub set_actions
 
+sub set_priorities {
+    my $grammar           = shift;
+    my $priorities        = [];
+    my $problem = 0;
+
+    my $SDFA = $grammar->[ Parse::Marpa::Grammar::SDFA ];
+    $#$priorities = $#$SDFA;
+
+    for my $state (@$SDFA) {
+        my $priority;
+        my $priority_conflict = 0;
+        my ($id, $complete_rules_by_lhs) = @{$state}[
+             Parse::Marpa::SDFA::ID,
+             Parse::Marpa::SDFA::COMPLETE_RULES,
+        ];
+        my @complete_rules = map {$_ ? @{$_} : ()} @{$complete_rules_by_lhs};
+        COMPLETE_RULE: for my $complete_rule (@complete_rules) {
+            my $rule_priority = $complete_rule->[ Parse::Marpa::Rule::PRIORITY ];
+            given ($priority) {
+                when (undef) { $priority = $rule_priority }
+                when ($rule_priority != $_) { $priority_conflict++; }
+            }
+        }
+        if ($priority_conflict) {
+            $problem++;
+            carp("Priority conflict in SDFA ", $id);
+            COMPLETE_RULE: for my $complete_rule (@complete_rules) {
+                my $rule_priority = $complete_rule->[ Parse::Marpa::Rule::PRIORITY ];
+                carp("SDFA ", $id, ": ", brief_rule($complete_rule), "has priority ", $rule_priority);
+            }
+        }
+        $priorities->[$id] = $priority // 0;
+    } # for each SDFA state
+    if ($problem) {
+        croak("Marpa cannot continue: ", $problem, " priority conflicts");
+    }
+
+    $priorities;
+
+} # sub set_priorities
+
 sub new {
     my $class   = shift;
 
@@ -2888,6 +2968,7 @@ sub new {
     # rather than creating closures "in place"
     my ($lexers, $lexables_by_state)
         = set_actions($grammar, $package, $default_action);
+    my $priorities = set_priorities($grammar);
 
     my $earley_hash;
     my $earley_set;
@@ -2936,6 +3017,7 @@ sub new {
         TRACE_ACTIONS,
         LEXERS,
         LEXABLES_BY_STATE,
+        PRIORITIES,
     ] = (
         0, 0, 0,
         [$earley_hash],
@@ -2949,6 +3031,7 @@ sub new {
         $trace_actions,
         $lexers,
         $lexables_by_state,
+        $priorities,
     );
 
     bless $parse, $class;
@@ -2971,6 +3054,22 @@ sub brief_earley_item {
     my $text = $set . ":";
     $text .= ($ii and defined $tag) ? ("St" . $tag) : ("S" . $id);
     $text .= "," . $parent;
+}
+
+sub show_token_choice {
+    my $token = shift;
+    my $ii = shift;
+    "[p="
+        . brief_earley_item( $token->[0], $ii ) . "; t="
+        . $token->[1] . "]";
+}
+
+sub show_link_choice {
+    my $link = shift;
+    my $ii = shift;
+    "[p="
+    . brief_earley_item( $link->[0], $ii ) . "; c="
+    . brief_earley_item( $link->[1], $ii ) . "]";
 }
 
 sub show_earley_item {
@@ -3013,17 +3112,13 @@ sub show_earley_item {
     if (defined $tokens and @$tokens) {
         $text .= "\n  token choice " . $token_choice;
         for my $token (@$tokens) {
-            $text .= " [p="
-                . brief_earley_item( $token->[0], $ii ) . "; t="
-                . $token->[1] . "]";
+            $text .= " " . show_token_choice($token, $ii);
         }
     }
     if (defined $links and @$links) {
         $text .= "\n  link choice " . $link_choice;
         for my $link (@$links) {
-            $text .= " [p="
-            . brief_earley_item( $link->[0], $ii ) . "; c="
-            . brief_earley_item( $link->[1], $ii ) . "]";
+            $text .= " " . show_link_choice($link, $ii);
         }
     }
     if (defined $rules and @$rules) {
@@ -3393,11 +3488,13 @@ sub complete_set {
         $current_set, $furthest_earleme, $exhausted,
         $trace_completions,
         $lexables_by_state,
+        $priorities,
     ) = @{$parse}[
         EARLEY_SETS, EARLEY_HASHES, GRAMMAR,
         CURRENT_SET, FURTHEST_EARLEME, EXHAUSTED,
         TRACE_COMPLETIONS,
         LEXABLES_BY_STATE,
+        PRIORITIES,
     ];
     croak("Attempt to complete another earley set in an exhausted parse") if $exhausted;
 
@@ -3506,6 +3603,20 @@ sub complete_set {
 
     }    # EARLEY_ITEM
 
+    EARLEY_ITEM: for my $earley_item (@$earley_set) {
+        my $links = $earley_item->[ Parse::Marpa::Earley_item::LINKS ];
+        my @sorted_links = 
+            map { $_->[0] }
+            sort { $b->[1] <=> $a->[1] }
+            map {
+                [
+                    $_,
+                    $priorities->[ $_->[1]->[Parse::Marpa::Earley_item::STATE]->[Parse::Marpa::SDFA::ID] ]
+                ]
+            } @$links;
+        $earley_item->[ Parse::Marpa::Earley_item::LINKS ] = \@sorted_links;
+    }
+
     # TODO: Prove that the completion links are UNIQUE
 
     # Free memory for the hash
@@ -3536,35 +3647,34 @@ sub trace_file_handle {
 
 sub trace {
     my $parse = shift;
-    my %parameter = (
-        "lex (try|tries)?" => sub { $parse->[ Parse::Marpa::Parse::TRACE_LEX_TRIES ] = 1; },
-        "lex match(es)?" => sub { $parse->[ Parse::Marpa::Parse::TRACE_LEX_MATCHES ] = 1; },
-        "lex(es|ing)?" => sub {
-            $parse->[ Parse::Marpa::Parse::TRACE_LEX_TRIES ] = 1;
-            $parse->[ Parse::Marpa::Parse::TRACE_LEX_MATCHES ] = 1;
-        },
-        "iteration search(es)?" => sub { $parse->[ Parse::Marpa::Parse::TRACE_ITERATION_SEARCHES ] = 1; },
-        "iteration change(s)?" => sub { $parse->[ Parse::Marpa::Parse::TRACE_ITERATION_CHANGES ] = 1; },
-        "iteration(s)?" => sub {
-            $parse->[ Parse::Marpa::Parse::TRACE_ITERATION_SEARCHES ] = 1;
-            $parse->[ Parse::Marpa::Parse::TRACE_ITERATION_CHANGES ] = 1;
-        },
-        "completion(s)?" => sub {
-            $parse->[ Parse::Marpa::Parse::TRACE_COMPLETIONS ] = 1;
-        },
-        "all" => sub {
-            $parse->[ Parse::Marpa::Parse::TRACE_LEX_TRIES ] = 1;
-            $parse->[ Parse::Marpa::Parse::TRACE_LEX_MATCHES ] = 1;
-            $parse->[ Parse::Marpa::Parse::TRACE_ITERATION_SEARCHES ] = 1;
-            $parse->[ Parse::Marpa::Parse::TRACE_ITERATION_CHANGES ] = 1;
-            $parse->[ Parse::Marpa::Parse::TRACE_COMPLETIONS ] = 1;
-        },
-    );
-    for my $argument (@_) {
-        while (my ($key, $closure) = each %parameter) {
-            if ($argument =~ /^$key$/) {
-                $closure->();
+    my @traces = @_;
+    for my $trace (@_) {
+        given ($trace) {
+            when (/^lex (try|tries)?$/) { $parse->[ Parse::Marpa::Parse::TRACE_LEX_TRIES ] = 1; }
+            when (/^lex match(es)?$/) { $parse->[ Parse::Marpa::Parse::TRACE_LEX_MATCHES ] = 1; }
+            when (/^lex(es|ing)?$/) {
+                $parse->[ Parse::Marpa::Parse::TRACE_LEX_TRIES ] = 1;
+                $parse->[ Parse::Marpa::Parse::TRACE_LEX_MATCHES ] = 1;
             }
+            when (/^iteration search(es)?$/) { $parse->[ Parse::Marpa::Parse::TRACE_ITERATION_SEARCHES ] = 1; }
+            when (/^iteration change(s)?$/) { $parse->[ Parse::Marpa::Parse::TRACE_ITERATION_CHANGES ] = 1; }
+            when (/^iteration(s)?$/) {
+                $parse->[ Parse::Marpa::Parse::TRACE_ITERATION_SEARCHES ] = 1;
+                $parse->[ Parse::Marpa::Parse::TRACE_ITERATION_CHANGES ] = 1;
+            }
+            when (/^eval(uation)? choice(s)?$/) { $parse->[ Parse::Marpa::Parse::TRACE_EVALUATION_CHOICES ] = 1; }
+            when (/^completion(s)?$/) {
+                $parse->[ Parse::Marpa::Parse::TRACE_COMPLETIONS ] = 1;
+            }
+            when (/^all$/) {
+                $parse->[ Parse::Marpa::Parse::TRACE_LEX_TRIES ] = 1;
+                $parse->[ Parse::Marpa::Parse::TRACE_LEX_MATCHES ] = 1;
+                $parse->[ Parse::Marpa::Parse::TRACE_ITERATION_SEARCHES ] = 1;
+                $parse->[ Parse::Marpa::Parse::TRACE_ITERATION_CHANGES ] = 1;
+                $parse->[ Parse::Marpa::Parse::TRACE_EVALUATION_CHOICES ] = 1;
+                $parse->[ Parse::Marpa::Parse::TRACE_COMPLETIONS ] = 1;
+            }
+            default { croak("Unknown argument: $trace") }
         }
     }
 }
@@ -3669,11 +3779,14 @@ sub initial {
 
     local($Parse::Marpa::This::parse) = $parse;
     my (
-        $grammar, $earley_sets,
+        $grammar,
+        $earley_sets,
         $start_item,
-        $current_parse_set, $default_parse_set,
+        $current_parse_set,
+        $default_parse_set,
         $trace_iteration_searches,
         $trace_iteration_changes,
+        $trace_evaluation_choices,
         $volatile,
     ) = @{$parse}[
         Parse::Marpa::Parse::GRAMMAR,
@@ -3683,11 +3796,13 @@ sub initial {
         Parse::Marpa::Parse::DEFAULT_PARSE_SET,
         Parse::Marpa::Parse::TRACE_ITERATION_SEARCHES,
         Parse::Marpa::Parse::TRACE_ITERATION_CHANGES,
+        Parse::Marpa::Parse::TRACE_EVALUATION_CHOICES,
         Parse::Marpa::Parse::VOLATILE,
     ];
     local($Parse::Marpa::This::grammar) = $grammar;
     local($Parse::Marpa::This::trace_iteration_searches) = $trace_iteration_searches;
     local($Parse::Marpa::This::trace_iteration_changes) = $trace_iteration_changes;
+    local($Parse::Marpa::This::trace_evaluation_choices) = $trace_evaluation_choices;
     local($Data::Dumper::Terse) = 1;
 
     my $trace_fh = $grammar-> [ Parse::Marpa::Grammar::TRACE_FILE_HANDLE ];
@@ -3855,7 +3970,7 @@ sub initialize_children {
     my $lhs_symbol_id = $lhs_symbol->[ Parse::Marpa::Symbol::ID ];
 
     my (
-        $state, $child_rule_choice,
+        $state, $child_rule_choice
     ) = @{$item}[
         Parse::Marpa::Earley_item::STATE,
         Parse::Marpa::Earley_item::RULE_CHOICE,
@@ -3866,6 +3981,26 @@ sub initialize_children {
     }
     my $child_rules = $state->[ Parse::Marpa::SDFA::COMPLETE_RULES ] -> [ $lhs_symbol_id ];
     my $rule = $child_rules->[ $child_rule_choice ];
+    if ($Parse::Marpa::This::trace_evaluation_choices and scalar @$child_rules > 1) {
+         my ($set, $parent
+         ) = @{$item}[
+            Parse::Marpa::Earley_item::SET,
+            Parse::Marpa::Earley_item::PARENT,
+         ];
+         say $Parse::Marpa::This::trace_fh
+             "Choose rule ",
+             $child_rule_choice,
+             " of ",
+             (scalar @$child_rules),
+             " at earlemes ",
+             $parent, "-", $set, ": ",
+             Parse::Marpa::brief_rule($rule);
+         for (my $ix = 0; $ix <= $#$child_rules; $ix++) {
+             my $choice = $child_rules->[$ix];
+             say $Parse::Marpa::This::trace_fh
+                 "Rule choice $ix at $parent-$set: ", Parse::Marpa::brief_rule($choice);
+         }
+    }
     local($Parse::Marpa::This::rule) = $rule;
     my ($rhs) = @{$rule}[ Parse::Marpa::Rule::RHS ];
 
@@ -3910,6 +4045,28 @@ sub initialize_children {
 
         if (@$tokens) {
             my ($predecessor, $value) = @{$tokens->[0]};
+
+
+            if ($Parse::Marpa::This::trace_evaluation_choices and scalar @$tokens > 1) {
+                 my ($set, $parent
+                 ) = @{$item}[
+                    Parse::Marpa::Earley_item::SET,
+                    Parse::Marpa::Earley_item::PARENT,
+                 ];
+                 say $Parse::Marpa::This::trace_fh
+                     "Choose token 0 of ",
+                     (scalar @$tokens),
+                     " at earlemes ",
+                     $parent, "-", $set, ": ",
+                     show_token_choice($tokens->[0]);
+                 for (my $ix = 1; $ix <= $#$tokens; $ix++) {
+                     my $choice = $tokens->[$ix];
+                     say $Parse::Marpa::This::trace_fh
+                         "Alternative token choice $ix at $parent-$set: ",
+                         show_token_choice($choice);
+                 }
+            }
+
             @{$item}[
                 Parse::Marpa::Earley_item::TOKEN_CHOICE,
                 Parse::Marpa::Earley_item::LINK_CHOICE,
@@ -3946,6 +4103,27 @@ sub initialize_children {
 
         my ($predecessor, $cause) = @{$links->[0]};
         weaken($cause->[ Parse::Marpa::Earley_item::EFFECT ] = $item);
+
+        if ($Parse::Marpa::This::trace_evaluation_choices and scalar @$links > 1) {
+             my ($set, $parent
+             ) = @{$item}[
+                Parse::Marpa::Earley_item::SET,
+                Parse::Marpa::Earley_item::PARENT,
+             ];
+             say $Parse::Marpa::This::trace_fh
+                 "Choose link 0 of ",
+                 (scalar @$links),
+                 " at earlemes ",
+                 $parent, "-", $set, ": ",
+                 show_link_choice($links->[0]);
+             for (my $ix = 1; $ix <= $#$links; $ix++) {
+                 my $choice = $links->[$ix];
+                 say $Parse::Marpa::This::trace_fh
+                     "Alternative link choice $ix at $parent-$set: ",
+                     show_link_choice($links->[$ix]);
+             }
+        }
+
 
         # my $value = initialize_children($cause, $child_symbol);
         my $work_entry = [
@@ -4049,6 +4227,7 @@ sub next {
         $current_parse_set,
         $trace_iteration_searches,
         $trace_iteration_changes,
+        $trace_evaluation_choices,
         $volatile,
     ) = @{$parse}[
         Parse::Marpa::Parse::GRAMMAR,
@@ -4056,6 +4235,7 @@ sub next {
         Parse::Marpa::Parse::CURRENT_PARSE_SET,
         Parse::Marpa::Parse::TRACE_ITERATION_SEARCHES,
         Parse::Marpa::Parse::TRACE_ITERATION_CHANGES,
+        Parse::Marpa::Parse::TRACE_EVALUATION_CHOICES,
         Parse::Marpa::Parse::VOLATILE,
     ];
     croak("Parse not initialized: no start item") unless defined $start_item;
@@ -4064,6 +4244,7 @@ sub next {
     local($Parse::Marpa::This::grammar) = $grammar;
     local($Parse::Marpa::This::trace_iteration_searches) = $trace_iteration_searches;
     local($Parse::Marpa::This::trace_iteration_changes) = $trace_iteration_changes;
+    local($Parse::Marpa::This::trace_evaluation_choices) = $trace_evaluation_choices;
     local($Data::Dumper::Terse) = 1;
 
     my $trace_fh = $grammar-> [ Parse::Marpa::Grammar::TRACE_FILE_HANDLE ];
@@ -4118,7 +4299,7 @@ sub next {
             # We have our candidate, now try to iterate it,
             # exhausting the rule choice if necessary
 
-            # TODO: if this block necessary ?
+            # TODO: is this block necessary ?
 
             my (
                 $token_choice, $tokens,
