@@ -30,7 +30,7 @@ use Data::Dumper;
 
 use Parse::Marpa::Lex;
 
-our $VERSION = '0.001_051';
+our $VERSION = '0.001_052';
 $VERSION = eval $VERSION;
 
 =begin Apology:
@@ -116,7 +116,7 @@ use constant NULL_ALIAS      => 11;   # for a non-nulling symbol,
                                       # otherwise undef
 use constant TERMINAL        => 12;   # terminal?
 use constant CLOSURE         => 13;   # closure to do lexing
-use constant ORDER           => 14;   # order, for lexing
+use constant PRIORITY        => 14;   # order, for lexing
 use constant COUNTED         => 15;   # used on rhs of counted rule?
 use constant ACTION          => 16;   # lexing action specified by user
 
@@ -134,7 +134,7 @@ use constant USEFUL                   => 8;    # use this rule in NFA?
 use constant ACTION                   => 9;    # action for this rule
 use constant CLOSURE                  => 10;   # closure for evaluating this rule
 use constant ORIGINAL_RULE            => 11;   # for a rewritten rule, the original
-use constant ORDER                    => 12;   # the order in which rules are to
+# use constant ORDER                    => 12;   # the order in which rules are to
                                                # be tried -- not necessarily unique
 use constant HAS_CHAF_LHS             => 13;   # has CHAF internal symbol as lhs?
 use constant HAS_CHAF_RHS             => 14;   # has CHAF internal symbol on rhs?
@@ -190,7 +190,9 @@ use constant AMBIGUOUS_LEX      => 16; # lex ambiguously? (the default)
 use constant TRACE_RULES        => 17; 
 use constant TRACE_FILE_HANDLE  => 18; 
 use constant LOCATION_CALLBACK  => 19; # default callback for showing location
-use constant VOLATILE           => 20; # default callback for showing location
+use constant VOLATILE           => 20; # default for volatility
+use constant PROBLEMS           => 21; # fatal problems
+use constant PREAMBLE           => 22; # default preamble
 
 package Parse::Marpa::This;
 
@@ -234,6 +236,8 @@ sub new {
         "Earleme " . $earleme;
     };
     my $volatile = 1;
+    my $warnings = 0;
+    my $preamble;
 
     my %arg_logic = (
         "rules"              => sub { $rules     = $_[0] },
@@ -249,6 +253,8 @@ sub new {
         "trace_rules"        => sub { $trace_rules = $_[0] },
         "location_callback"  => sub { $location_callback = $_[0] },
         "volatile"           => sub { $volatile = $_[0] },
+        "warnings"           => sub { $warnings = $_[0] },
+        "preamble"           => sub { $preamble = $_[0] },
     );
 
     while ( my ( $arg, $value ) = each %args ) {
@@ -262,10 +268,13 @@ sub new {
     croak("No terminals specified")    unless defined $terminals;
     croak("No start symbol specified") unless defined $start;
 
+    local($Parse::Marpa::This::trace_fh) = $trace_fh;
+
     my $grammar = [];
     # Note: this limits the number of grammar to the number of integers --
     # not likely to be a big problem.
     my $namespace = sprintf("Parse::Marpa::G_%x", $grammar_number);
+
     @{$grammar}[
         Parse::Marpa::Grammar::ID,
         Parse::Marpa::Grammar::NAME,
@@ -282,6 +291,7 @@ sub new {
         Parse::Marpa::Grammar::AMBIGUOUS_LEX,
         Parse::Marpa::Grammar::TRACE_FILE_HANDLE,
         Parse::Marpa::Grammar::TRACE_RULES,
+        Parse::Marpa::Grammar::PREAMBLE,
         ] = (
             $grammar_number++,
             $namespace,
@@ -294,14 +304,25 @@ sub new {
             $ambiguous_lex,
             $trace_fh,
             $trace_rules,
+            $preamble,
         );
     bless( $grammar, $class );
 
     add_user_rules( $grammar, $rules );
     add_user_terminals( $grammar, $terminals );
-    compile( $grammar, $start )
+    my $result = compile( $grammar, $start );
+    if ($warnings) {
+       for my $symbol (@{inaccessible_symbols($grammar)}) {
+            say $trace_fh "Inaccessible symbol: $symbol";
+       }
+       for my $symbol (@{unproductive_symbols($grammar)}) {
+            say $trace_fh "Unproductive symbol: $symbol";
+       }
+    }
+    $result;
 }
 
+# returns undef if there was a problem
 sub compile {
     my $grammar = shift;
     my $start = shift;
@@ -309,7 +330,7 @@ sub compile {
     my $academic = $grammar->[ Parse::Marpa::Grammar::ACADEMIC ];
 
     nulling($grammar);
-    nullable($grammar);
+    nullable($grammar) or return $grammar;
     input_reachable($grammar);
     set_start( $grammar, $start );
     start_reachable($grammar);
@@ -643,6 +664,7 @@ sub add_terminal {
     my $grammar = shift;
     my $name    = shift;
     my $lexer = shift;
+    my $priority = shift;
     my ($regex, $prefix, $suffix);
     my $action;
 
@@ -651,6 +673,8 @@ sub add_terminal {
         when("ARRAY") { ($regex, $prefix, $suffix) = @$lexer; }
         default { croak("Bad argument to add_terminal for $name"); }
     }
+
+    $priority //= 0;
 
     my ( $symbol_hash, $symbols,
         $default_null_value,
@@ -694,13 +718,13 @@ sub add_terminal {
             Parse::Marpa::Symbol::REGEX,
             Parse::Marpa::Symbol::ACTION,
             Parse::Marpa::Symbol::TERMINAL,
-            Parse::Marpa::Symbol::ORDER,
+            Parse::Marpa::Symbol::PRIORITY,
         ] = (
             1, 0,
             $compiled_regex,
             $action,
             1,
-            $terminal_number++,
+            $priority,
         );
 
         return;
@@ -719,14 +743,14 @@ sub add_terminal {
         Parse::Marpa::Symbol::NULL_VALUE,
         Parse::Marpa::Symbol::REGEX,
         Parse::Marpa::Symbol::TERMINAL,
-        Parse::Marpa::Symbol::ORDER,
+        Parse::Marpa::Symbol::PRIORITY,
     ] = (
         $symbol_count, $name, [], [],
         0, 1, 0,
         $default_null_value,
         $compiled_regex,
         1,
-        $terminal_number++,
+        $priority,
     );
 
     push( @$symbols, $new_symbol );
@@ -809,9 +833,12 @@ sub add_rule {
         Parse::Marpa::Grammar::TRACE_RULES,
         Parse::Marpa::Grammar::TRACE_FILE_HANDLE,
     ];
+
     my $rule_count = @$rules;
     my $new_rule   = [];
     my $nulling = @$rhs ? undef : 1;
+    $priority //= 0;
+
     @{$new_rule}[
         Parse::Marpa::Rule::ID,
         Parse::Marpa::Rule::NAME,
@@ -821,14 +848,14 @@ sub add_rule {
         Parse::Marpa::Rule::INPUT_REACHABLE,
         Parse::Marpa::Rule::NULLING,
         Parse::Marpa::Rule::ACTION,
-        Parse::Marpa::Rule::ORDER,
+        # Parse::Marpa::Rule::ORDER,
         Parse::Marpa::Rule::PRIORITY,
     ] = (
             $rule_count, "rule $rule_count",
             $lhs, $rhs,
             $nulling, $nulling, $nulling,
             $action,
-            $rule_count,
+            # $rule_count,
             $priority,
         );
 
@@ -1601,11 +1628,14 @@ sub nulling {
 
 }
 
+# returns undef if there was a problem
 sub nullable {
     my $grammar = shift;
     my ( $rules, $symbols ) =
-        @{$grammar}[ Parse::Marpa::Grammar::RULES,
-        Parse::Marpa::Grammar::SYMBOLS ];
+        @{$grammar}[
+            Parse::Marpa::Grammar::RULES,
+            Parse::Marpa::Grammar::SYMBOLS,
+        ];
 
     my $work_to_do =
         1;    # boolean to track if current pass has changed anything
@@ -1744,13 +1774,20 @@ sub nullable {
             Parse::Marpa::Symbol::COUNTED,
         ];
         if ($nullable and $counted) {
-            carp("Nullable symbol $name is on rhs of counted rule");
+            my $problem = "Nullable symbol $name is on rhs of counted rule";
+            say $Parse::Marpa::This::trace_fh "Nullable symbol $name is on rhs of counted rule";
+            push(@{$grammar->[Parse::Marpa::Grammar::PROBLEMS]}, $problem);
             $counted_nullable_count++;
         }
     }
     if ($counted_nullable_count) {
-        croak("Counted nullable confuse Marpa -- please rewrite the grammar");
+        my $problem = "Counted nullables confuse Marpa -- please rewrite the grammar";
+        say $Parse::Marpa::This::trace_fh "Counted nullables confuse Marpa -- please rewrite the grammar";
+        push(@{$grammar->[Parse::Marpa::Grammar::PROBLEMS]}, $problem);
+        return;
     }
+
+    return 1;
 
 }
 
@@ -2126,13 +2163,6 @@ sub create_SDFA {
             }
         }    # NFA_state
         $state->[Parse::Marpa::SDFA::START_RULE]     = $start_rule;
-        LHS: for my $lhs_id (0 .. $#$complete_rules) {
-            my $rules = $complete_rules->[$lhs_id];
-            next LHS unless defined $rules;
-            $rules = [ sort {
-               $a->[ Parse::Marpa::Rule::ORDER ] <=> $b->[ Parse::Marpa::Rule::ORDER ]
-            } @$rules ];
-        }
         $state->[Parse::Marpa::SDFA::COMPLETE_RULES] = $complete_rules;
         $state->[Parse::Marpa::SDFA::COMPLETE_LHS] =
             [ map { $_->[Parse::Marpa::Symbol::NAME] }
@@ -2482,12 +2512,12 @@ sub rewrite_as_CHAF {
                     Parse::Marpa::Rule::INPUT_REACHABLE,
                     Parse::Marpa::Rule::NULLABLE,
                     Parse::Marpa::Rule::NULLING,
-                    Parse::Marpa::Rule::ORDER,
+                    # Parse::Marpa::Rule::ORDER,
                     Parse::Marpa::Rule::HAS_CHAF_LHS,
                     Parse::Marpa::Rule::HAS_CHAF_RHS,
                     ] = (
                         1, 1, 1, 0, 0,
-                        $rule_id,
+                        # $rule_id,
                         $has_chaf_lhs,
                         $has_chaf_rhs,
                     );
@@ -2752,10 +2782,10 @@ sub set_actions {
         given ($action) {
            when (undef) { ; } # do nothing
            # Right now do nothing but find lex_q_quote
-           when ("Parse::Marpa::Lex::lex_q_quote") {
+           when ("lex_q_quote") {
                $lexers[$ix] = \&Parse::Marpa::Lex::lex_q_quote;
            }
-           when ("Parse::Marpa::Lex::lex_regex") {
+           when ("lex_regex") {
                $lexers[$ix] = \&Parse::Marpa::Lex::lex_regex;
            }
            default {
@@ -2834,7 +2864,12 @@ sub set_priorities {
              Parse::Marpa::SDFA::ID,
              Parse::Marpa::SDFA::COMPLETE_RULES,
         ];
-        my @complete_rules = map {$_ ? @{$_} : ()} @{$complete_rules_by_lhs};
+        my @complete_rules;
+        LHS: for my $lhs_id (0 .. $#complete_rules) {
+            my $rules = $complete_rules[$lhs_id];
+            next LHS unless defined $rules;
+            push(@complete_rules, @$rules);
+        }
         COMPLETE_RULE: for my $complete_rule (@complete_rules) {
             my $rule_priority = $complete_rule->[ Parse::Marpa::Rule::PRIORITY ];
             given ($priority) {
@@ -2847,7 +2882,7 @@ sub set_priorities {
             carp("Priority conflict in SDFA ", $id);
             COMPLETE_RULE: for my $complete_rule (@complete_rules) {
                 my $rule_priority = $complete_rule->[ Parse::Marpa::Rule::PRIORITY ];
-                carp("SDFA ", $id, ": ", brief_rule($complete_rule), "has priority ", $rule_priority);
+                carp("SDFA ", $id, ": ", Parse::Marpa::brief_rule($complete_rule), "has priority ", $rule_priority);
             }
         }
         $priorities->[$id] = $priority // 0;
@@ -2868,8 +2903,9 @@ sub new {
     my $grammar;
     my $default_action;
     my $trace_actions = 0;
-    my $trace_fh;
+    my $trace_fh = *STDERR;
     my $ambiguous_lex;
+    my $preamble;
 
     # default for parse is non-volatile, but grammar setting
     # and explicit setting both override
@@ -2889,6 +2925,7 @@ sub new {
                 "trace_file_handle"  => sub { $trace_fh = $_[0] },
                 "trace_actions"        => sub { $trace_actions = $_[0] },
                 "volatile"        => sub { $volatile = $_[0] },
+                "preamble"        => sub { $preamble = $_[0] },
             );
 
             while ( my ( $arg, $value ) = each %args ) {
@@ -2912,6 +2949,16 @@ sub new {
     # works, but strengthens weak refs
 
     # This could be made more efficient with a custom routine
+
+    my $problems = $grammar->[ Parse::Marpa::Grammar::PROBLEMS ];
+    if ($problems) {
+       for my $problem (@$problems) {
+           say $trace_fh $problem;
+       }
+       say $trace_fh "Attempt to parse grammar with fatal problems";
+       say $trace_fh "Marpa cannot proceed";
+       return;
+    }
 
     {
         my $grammar_copy;
@@ -2963,6 +3010,27 @@ sub new {
             or not scalar @$SDFA;
 
     my $package = sprintf("Parse::Marpa::P_%x", $parse_number++);
+
+    $preamble //= $grammar->[ Parse::Marpa::Grammar::PREAMBLE ];
+
+    if (defined $preamble) {
+        {
+            local $SIG{__WARN__} = sub {0};
+            eval (
+                "package " . $package . ";\n"
+                . $preamble
+            );
+        }
+        if ($@) {
+            croak(
+                "Compile time error evaluating preamble, code is:\n",
+                $preamble,
+                "\nCompile time error evaluating preamble\n",
+                $@
+            );
+        }
+    }
+
 
     # I should do (or at least allow) a deep copy of the grammar
     # rather than creating closures "in place"
@@ -3630,7 +3698,7 @@ sub complete_set {
 
     # Dream up some efficiency hack here.  Memoize sorted lexables by state?
     my $lexables = [
-        sort { $a->[Parse::Marpa::Symbol::ORDER] <=> $b->[Parse::Marpa::Symbol::ORDER] }
+        sort { $a->[Parse::Marpa::Symbol::PRIORITY] <=> $b->[Parse::Marpa::Symbol::PRIORITY] }
         map { $symbols->[$_] }
         grep { $lexable_seen->[$_] }
         (0 .. $#$symbols)
@@ -4134,8 +4202,8 @@ sub initialize_children {
                 $child_symbol,
         ];
 
-        # for efficiency make push (right-to-left evaluation), the default
-        unshift(@work_entries, $work_entry);
+        # for efficiency push (right-to-left evaluation) is the default
+        push(@work_entries, $work_entry);
 
         @{$item}[
             Parse::Marpa::Earley_item::TOKEN_CHOICE,
@@ -4158,7 +4226,7 @@ sub initialize_children {
 
     } # CHILD
 
-    for my $work_entry (reverse @work_entries) {
+    for my $work_entry (@work_entries) {
         my ($predecessor_item, $effect_item, $rhs_index, $cause, $child_symbol,) = @$work_entry;
             my $value
                 = $Parse::Marpa::This::v->[ $rhs_index ]
@@ -4188,10 +4256,17 @@ sub initialize_children {
         $result = eval { $closure->() };
         if ($@) {
             my $problem = $@;
-            croak("Problem computing value for rule ",
-                Parse::Marpa::brief_original_rule($rule),
-                "\n",
-                $@,
+            my $action = $rule->[ Parse::Marpa::Rule::ACTION ];
+            my $action_dump = "";
+            if (defined $action) {
+                $action_dump .= "Problem computing value, action:\n" . $action;
+            }
+            croak(
+                $action_dump
+                , "\nProblem computing value, rule: "
+                ,Parse::Marpa::brief_original_rule($rule)
+                ,"\n"
+                ,$@
             );
         }
     }

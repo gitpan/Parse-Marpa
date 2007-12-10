@@ -110,13 +110,16 @@ sub lex_q_quote {
 
 sub lex_regex {
     my $string = shift;
-    my $start = (pos $$string) // 0;
-    $$string =~ m{\G\s*(qr$punct|/)}ogc;
-    return unless defined $1;
-    my $left = substr($1, -1);
-    return unless defined $left;
+    my $lexeme_start = (pos $$string) // 0;
+    $$string =~ m{\G\s*}ogc;
+    my $value_start = pos $$string;
+    $$string =~ m{\G(qr$punct|/)}ogc;
+    my $left_side = $1;
+    return unless defined $left_side;
+    my $left = substr($left_side, -1);
+    my $prefix = ($left_side =~ /^qr/) ? "" : "qr";
 
-    my $regex_data = $regex_data{$1};
+    my $regex_data = $regex_data{$left};
     if (not defined $regex_data) {
         # \x{5c} is backslash
 	my $regex
@@ -139,8 +142,11 @@ sub lex_regex {
 	    if ($1 eq $left) {
                 # also take in trailing options
                 $$string =~ /\G[msixpo]*/g;
-		my $length = (pos $$string) - $start;
-		return (substr($$string, $start, $length), $length);
+                my $pos = pos $$string;
+                return (
+                    $prefix . substr($$string, $value_start, $pos - $value_start),
+                    $pos - $lexeme_start
+                );
 	    }
 	}
 	return;
@@ -157,8 +163,11 @@ sub lex_regex {
 	if ($depth <= 0) {
             # also take in trailing options
             $$string =~ /\G[msixpo]*/g;
-	    my $length = (pos $$string) - $start;
-	    return (substr($$string, $start, $length), $length);
+            my $pos = pos $$string;
+            return (
+                $prefix . substr($$string, $value_start, $pos - $value_start),
+                $pos - $lexeme_start
+            );
 	}
     }
     return;

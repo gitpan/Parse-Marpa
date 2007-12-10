@@ -19,6 +19,7 @@ t/minus.t
 t/lex_minus.t
 t/pascal.t
 t/wall.t
-example/self.pl
-example/self_lex.pl
+example/bootstrap.pl
+example/headers.pl
+example/trailers.pl
 example/marpa_grammar.txt

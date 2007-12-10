@@ -1,7 +1,10 @@
+* Change all carp's to 'say's to trace_fh
+
 * Include version, semantics in grammar, for checking when compiled
   form is read.
 
-* Add tracing of rule choices
+* Use hash from implicit regex to keyword name to avoid redefining same
+  regex multiple times implicitly
 
 * Add right and left evaluation in rules
 
