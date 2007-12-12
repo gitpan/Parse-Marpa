@@ -30,7 +30,7 @@ use Data::Dumper;
 
 use Parse::Marpa::Lex;
 
-our $VERSION = '0.001_053';
+our $VERSION = '0.001_054';
 $VERSION = eval $VERSION;
 
 =begin Apology:

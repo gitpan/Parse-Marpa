@@ -736,15 +736,16 @@ sub locator {
     my $earleme = shift;
     my $string = shift;
 
-    state @lines = (0);
+    state $lines;
+    $lines //= [0];
     my $pos = pos $$string = 0;
     NL: while ($$string =~ /\n/g) {
 	$pos = pos $$string;
-        push(@lines, $pos);
+        push(@$lines, $pos);
 	last NL if $pos > $earleme;
     }
-    my $line = @lines - ($pos > $earleme ? 2 : 1);
-    my $line_start = $lines[$line];
+    my $line = (@$lines) - ($pos > $earleme ? 2 : 1);
+    my $line_start = $lines->[$line];
     return ($line, $line_start);
 }
 
