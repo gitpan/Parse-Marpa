@@ -1,4 +1,4 @@
-use 5.9.5;
+use 5.009_005;
 use strict;
 use warnings;
 use Parse::Marpa;

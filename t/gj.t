@@ -23,6 +23,10 @@ my $g = new Parse::Marpa(
         [ "T",  [qw/n/] ],
         [ "T",  [qw/( E )/] ],
     ],
+    academic => 1,
+);
+
+$g->set(
     terminals => [
         [ 'n' => [qr/n/] ],
         [ '$' => [qr/\$/] ],
@@ -30,8 +34,9 @@ my $g = new Parse::Marpa(
         [ '(' => [qr/\(/] ],
         [ '-' => [qr/\-/] ],
     ],
-    academic => 1,
 );
+
+$g->precompute();
 
 is($g->show_rules(), <<'EOS', "Grune/Jacobs Rules");
 0: S' -> S $

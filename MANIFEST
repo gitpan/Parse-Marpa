@@ -19,7 +19,9 @@ t/minus.t
 t/lex_minus.t
 t/pascal.t
 t/wall.t
+t/bootstrap.t
 example/bootstrap.pl
 example/headers.pl
 example/trailers.pl
-example/marpa_grammar.txt
+example/not_quite.marpa
+example/test.sh

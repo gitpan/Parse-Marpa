@@ -21,13 +21,18 @@ my $g = new Parse::Marpa(
         [ "A",  [qw/a S b/] ],
         [ "A",  [qw/a b/] ],
     ],
+    academic => 1,
+);
+
+$g->set(
     terminals => [
         [ "a" => [qr/a/] ],
         [ "b" => [qr/b/] ],
         [ "c" => [qr/c/] ],
     ],
-    academic => 1,
 );
+
+$g->precompute();
 
 is($g->show_rules(), <<'EOS', "Hopcroft/Ullman Rules");
 0: S' -> S c

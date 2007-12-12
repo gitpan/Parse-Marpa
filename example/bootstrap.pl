@@ -187,8 +187,8 @@ my $rules = [
         [ "setting", "period" ],
         q{ $Parse::Marpa::This::v->[0] }
     ],
-    [ "definition", [ "comment sentence", ], $concatenate_lines, ],
-    [ "definition", [ "bracketed comment", ], $concatenate_lines, ],
+    [ "definition", [ "comment sentence", ] ],
+    [ "definition", [ "bracketed comment", ] ],
     [ "definition", [ "default action definition", ], $concatenate_lines, ],
     [ "definition", [ "string definition", ], $concatenate_lines, ],
     [ "definition", [ "preamble definition", ], $concatenate_lines, 1000 ],
@@ -795,7 +795,6 @@ my $trailers;
 
 my $value = $parse->value();
 print $headers, $value, $trailers;
-# print STDERR $parse->show_status();
 
 # Local Variables:
 #   mode: cperl

@@ -30,7 +30,7 @@ use Data::Dumper;
 
 use Parse::Marpa::Lex;
 
-our $VERSION = '0.001_052';
+our $VERSION = '0.001_053';
 $VERSION = eval $VERSION;
 
 =begin Apology:
@@ -119,6 +119,8 @@ use constant CLOSURE         => 13;   # closure to do lexing
 use constant PRIORITY        => 14;   # order, for lexing
 use constant COUNTED         => 15;   # used on rhs of counted rule?
 use constant ACTION          => 16;   # lexing action specified by user
+use constant PREFIX          => 17;   # lexing prefix specified by user
+use constant SUFFIX          => 18;   # lexing suffix specified by user
 
 package Parse::Marpa::Rule;
 
@@ -193,148 +195,168 @@ use constant LOCATION_CALLBACK  => 19; # default callback for showing location
 use constant VOLATILE           => 20; # default for volatility
 use constant PROBLEMS           => 21; # fatal problems
 use constant PREAMBLE           => 22; # default preamble
+use constant STATE              => 23; # the grammar's state
+use constant WARNINGS           => 24; # print warnings about grammar?
+
+# values for state
+use constant NEW => "new grammar";
+use constant SOURCE_RULES => "grammar with rules entered from source";
+use constant PERL_RULES => "grammar with rules entered from Perl";
+use constant PRECOMPUTED => "precomputed grammar";
+use constant DUMPED => "dumped grammar";
+use constant EVALED => "evaled grammar";
+use constant IN_USE => "in use grammar";
 
 package Parse::Marpa::This;
 
+# Namespace reserved for dynamic globals, that is local() variables.
+# No actual globals should reside here
+
 package Parse::Marpa;
-
-my $grammar_number = 0;
-
-# The lexables theoretically should be numbered within
-# grammars, but I number them globally for efficiency.
-# Other numbers (like the symbol ID #'s) will overflow
-# first, so running out of numbers is not likely to be
-# an issue.
-my $terminal_number = 0;
-
-my $default_default_lex_prefix = "";
-my $default_default_lex_suffix = "";
-
-# Constructor
 
 sub new {
     my $class = shift;
     my %args  = @_;
 
-    my $rules;
-    my $terminals;
-    my $start;
-
-    # Academic grammar?  An "academic grammar" is one, usually from a textbook, which we are using
-    # to debug the NFA and SDFA logic.  We leave it unchanged.  Since we don't augment it, we can't
-    # parse with this grammar.  It's only useful to test the NFA and SDFA logic
-    my $academic = 0;
-    my $default_null_value;
-    my $default_action;
-    my $default_lex_prefix = $default_default_lex_prefix;
-    my $default_lex_suffix = $default_default_lex_suffix;
-    my $ambiguous_lex = 1;
-    my $trace_fh = *STDERR;
-    my $trace_rules = 0;
-    my $location_callback = sub {
-        my $earleme = shift;
-        "Earleme " . $earleme;
-    };
-    my $volatile = 1;
-    my $warnings = 0;
-    my $preamble;
-
-    my %arg_logic = (
-        "rules"              => sub { $rules     = $_[0] },
-        "terminals"          => sub { $terminals = $_[0] },
-        "start"              => sub { $start     = $_[0] },
-        "academic"           => sub { $academic  = $_[0] },
-        "default_null_value" => sub { $default_null_value = $_[0] },
-        "default_action"    => sub { $default_action = $_[0] },
-        "default_lex_prefix" => sub { $default_lex_prefix = $_[0] },
-        "default_lex_suffix" => sub { $default_lex_suffix = $_[0] },
-        "ambiguous_lex"      => sub { $ambiguous_lex = $_[0] },
-        "trace_file_handle"  => sub { $trace_fh = $_[0] },
-        "trace_rules"        => sub { $trace_rules = $_[0] },
-        "location_callback"  => sub { $location_callback = $_[0] },
-        "volatile"           => sub { $volatile = $_[0] },
-        "warnings"           => sub { $warnings = $_[0] },
-        "preamble"           => sub { $preamble = $_[0] },
-    );
-
-    while ( my ( $arg, $value ) = each %args ) {
-        my $closure = $arg_logic{$arg};
-        croak("Undefined argument to ", $class, "::new: ", $arg)
-            unless defined $closure;
-        $closure->($value);
-    }
-
-    croak("No rules specified")        unless defined $rules;
-    croak("No terminals specified")    unless defined $terminals;
-    croak("No start symbol specified") unless defined $start;
-
-    local($Parse::Marpa::This::trace_fh) = $trace_fh;
-
     my $grammar = [];
-    # Note: this limits the number of grammar to the number of integers --
-    # not likely to be a big problem.
-    my $namespace = sprintf("Parse::Marpa::G_%x", $grammar_number);
-
-    @{$grammar}[
-        Parse::Marpa::Grammar::ID,
-        Parse::Marpa::Grammar::NAME,
-        Parse::Marpa::Grammar::SYMBOLS,
-        Parse::Marpa::Grammar::SYMBOL_HASH,
-        Parse::Marpa::Grammar::RULES,
-        Parse::Marpa::Grammar::RULE_HASH,
-        Parse::Marpa::Grammar::SDFA_BY_NAME,
-        Parse::Marpa::Grammar::ACADEMIC,
-        Parse::Marpa::Grammar::DEFAULT_NULL_VALUE,
-        Parse::Marpa::Grammar::DEFAULT_ACTION,
-        Parse::Marpa::Grammar::DEFAULT_LEX_PREFIX,
-        Parse::Marpa::Grammar::DEFAULT_LEX_SUFFIX,
-        Parse::Marpa::Grammar::AMBIGUOUS_LEX,
-        Parse::Marpa::Grammar::TRACE_FILE_HANDLE,
-        Parse::Marpa::Grammar::TRACE_RULES,
-        Parse::Marpa::Grammar::PREAMBLE,
-        ] = (
-            $grammar_number++,
-            $namespace,
-            [], {}, [], {}, {},
-            $academic,
-            $default_null_value,
-            $default_action,
-            $default_lex_prefix,
-            $default_lex_suffix,
-            $ambiguous_lex,
-            $trace_fh,
-            $trace_rules,
-            $preamble,
-        );
     bless( $grammar, $class );
 
-    add_user_rules( $grammar, $rules );
-    add_user_terminals( $grammar, $terminals );
-    my $result = compile( $grammar, $start );
-    if ($warnings) {
-       for my $symbol (@{inaccessible_symbols($grammar)}) {
-            say $trace_fh "Inaccessible symbol: $symbol";
-       }
-       for my $symbol (@{unproductive_symbols($grammar)}) {
-            say $trace_fh "Unproductive symbol: $symbol";
-       }
+    # set the defaults and the default defaults
+    $grammar->[ Parse::Marpa::Grammar::TRACE_FILE_HANDLE ]
+        = local($Parse::Marpa::This::trace_fh)
+        = *STDERR;
+    state $grammar_number //= 0;
+    $grammar->[ Parse::Marpa::Grammar::ID ] = $grammar_number++;
+
+    # Note: this limits the number of grammar to the number of integers --
+    # not likely to be a big problem.
+    $grammar->[ Parse::Marpa::Grammar::NAME ]
+        = sprintf("Parse::Marpa::G_%x", $grammar_number);
+
+    $grammar->[ Parse::Marpa::Grammar::ACADEMIC ] = 0;
+    $grammar->[ Parse::Marpa::Grammar::DEFAULT_LEX_PREFIX ] = "";
+    $grammar->[ Parse::Marpa::Grammar::DEFAULT_LEX_SUFFIX ] = "";
+    $grammar->[ Parse::Marpa::Grammar::AMBIGUOUS_LEX ] = 1;
+    $grammar->[ Parse::Marpa::Grammar::TRACE_RULES ] = 0;
+    $grammar->[ Parse::Marpa::Grammar::LOCATION_CALLBACK ]
+        = q{ "Earleme " . $earleme };
+    $grammar->[ Parse::Marpa::Grammar::VOLATILE ] = 1;
+    $grammar->[ Parse::Marpa::Grammar::WARNINGS ] = 0;
+    $grammar->[ Parse::Marpa::Grammar::STATE ] = Parse::Marpa::Grammar::NEW;
+    $grammar->[ Parse::Marpa::Grammar::SYMBOLS ] = [];
+    $grammar->[ Parse::Marpa::Grammar::SYMBOL_HASH ] = {};
+    $grammar->[ Parse::Marpa::Grammar::RULES ] = [];
+    $grammar->[ Parse::Marpa::Grammar::RULE_HASH ] = {};
+    $grammar->[ Parse::Marpa::Grammar::SDFA_BY_NAME ] = {};
+
+    $grammar->set(%args);
+}
+
+sub source_grammar {
+    my $grammar = shift;
+    my $source = shift;
+    croak("sourcing grammars not yet implemented");
+}
+
+sub set {
+    my $grammar = shift;
+    my %args  = @_;
+
+    my $trace_fh = $grammar->[ Parse::Marpa::Grammar::TRACE_FILE_HANDLE ];
+    local($Parse::Marpa::This::trace_fh) = $trace_fh;
+
+    my $state = $grammar->[ Parse::Marpa::Grammar::STATE ];
+    given ($state) {
+        when (Parse::Marpa::Grammar::NEW) { ; }
+        when (Parse::Marpa::Grammar::PERL_RULES) { ; }
+        when (Parse::Marpa::Grammar::SOURCE_RULES) { ; }
+        default { croak("Cannot change options on ", $state) }
     }
-    $result;
+
+    my $source = $args{"source"};
+    if (defined $source) {
+       croak("Cannot source grammar with defined rules") if $state ne Parse::Marpa::Grammar::NEW;
+       source_grammar($grammar, $source);
+    }
+
+    while (my ($option, $value) = each %args) {
+        given ($option) {
+            when ("source") { ; } # already dealt with
+            when ("rules") {
+                croak("Perl rules not allowed with sourced grammar")
+                    if $state eq Parse::Marpa::Grammar::SOURCE_RULES;
+                add_user_rules($grammar, $value);
+                $grammar->[ Parse::Marpa::Grammar::STATE ] = Parse::Marpa::Grammar::PERL_RULES;
+            }
+            when ("terminals") {
+                croak("Perl terminals not allowed with sourced grammar")
+                    if $state eq Parse::Marpa::Grammar::SOURCE_RULES;
+                add_user_terminals($grammar, $value);
+                $grammar->[ Parse::Marpa::Grammar::STATE ] = Parse::Marpa::Grammar::PERL_RULES;
+            }
+            when ("start") {
+                $grammar->[ Parse::Marpa::Grammar::START ] = $value;
+                $grammar->[ Parse::Marpa::Grammar::STATE ] = Parse::Marpa::Grammar::PERL_RULES;
+            }
+            when ("academic") { $grammar->[ Parse::Marpa::Grammar::ACADEMIC ] = $value; }
+            when ("default_null_value") {
+                $grammar->[ Parse::Marpa::Grammar::DEFAULT_NULL_VALUE ] = $value;
+            }
+            when ("default_action") {
+                $grammar->[ Parse::Marpa::Grammar::DEFAULT_ACTION ] = $value;
+            }
+            when ("default_lex_prefix") {
+                $grammar->[ Parse::Marpa::Grammar::DEFAULT_LEX_PREFIX ] = $value;
+            }
+            when ("default_lex_suffix") {
+                $grammar->[ Parse::Marpa::Grammar::DEFAULT_LEX_SUFFIX ] = $value;
+            }
+            when ("ambiguous_lex") {
+                $grammar->[ Parse::Marpa::Grammar::AMBIGUOUS_LEX ] = $value;
+            }
+            when ("trace_file_handle") {
+                $grammar->[ Parse::Marpa::Grammar::TRACE_FILE_HANDLE ] = $value;
+            }
+            when ("trace_rules") {
+                $grammar->[ Parse::Marpa::Grammar::TRACE_RULES ] = $value;
+            }
+            when ("location_callback") {
+                croak("location callback not yet implemented");
+            }
+            when ("volatile") {
+                $grammar->[ Parse::Marpa::Grammar::VOLATILE ] = $value;
+            }
+            when ("warnings") {
+                $grammar->[ Parse::Marpa::Grammar::WARNINGS ] = $value;
+            }
+            when ("preamble") {
+                $grammar->[ Parse::Marpa::Grammar::PREAMBLE ] = $value;
+            }
+        }
+    }
+    
+    # precompute( $grammar );
+
+    $grammar;
 }
 
 # returns undef if there was a problem
-sub compile {
+sub precompute {
     my $grammar = shift;
-    my $start = shift;
 
-    my $academic = $grammar->[ Parse::Marpa::Grammar::ACADEMIC ];
+    my $trace_fh = $grammar->[ Parse::Marpa::Grammar::TRACE_FILE_HANDLE ];
+    local($Parse::Marpa::This::trace_fh) = $trace_fh;
 
     nulling($grammar);
     nullable($grammar) or return $grammar;
     input_reachable($grammar);
+
+    my $start = $grammar->[ Parse::Marpa::Grammar::START ];
+    croak("No start symbol specified") unless defined $start;
     set_start( $grammar, $start );
+
     start_reachable($grammar);
-    if ($academic) {
+    if ( $grammar->[ Parse::Marpa::Grammar::ACADEMIC ] ) {
         setup_academic_grammar($grammar);
     }
     else {
@@ -342,11 +364,53 @@ sub compile {
     }
     create_NFA($grammar);
     create_SDFA($grammar);
+    if ($grammar-> [ Parse::Marpa::Grammar::WARNINGS ]) {
+       for my $symbol (@{inaccessible_symbols($grammar)}) {
+            say $trace_fh "Inaccessible symbol: $symbol";
+       }
+       for my $symbol (@{unproductive_symbols($grammar)}) {
+            say $trace_fh "Unproductive symbol: $symbol";
+       }
+    }
 
+    $grammar->[ Parse::Marpa::Grammar::STATE ] = Parse::Marpa::Grammar::PRECOMPUTED;
     $grammar;
 }
 
-# Viewing Methods (for debugging)
+# deep copy grammar
+# works, but strengthens weak refs
+sub compile {
+    my $grammar = shift;
+    my $d = Data::Dumper->new([$grammar], ["grammar"]);
+    $d->Purity(1);
+    return $d->Dump();
+}
+
+sub decompile {
+    my $compiled_grammar = shift;
+    my $grammar;
+    {
+        local $SIG{__WARN__} = sub {
+            carp($_[0]);
+            croak("Marpa got a warning from Data::Dumper and can't continue");
+        };
+        eval $compiled_grammar;
+    }
+
+    # Eliminate or weaken all circular references
+    my $symbol_hash = $grammar->[ Parse::Marpa::Grammar::SYMBOL_HASH ];
+    while (my ($name, $ref) = each %{$symbol_hash}) {
+        weaken($symbol_hash->{$name} = $ref);
+    }
+    for my $symbol (@{$grammar->[ Parse::Marpa::Grammar::SYMBOLS]}) {
+        $symbol->[Parse::Marpa::Symbol::LHS] = undef;
+        $symbol->[Parse::Marpa::Symbol::RHS] = undef;
+    }
+    $grammar->[ Parse::Marpa::Grammar::STATE ] = Parse::Marpa::Grammar::DUMPED;
+    $grammar;
+
+}
+
 
 sub show_symbol {
     my $symbol = shift;
@@ -676,32 +740,13 @@ sub add_terminal {
 
     $priority //= 0;
 
-    my ( $symbol_hash, $symbols,
-        $default_null_value,
-        $default_lex_prefix,
-        $default_lex_suffix,
+    my (
+        $symbol_hash, $symbols, $default_null_value
     ) = @{$grammar}[
             Parse::Marpa::Grammar::SYMBOL_HASH,
             Parse::Marpa::Grammar::SYMBOLS,
             Parse::Marpa::Grammar::DEFAULT_NULL_VALUE,
-            Parse::Marpa::Grammar::DEFAULT_LEX_PREFIX,
-            Parse::Marpa::Grammar::DEFAULT_LEX_SUFFIX,
-        ];
-
-    my $compiled_regex;
-    if ( defined $regex ) {
-        if ( "" =~ $regex ) {
-            croak("Attempt to add nullable terminal: $name");
-        }
-        $prefix //= $default_lex_prefix;
-        $suffix //= $default_lex_suffix;
-        $compiled_regex = qr/
-            \G
-            (?<mArPa_prefix>$prefix)
-            (?<mArPa_match>$regex)
-            (?<mArPa_suffix>$suffix)
-        /xms;
-    }
+    ];
 
     # I allow redefinition of a LHS symbol as a terminal
     # I need to test that this works, or disallow it
@@ -716,12 +761,16 @@ sub add_terminal {
             Parse::Marpa::Symbol::INPUT_REACHABLE,
             Parse::Marpa::Symbol::NULLING,
             Parse::Marpa::Symbol::REGEX,
+            Parse::Marpa::Symbol::PREFIX,
+            Parse::Marpa::Symbol::SUFFIX,
             Parse::Marpa::Symbol::ACTION,
             Parse::Marpa::Symbol::TERMINAL,
             Parse::Marpa::Symbol::PRIORITY,
         ] = (
             1, 0,
-            $compiled_regex,
+            $regex,
+            $prefix,
+            $suffix,
             $action,
             1,
             $priority,
@@ -742,13 +791,15 @@ sub add_terminal {
         Parse::Marpa::Symbol::NULLING,
         Parse::Marpa::Symbol::NULL_VALUE,
         Parse::Marpa::Symbol::REGEX,
+        Parse::Marpa::Symbol::ACTION,
         Parse::Marpa::Symbol::TERMINAL,
         Parse::Marpa::Symbol::PRIORITY,
     ] = (
         $symbol_count, $name, [], [],
         0, 1, 0,
         $default_null_value,
-        $compiled_regex,
+        $regex,
+        $action,
         1,
         $priority,
     );
@@ -2645,11 +2696,11 @@ use constant TRACE_ITERATION_CHANGES  => 12;
 use constant TRACE_EVALUATION_CHOICES => 13; 
 use constant DEFAULT_PARSE_SET        => 14;
 use constant TRACE_COMPLETIONS        => 15; 
-use constant LOCATION_CALLBACK        => 16;
+# use constant LOCATION_CALLBACK        => 16;
 use constant PACKAGE                  => 17; # special "safe" namespace
 use constant TRACE_ACTIONS            => 18;
 use constant AMBIGUOUS_LEX            => 19;
-use constant DEFAULT_ACTION           => 20;
+# use constant DEFAULT_ACTION           => 20;
 use constant VOLATILE                 => 21;
 use constant LEXERS                   => 22; # an array, indexed by symbol id,
                                              # of the lexer for each symbol
@@ -2849,6 +2900,40 @@ sub set_actions {
 
 } # sub set_actions
 
+sub compile_regexes {
+    my $grammar           = shift;
+    my (
+        $symbols,
+        $default_lex_prefix,
+        $default_lex_suffix,
+    ) = @{$grammar}[
+            Parse::Marpa::Grammar::SYMBOLS,
+            Parse::Marpa::Grammar::DEFAULT_LEX_PREFIX,
+            Parse::Marpa::Grammar::DEFAULT_LEX_SUFFIX,
+    ];
+
+    SYMBOL: for my $symbol (@$symbols) {
+        my $regex = $symbol-> [ Parse::Marpa::Symbol::REGEX ];
+        next SYMBOL unless defined $regex;
+        if ("" =~ $regex) {
+            my $name = $symbol-> [ Parse::Marpa::Symbol::NAME ];
+            croak("Attempt to add nullable terminal: ", $name)
+        }
+        my $prefix
+            = $symbol-> [ Parse::Marpa::Symbol::PREFIX ] // $default_lex_prefix;
+        my $suffix
+            = $symbol-> [ Parse::Marpa::Symbol::SUFFIX ] // $default_lex_suffix;
+        my $compiled_regex = qr/
+            \G
+            (?<mArPa_prefix>$prefix)
+            (?<mArPa_match>$regex)
+            (?<mArPa_suffix>$suffix)
+        /xms;
+        $symbol-> [ Parse::Marpa::Symbol::REGEX ] = $compiled_regex;
+    } # SYMBOL
+
+}
+
 sub set_priorities {
     my $grammar           = shift;
     my $priorities        = [];
@@ -2894,6 +2979,45 @@ sub set_priorities {
     $priorities;
 
 } # sub set_priorities
+
+sub eval_grammar {
+    my $parse = shift;
+    my $grammar = shift;
+    my $preamble = shift;
+    my $default_action = shift;
+
+    my $package
+        = $parse-> [ Parse::Marpa::Parse::PACKAGE ]
+        = sprintf("Parse::Marpa::P_%x", $parse_number++);
+
+    $preamble //= $grammar->[ Parse::Marpa::Grammar::PREAMBLE ];
+    $default_action //= $grammar->[ Parse::Marpa::Grammar::DEFAULT_ACTION ];
+
+    if (defined $preamble) {
+        {
+            local $SIG{__WARN__} = sub {0};
+            eval (
+                "package " . $package . ";\n"
+                . $preamble
+            );
+        }
+        if ($@) {
+            croak(
+                "Compile time error evaluating preamble, code is:\n",
+                $preamble,
+                "\nCompile time error evaluating preamble\n",
+                $@
+            );
+        }
+    }
+
+    compile_regexes($grammar);
+    @{$parse}[ LEXERS, LEXABLES_BY_STATE ]
+        = set_actions($grammar, $package, $default_action);
+    $parse->[ PRIORITIES ] = set_priorities($grammar);
+    $grammar->[ Parse::Marpa::Grammar::STATE ] = Parse::Marpa::Grammar::EVALED;
+
+}
 
 sub new {
     my $class   = shift;
@@ -2945,10 +3069,10 @@ sub new {
         "Don't recognize parse() grammar arg has wrong class: $grammar_class")
         unless $grammar_class eq "Parse::Marpa";
 
-    # deep copy grammar
-    # works, but strengthens weak refs
-
-    # This could be made more efficient with a custom routine
+    $trace_fh = $grammar->[ Parse::Marpa::Grammar::TRACE_FILE_HANDLE ]
+        unless defined $trace_fh;
+    local($Parse::Marpa::This::trace_fh) = $trace_fh;
+    local($Parse::Marpa::This::trace_actions) = $trace_actions;
 
     my $problems = $grammar->[ Parse::Marpa::Grammar::PROBLEMS ];
     if ($problems) {
@@ -2960,87 +3084,52 @@ sub new {
        return;
     }
 
-    {
-        my $grammar_copy;
-        my $d = Data::Dumper->new([$grammar], ["grammar_copy"]);
-        $d->Purity(1);
-        local $SIG{__WARN__} = sub {
-            carp($_[0]);
-            croak("Marpa got a warning from Data::Dumper and can't continue");
-        };
-        eval $d->Dump();
-        $grammar = $grammar_copy;
+    if ($grammar->[ Parse::Marpa::Grammar::ACADEMIC ]) {
+       say $trace_fh "Attempt to parse grammar marked academic";
+       say $trace_fh "Marpa cannot proceed";
+       return;
     }
 
-    # Eliminate or weaken all circular references
-    my $symbol_hash = $grammar->[ Parse::Marpa::Grammar::SYMBOL_HASH ];
-    while (my ($name, $ref) = each %{$symbol_hash}) {
-        weaken($symbol_hash->{$name} = $ref);
-    }
-    for my $symbol (@{$grammar->[ Parse::Marpa::Grammar::SYMBOLS]}) {
-        $symbol->[Parse::Marpa::Symbol::LHS] = undef;
-        $symbol->[Parse::Marpa::Symbol::RHS] = undef;
-    }
+    STATE: while (my $state = $grammar->[ Parse::Marpa::Grammar::STATE ]) {
+        last STATE if $state eq Parse::Marpa::Grammar::EVALED;
+        given ($state) {
+            when(Parse::Marpa::Grammar::PERL_RULES) { $grammar->precompute(); }
+            when(Parse::Marpa::Grammar::SOURCE_RULES) { $grammar->precompute(); }
+            when(Parse::Marpa::Grammar::PRECOMPUTED) {
+                # This could be made more efficient with a custom routine
+                # allow the user to use a grammar "in place"
+                my $compiled_grammar = Parse::Marpa::compile($grammar);
+                $grammar = Parse::Marpa::decompile($compiled_grammar);
+            }
+            when (Parse::Marpa::Grammar::DUMPED) {
+                eval_grammar($parse, $grammar, $preamble, $default_action);
+            }
+            when (Parse::Marpa::Grammar::IN_USE) {
+                croak("Attempt to parse grammar already in use");
+            }
+            when (Parse::Marpa::Grammar::NEW) {
+                croak("Attempt to parse grammar without rules");
+            }
+            default {
+                croak("Attempt to parse grammar in inappropriate state\nAttempt to parse ", $state);
+            }
+        }
+    } # while ne EVALED
+
+    $grammar->[ Parse::Marpa::Grammar::STATE ] = Parse::Marpa::Grammar::IN_USE;
 
     $ambiguous_lex = $grammar->[ Parse::Marpa::Grammar::AMBIGUOUS_LEX ]
         unless defined $ambiguous_lex;
-
-    $trace_fh = $grammar->[ Parse::Marpa::Grammar::TRACE_FILE_HANDLE ]
-        unless defined $trace_fh;
-    local($Parse::Marpa::This::trace_fh) = $trace_fh;
-    local($Parse::Marpa::This::trace_actions) = $trace_actions;
-
-    $default_action = $grammar->[ Parse::Marpa::Grammar::DEFAULT_ACTION ]
-        unless defined $default_action;
 
     # volatile can be set, but never unset
     $volatile = $grammar->[ Parse::Marpa::Grammar::VOLATILE ]
         unless $volatile;
 
-    my (
-        $SDFA,
-        $location_callback,
-    ) = @{$grammar}[
-        Parse::Marpa::Grammar::SDFA,
-        Parse::Marpa::Grammar::LOCATION_CALLBACK,
-    ];
-
-    croak("Attempt to parse grammar with empty SDFA")
-        if not defined $SDFA
-            or not scalar @$SDFA;
-
-    my $package = sprintf("Parse::Marpa::P_%x", $parse_number++);
-
-    $preamble //= $grammar->[ Parse::Marpa::Grammar::PREAMBLE ];
-
-    if (defined $preamble) {
-        {
-            local $SIG{__WARN__} = sub {0};
-            eval (
-                "package " . $package . ";\n"
-                . $preamble
-            );
-        }
-        if ($@) {
-            croak(
-                "Compile time error evaluating preamble, code is:\n",
-                $preamble,
-                "\nCompile time error evaluating preamble\n",
-                $@
-            );
-        }
-    }
-
-
-    # I should do (or at least allow) a deep copy of the grammar
-    # rather than creating closures "in place"
-    my ($lexers, $lexables_by_state)
-        = set_actions($grammar, $package, $default_action);
-    my $priorities = set_priorities($grammar);
-
     my $earley_hash;
     my $earley_set;
     my $item;
+
+    my $SDFA = $grammar->[ Parse::Marpa::Grammar::SDFA ];
 
     # A bit of a cheat here: I rely on an assumption about the numbering
     # of the SDFA states -- specifically, that state 0 contains the
@@ -3077,29 +3166,17 @@ sub new {
         EARLEY_HASHES,
         GRAMMAR,
         EARLEY_SETS,
-        LOCATION_CALLBACK,
-        PACKAGE,
-        DEFAULT_ACTION,
         AMBIGUOUS_LEX,
         TRACE_FILE_HANDLE,
         TRACE_ACTIONS,
-        LEXERS,
-        LEXABLES_BY_STATE,
-        PRIORITIES,
     ] = (
         0, 0, 0,
         [$earley_hash],
         $grammar,
         [$earley_set],
-        $location_callback,
-        $package,
-        $default_action,
         $ambiguous_lex,
         $trace_fh,
         $trace_actions,
-        $lexers,
-        $lexables_by_state,
-        $priorities,
     );
 
     bless $parse, $class;
@@ -3353,7 +3430,7 @@ sub lex_string {
                     push(@alternatives, [ $lexable, $match, $length ]);
                     if ($Parse::Marpa::This::trace_lex_matches) {
                         print $Parse::Marpa::This::trace_fh
-                            "Matched Regex for ", $lexable->[ Parse::Marpa::Symbol::NAME ],
+                            "Matched regex for ", $lexable->[ Parse::Marpa::Symbol::NAME ],
                             " at $pos: ", $match, "\n";
                     }
                     last LEXABLE unless $ambiguous_lex;

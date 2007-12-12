@@ -1,4 +1,4 @@
-semantics are perl5.  version is 0.1.52.  the start symbol is
+semantics are perl5.  version is 0.1.53.  the start symbol is
 grammar.  a preamble is q{
     our $whitespace = qr/(?:[ \t]*(?:\n|(?:\#[^\n]*\n)))*[ \t]*/;
     our $default_lex_prefix = $whitespace;
@@ -20,7 +20,7 @@ grammar: paragraphs, whitespace lines.  concatenate lines.
 
 paragraphs: empty line separated paragraph sequence.  concatenate lines.
 
-paragraph: empty paragraph.
+comment: NOT USED: paragraph: empty paragraph.
 
 paragraph: definition paragraph.  concatenate lines.
 
@@ -28,9 +28,9 @@ paragraph: production paragraph.  concatenate lines.
 
 paragraph: terminal paragraph.  concatenate lines.
 
-empty paragraph: whitespace.
+note: (not used) empty paragraph: whitespace.
 
-comment paragraph: comment sequence.  concatenate lines.
+[ comment paragraph: comment sequence.  concatenate lines. ]
 
 definition paragraph: definition sequence. concatenate lines.
 
@@ -98,9 +98,9 @@ non-structural terminal sentence: comment sentence.  concatenate lines.
 
 definition: setting, period.  q{ $Parse::Marpa::This::v->[0] }.
 
-definition: comment sentence.  concatenate lines.
+definition: comment sentence.
 
-definition: bracketed comment.  concatenate lines.
+definition: bracketed comment.
 
 definition: default action definition.  concatenate lines.
 
@@ -395,7 +395,7 @@ match double quoted string using q{
 
 version number matches qr/(\d+\.)*\d+/.
 
-comment matches qr/#.*\n/.
+[ NOT USED: comment matches qr/#.*\n/. ]
 
 symbol word matches qr/[a-zA-Z_][a-zA-Z0-9_-]*/.
 

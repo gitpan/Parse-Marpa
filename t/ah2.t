@@ -23,9 +23,6 @@ my $g = new Parse::Marpa(
         [ "A", [qw/E/] ],
         [ "E" ],
     ],
-    terminals => [
-        [ "a" => ["a"] ],
-    ],
     default_null_value => "",
     default_action =>
 <<'EOCODE'
@@ -35,6 +32,14 @@ my $g = new Parse::Marpa(
      "(" . join(";", @$Parse::Marpa::This::v) . ")";
 EOCODE
 );
+
+$g->set(
+    terminals => [
+        [ "a" => ["a"] ],
+    ],
+);
+
+$g->precompute();
 
 is( $g->show_rules(), <<'EOS', "Aycock/Horspool Rules" );
 0: S -> A A A A /* nullable !useful */

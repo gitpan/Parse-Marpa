@@ -23,11 +23,16 @@ my $g = new Parse::Marpa(
         [ "A",  [qw/E/] ],
         [ "E" ],
     ],
+    academic => 1,
+);
+
+$g->set(
     terminals => [
         [ "a" => ["a"] ],
     ],
-    academic => 1,
 );
+
+$g->precompute();
 
 is( $g->show_rules(), <<'EOS', "Aycock/Horspool Rules" );
 0: S' -> S /* nullable */
