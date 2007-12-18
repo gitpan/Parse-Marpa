@@ -82,14 +82,13 @@ my @expected = qw(0 1 1 3 4 8 12 21 33 55 88 144 232 );
 for my $n (1 .. 12) {
 
     my $parse = new Parse::Marpa::Parse($g);
-    my $minus = $g->get_symbol("Minus");
-    my $number = $g->get_symbol("Number");
-    $parse->lex_earleme([$number, 6, 1]);
+    my $minus = $g->get_canonical_symbol("Minus");
+    my $number = $g->get_canonical_symbol("Number");
+    $parse->earleme([$number, 6, 1]);
     for my $i (1 .. $n) {
-        $parse->lex_earleme([$minus, "-", 1]);
+        $parse->earleme([$minus, "-", 1]);
     }
-    $parse->lex_earleme([$number, 1, 1]);
-    $parse->lex_end();
+    $parse->earleme([$number, 1, 1]);
 
     $parse->initial();
 
@@ -98,7 +97,6 @@ for my $n (1 .. 12) {
     # This is for debugging, after all
     PARSE: for (my $i = 0;  1; $i++) {
         my $value = $parse->value();
-        # print "Length $n, Parse $i, value=$value\n";
         $parse_count++;
         last PARSE unless $parse->next();
     }

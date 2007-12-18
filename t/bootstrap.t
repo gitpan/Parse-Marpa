@@ -3,60 +3,28 @@ use strict;
 use warnings;
 use Test::More tests => 5;
 use Fatal qw(open close chdir);
+use Carp;
+
+# probably won't work on windows
 
 BEGIN {
 	use_ok( 'Parse::Marpa' );
 }
 
 # program needs to be run either by Makefile or from t directory
-my $example_dir = $0 =~ m{t/} ? "example" : "../example";
-chdir($example_dir);
+my $bootstrap_dir = $0 =~ m{t/} ? "bootstrap" : "../bootstrap";
+chdir($bootstrap_dir);
 
-my $not_quite = "not_quite.marpa";
+my $exit_code;
 
-my $bootstrap;
-open my $oldout, ">&STDOUT";
-close STDOUT;
-open STDOUT, ">", \$bootstrap;
-{
-    local(@ARGV)=($not_quite);
-    do "bootstrap.pl" or die($!);
-    die($@) if $@;
-}
-open STDOUT, ">&", $oldout;
-ok($bootstrap, "bootstrapped version");
+$exit_code = system("touch not_quite.marpa");
+is($exit_code, 0, "touch not_quite.marpa");
 
-undef &canonical_symbol_name;
-undef &canonical_version;
-undef &gen_symbol_from_regex;
-undef &usage;
-undef &locator;
+$exit_code = system("make bootcopy1.pl");
+is($exit_code, 0, "make bootcopy1.pl");
 
-my $compile1;
-close STDOUT;
-open STDOUT, ">", \$compile1;
-{
-    local(@ARGV)=($not_quite);
-    eval $bootstrap;
-    die($@) if $@;
-}
-open STDOUT, ">&", $oldout;
-ok($compile1, "first compiled version");
+$exit_code = system("make bootcopy2.pl");
+is($exit_code, 0, "make bootcopy2.pl");
 
-undef &canonical_symbol_name;
-undef &canonical_version;
-undef &gen_symbol_from_regex;
-undef &usage;
-undef &locator;
-
-my $compile2;
-close STDOUT;
-open STDOUT, ">", \$compile2;
-{
-    local(@ARGV)=($not_quite);
-    eval $compile1;
-    die($@) if $@;
-}
-open STDOUT, ">&", $oldout;
-ok($compile2, "second compiled version");
-is($compile1, $compile2, "compiled versions are identical");
+$exit_code = system("cmp bootcopy1.pl bootcopy2.pl");
+is($exit_code, 0, "bootstraped copies identical");

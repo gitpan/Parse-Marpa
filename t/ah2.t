@@ -62,7 +62,7 @@ EOS
 is( $g->show_symbols(), <<'EOS', "Aycock/Horspool Symbols" );
 0: S, lhs=[0 4 5 6], rhs=[13]
 1: A, lhs=[1 2], rhs=[0 4 6 7 9 10 11 12]
-2: a, lhs=[], rhs=[1]
+2: a, lhs=[], rhs=[1] terminal
 3: E, lhs=[3], rhs=[2] nullable nulling
 4: S[], lhs=[], rhs=[] nullable nulling
 5: A[], lhs=[], rhs=[5 8 11 12] nullable nulling
@@ -80,12 +80,12 @@ is( $g->show_nullable_symbols(),
 is( $g->show_nulling_symbols(),
     "A[] E S['][] S[0:1][] S[0:2][] S[]",
     "Aycock/Horspool Nulling Symbols");
-is( $g->show_input_reachable_symbols(),
+is( $g->show_productive_symbols(),
     "A A[] E S S['] S['][] S[0:1] S[0:1][] S[0:2] S[0:2][] S[] a",
-    "Aycock/Horspool Input Reachable Symbols" );
-is( $g->show_start_reachable_symbols(),
+    "Aycock/Horspool Productive Symbols" );
+is( $g->show_accessible_symbols(),
     "A A[] E S S['] S['][] S[0:1] S[0:1][] S[0:2] S[0:2][] S[] a",
-    "Aycock/Horspool Start Reachable Symbols" );
+    "Aycock/Horspool Accessible Symbols" );
 
 is( $g->show_NFA(), <<'EOS', "Aycock/Horspool NFA" );
 S0: /* empty */
@@ -348,35 +348,35 @@ is( $parse->show_status(1),
     "Current Earley Set: 0; Furthest: 0\n" .  $sets_new,
     "Aycock/Horspool Parse Status before parse" );
 
-my $a = $g->get_symbol("a");
-$parse->lex_earleme([$a, "a", 1]);
+my $a = $g->get_canonical_symbol("a");
+$parse->earleme([$a, "a", 1]);
 
 is( $parse->show_status(1),
     "Current Earley Set: 1; Furthest: 1\n" .  $sets_at_0,
     "Aycock/Horspool Parse Status at 0" );
 
-$parse->lex_earleme([$a, "a", 1]);
+$parse->earleme([$a, "a", 1]);
 
 is( $parse->show_status(1),
     "Current Earley Set: 2; Furthest: 2\n" .  $sets_at_1,
     "Aycock/Horspool Parse Status at 1" );
 
-$parse->lex_earleme([$a, "a", 1]);
+$parse->earleme([$a, "a", 1]);
 
 is( $parse->show_status(1),
     "Current Earley Set: 3; Furthest: 3\n" .  $sets_at_2,
     "Aycock/Horspool Parse Status at 2" );
 
-$parse->lex_earleme([$a, "a", 1]);
+$parse->earleme([$a, "a", 1]);
 
 is( $parse->show_status(1),
     "Current Earley Set: 4; Furthest: 4\n" .  $sets_at_3,
     "Aycock/Horspool Parse Status at 3" );
 
-$parse->lex_end();
+$parse->end_input();
 
 is( $parse->show_status(1),
-    "Current Earley Set: 4; Furthest: 4\n" .  $sets_at_4,
+    "Current Earley Set: 5; Furthest: 4\n" .  $sets_at_4,
     "Aycock/Horspool Parse Status at 4" );
 
 # from Tye McQueen's Algorithm::Loops
@@ -415,8 +415,11 @@ PERMUTATION: for (;;) {
         $parse->initial($i);
         my $result = $parse->value();
         $total_count++;
-        if ($answer[$i] ne $result) {
-            diag( "got $result, expected "
+        if ($answer[$i] ne $$result) {
+            diag(
+                "got "
+                . $$result
+                . ", expected "
                 . $answer[$i]
                 . " for $i in ("
                 . join(",", @a)

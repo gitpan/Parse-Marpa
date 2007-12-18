@@ -45,16 +45,16 @@ EOS
 is($g->show_symbols(), <<'EOS', "Hopcroft/Ullman Symbols");
 0: S', lhs=[0], rhs=[]
 1: S, lhs=[1 2], rhs=[0 1 3]
-2: c, lhs=[], rhs=[0]
+2: c, lhs=[], rhs=[0] terminal
 3: A, lhs=[3 4], rhs=[1 2]
-4: a, lhs=[], rhs=[3 4]
-5: b, lhs=[], rhs=[3 4]
+4: a, lhs=[], rhs=[3 4] terminal
+5: b, lhs=[], rhs=[3 4] terminal
 EOS
 
 is($g->show_nullable_symbols(), "", "Hopcroft/Ullman Nullable Symbols");
 is($g->show_nulling_symbols(), "", "Hopcroft/Ullman Nulling Symbols");
-is($g->show_input_reachable_symbols(), 'A S S\' a b c', "Hopcroft/Ullman Input Reachable Symbols");
-is($g->show_start_reachable_symbols(), 'A S S\' a b c', "Hopcroft/Ullman Start Reachable Symbols");
+is($g->show_productive_symbols(), 'A S S\' a b c', "Hopcroft/Ullman Productive Symbols");
+is($g->show_accessible_symbols(), 'A S S\' a b c', "Hopcroft/Ullman Accessible Symbols");
 is($g->show_NFA(), <<'EOS', "Hopcroft/Ullman NFA");
 S0: /* empty */
  empty => S1

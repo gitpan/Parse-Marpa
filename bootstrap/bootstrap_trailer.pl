@@ -1,23 +1,30 @@
-$start_symbol //= "(undefined start symbol)";
-$semantics //= "not defined";
-$version //= -1;
+$new_start_symbol //= "(undefined start symbol)";
+$new_semantics //= "not defined";
+$new_version //= -1;
 
-croak("Version requested is ", $version, "\nVersion must match ", $Parse::Marpa::VERSION, " exactly.")
-   unless $version == $Parse::Marpa::VERSION;
+croak("Version requested is ", $new_version, "\nVersion must match ", $Parse::Marpa::VERSION, " exactly.")
+   unless $new_version == $Parse::Marpa::VERSION;
 
-croak("Semantics are ", $semantics, "\nThe only semantics currently available are perl5.")
-   unless $semantics eq "perl5";
+croak("Semantics are ", $new_semantics, "\nThe only semantics currently available are perl5.")
+   unless $new_semantics eq "perl5";
 
 my $g = new Parse::Marpa(
-    start => $start_symbol,
-    rules => $rules,
-    terminals => $terminals,
-    default_lex_prefix => $default_lex_prefix,
+    start => $new_start_symbol,
+    rules => $new_rules,
+    terminals => $new_terminals,
     warnings => 1,
 );
 
+$g->set(default_lex_prefix => $new_default_lex_prefix)
+    if defined $new_default_lex_prefix;
+$g->set(default_action => $new_default_action)
+    if defined $new_default_action;
+$g->set(default_null_value => $new_default_null_value)
+    if defined $new_default_null_value;
+
 my $parse = new Parse::Marpa::Parse(
    grammar=> $g,
+   preamble => $new_preamble,
 );
 
 sub locator {
@@ -42,7 +49,7 @@ my $spec;
 {
     local($RS) = undef;
     $spec = <GRAMMAR>;
-    if ((my $earleme = $parse->lex_string(\$spec)) >= 0) {
+    if ((my $earleme = $parse->text(\$spec)) >= 0) {
 	# print $parse->show_status();
 	# for the editors, line numbering starts at 1
 	# do something about this?
@@ -55,7 +62,6 @@ my $spec;
 	say STDERR +(" " x ($earleme-$line_start)), "^";
 	exit 1;
     }
-    $parse->lex_end();
 }
 
 unless ($parse->initial()) {
@@ -76,12 +82,14 @@ unless ($parse->initial()) {
     exit 1;
 }
 
-my $headers;
-{ local($RS) = undef; open(HEADERS, "<", "headers.pl"); $headers = <HEADERS>; }
+our $HEADER;
+my $header;
+{ local($RS) = undef; open(HEADER, "<", $header_file_name); $header = <HEADER>; }
 
-my $trailers;
-{ local($RS) = undef; open(TRAILERS, "<", "trailers.pl"); $trailers = <TRAILERS>; }
+our $TRAILER;
+my $trailer;
+{ local($RS) = undef; open(TRAILER, "<", $trailer_file_name); $trailer = <TRAILER>; }
 
 my $value = $parse->value();
-print $headers, $value, "\n", $trailers;
+print $header, $$value, "\n", $trailer;
 

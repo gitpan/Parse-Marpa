@@ -1,10 +1,19 @@
-* Change all carp's to 'say's to trace_fh
+* Incorporate Grune/Jacobs point about inaccessibility/unproductivity interaction.
 
-* Include version, semantics in grammar, for checking when compiled
-  form is read.
+* Deal with the issue of trace file handle for a grammar that is deep-copied.  Fall back
+  to STDERR, and allow override?
 
-* Use hash from implicit regex to keyword name to avoid redefining same
-  regex multiple times implicitly
+* Rename grammar when deep-copied.  Check that this works.
+
+* Test these traces, to ensure tracing reform did not break them:
+    TRACE_ITERATION_SEARCHES TRACE_ITERATION_CHANGES
+    TRACE_EVALUATION_CHOICES TRACE_COMPLETIONS TRACE_ACTIONS
+    TRACE_VALUES TRACE_PRIORITIES
+
+* Ensure Parse::Marpa::Internal::This::grammar set wherever appropriate.
+
+* Check version, semantics in grammar, for sourced grammars and
+  for source grammar itself.
 
 * Add right and left evaluation in rules
 
@@ -12,7 +21,7 @@
 
 * Speed-up for pre-computing lexables.  Grammar::LEXABLES, etc.
 
-* Test lexing suffixes.
+* Test (or remove?) lexing suffixes.
 
 * Allow macros:
      @VALUE
@@ -33,8 +42,6 @@
    - basic test for all branches of counted rules: matrix is
      keep/no-keep, separated yes/no, right/left,
      0-1, 1-1, 0-2, 0-5, 1-2, 1-5, 0-*, 1-*, 2-*, 5-*
-
-* (Someday) precedence declarations, a la yacc.
 
 * (Later) Look at Yacc macros yyerrok YYERROR YYACCEPT YYABORT YYRECOVERING.
 

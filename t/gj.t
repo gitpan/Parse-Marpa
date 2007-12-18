@@ -50,19 +50,19 @@ EOS
 is($g->show_symbols(), <<'EOS', "Grune/Jacobs Symbols");
 0: S', lhs=[0], rhs=[]
 1: S, lhs=[1], rhs=[0]
-2: $, lhs=[], rhs=[0]
+2: $, lhs=[], rhs=[0] terminal
 3: E, lhs=[2 3], rhs=[1 2 5]
-4: -, lhs=[], rhs=[2]
+4: -, lhs=[], rhs=[2] terminal
 5: T, lhs=[4 5], rhs=[2 3]
-6: n, lhs=[], rhs=[4]
-7: (, lhs=[], rhs=[5]
-8: ), lhs=[], rhs=[5]
+6: n, lhs=[], rhs=[4] terminal
+7: (, lhs=[], rhs=[5] terminal
+8: ), lhs=[], rhs=[5] terminal
 EOS
 
 is($g->show_nullable_symbols(), "", "Grune/Jacobs Nullable Symbols");
 is($g->show_nulling_symbols(), "", "Grune/Jacobs Nulling Symbols");
-is($g->show_input_reachable_symbols(), '$ ( ) - E S S\' T n', "Grune/Jacobs Input Reachable Symbols");
-is($g->show_start_reachable_symbols(), '$ ( ) - E S S\' T n', "Grune/Jacobs Start Reachable Symbols");
+is($g->show_productive_symbols(), '$ ( ) - E S S\' T n', "Grune/Jacobs Productive Symbols");
+is($g->show_accessible_symbols(), '$ ( ) - E S S\' T n', "Grune/Jacobs Accessible Symbols");
 is($g->show_NFA(), <<'EOS', "Grune/Jacobs NFA");
 S0: /* empty */
  empty => S1

@@ -28,13 +28,12 @@ my $test = sub {
             [ "a" => [qr/a/] ],
         ],
     );
-    my $a = $g->get_symbol("a");
+    my $a = $g->get_canonical_symbol("a");
     my $parse = new Parse::Marpa::Parse($g);
-    $parse->lex_earleme([$a, "a", 1]);
-    $parse->lex_earleme([$a, "a", 1]);
-    $parse->lex_earleme([$a, "a", 1]);
-    $parse->lex_earleme([$a, "a", 1]);
-    $parse->lex_end();
+    $parse->earleme([$a, "a", 1]);
+    $parse->earleme([$a, "a", 1]);
+    $parse->earleme([$a, "a", 1]);
+    $parse->earleme([$a, "a", 1]);
     $parse->initial();
     $parse->next();
     [ $g, $parse ];

@@ -64,16 +64,15 @@ EOCODE
 
 my $parse = new Parse::Marpa::Parse($g);
 
-my $op = $g->get_symbol("Op");
-my $number = $g->get_symbol("Number");
-$parse->lex_earleme([$number, 2, 1]);
-$parse->lex_earleme([$op, "-", 1]);
-$parse->lex_earleme([$number, 0, 1]);
-$parse->lex_earleme([$op, "*", 1]);
-$parse->lex_earleme([$number, 3, 1]);
-$parse->lex_earleme([$op, "+", 1]);
-$parse->lex_earleme([$number, 1, 1]);
-$parse->lex_end();
+my $op = $g->get_canonical_symbol("Op");
+my $number = $g->get_canonical_symbol("Number");
+$parse->earleme([$number, 2, 1]);
+$parse->earleme([$op, "-", 1]);
+$parse->earleme([$number, 0, 1]);
+$parse->earleme([$op, "*", 1]);
+$parse->earleme([$number, 3, 1]);
+$parse->earleme([$op, "+", 1]);
+$parse->earleme([$number, 1, 1]);
 
 is( $g->show_rules(), <<'END_RULES', "Ambiguous Equation Rules" );
 0: E -> E Op E
@@ -120,9 +119,9 @@ $parse->initial();
 PARSE: for my $i (0 .. 10) {
     my $value = $parse->value();
     if ($i > $#expected) {
-       fail("Ambiguous equation has extra value: $value\n");
+       fail("Ambiguous equation has extra value: " . $$value . "\n");
     } else {
-        is($value, $expected[$i], "Ambiguous Equation Value $i");
+        is($$value, $expected[$i], "Ambiguous Equation Value $i");
     }
     last PARSE unless $parse->next();
 }

@@ -146,8 +146,7 @@ my @expected = (
     '(6-(-(--(-1))))==4',
 );
 
-$parse->lex_string(\("6-----1"));
-$parse->lex_end();
+$parse->text(\("6-----1"));
 
 $parse->initial();
 
@@ -161,9 +160,9 @@ PARSE: for my $i (0 .. 20) {
     my $value = $parse->value();
     # print $parse->show();
     if ($i > $#expected) {
-       fail("Minuses equation has extra value: $value\n");
+       fail("Minuses equation has extra value: " . $$value . "\n");
     } else {
-        is($value, $expected[$i], "Minuses Equation Value $i");
+        is($$value, $expected[$i], "Minuses Equation Value $i");
     }
     last PARSE unless $parse->next();
 }

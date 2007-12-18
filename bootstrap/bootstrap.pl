@@ -7,16 +7,19 @@ use English;
 use lib "../lib";
 use Parse::Marpa;
 use Carp;
-use Fatal;
+use Fatal qw(open close);
 
 sub usage {
-   die("usage: $0 grammar-file\n");
+   die("usage: $0 grammar-file header trailer\n");
 }
 
-usage() unless scalar @ARGV == 1;
+usage() unless scalar @ARGV == 3;
 
 my $grammar_file_name = shift @ARGV;
+my $header_file_name  = shift @ARGV;
+my $trailer_file_name = shift @ARGV;
 
+our $GRAMMAR; # to silence spurious warning
 open(GRAMMAR, "<", $grammar_file_name) or die("Cannot open $grammar_file_name: $!");
 
 my $discard = undef;
@@ -33,45 +36,12 @@ our $default_lex_prefix = $whitespace;
 my $preamble = <<'EOCODE';
     our $whitespace = qr/(?:[ \t]*(?:\n|(?:\#[^\n]*\n)))*[ \t]*/;
     our $default_lex_prefix = $whitespace;
+    our %strings;
 EOCODE
 
 my %regex;
 
 # URL escaping
-sub gen_symbol_from_regex {
-    my $regex = shift;
-    state $uniq_number;
-    $uniq_number //= 0;
-    given ($regex) {
-        when (/^qr/) { $regex = substr($regex, 3, -1); }
-        default { $regex = substr($regex, 1, -1); }
-    }
-    my $symbol = $regex{$regex};
-    return $symbol if defined $symbol;
-    $symbol = substr($regex, 0, 20);
-    $symbol =~ s/%/%%/g;
-    $symbol =~ s/([^[:alnum:]_-])/sprintf("%%%.2x", ord($1))/ge;
-    $symbol .= sprintf(":k%x", $uniq_number++);
-    $regex{$regex} = $symbol;
-    ($symbol, 1);
-}
-
-sub canonical_symbol_name {
-    my $symbol = lc shift;
-    $symbol =~ s/[-_\s]+/-/g;
-    $symbol;
-}
-
-sub canonical_version {
-    my $version = shift;
-    my @version = split(/\./, $version);
-    my $result = sprintf("%d.", (shift @version));
-    for my $subversion (@version) {
-       $result .= sprintf("%03d", $subversion);
-    }
-    $result;
-}
-
 my $rules = [
     [ "grammar", [ "paragraph sequence" ], $concatenate_lines ],
     [ "grammar", [ "paragraph sequence", "whitespace lines" ], $concatenate_lines ],
@@ -112,7 +82,7 @@ my $rules = [
             my $action = $Parse::Marpa::This::v->[3];
             my $other_key_value = join(",\n", map { $_ // "" } @{$Parse::Marpa::This::v}[0,2,4]);
 	    my $result =
-                'push(@$rules, '
+                'push(@$new_rules, '
                 . "{\n"
                 . $Parse::Marpa::This::v->[1] . ",\n"
                 . (defined $action ? ($action . ",\n") : "")
@@ -121,7 +91,7 @@ my $rules = [
             ;
             our @implicit_terminals;
             if (@implicit_terminals) {
-                $result .= "\n" . 'push(@$terminals,' . "\n";
+                $result .= "\n" . 'push(@$new_terminals,' . "\n";
                 while (my $implicit_terminal = shift @implicit_terminals) {
                     $result .= "    [" . $implicit_terminal . "],\n";
                 }
@@ -129,7 +99,7 @@ my $rules = [
             }
             our @implicit_rules;
             if (@implicit_rules) {
-                $result .= "\n" . 'push(@$rules, ' . "\n";
+                $result .= "\n" . 'push(@$new_rules, ' . "\n";
                 while (my $implicit_production = shift @implicit_rules) {
                     $result .= "    {" . $implicit_production . "},\n";
                 }
@@ -204,7 +174,7 @@ my $rules = [
   	  "perl5 keyword", 
 	],
         q{
-            q{my $semantics = '}
+            q{$new_semantics = '}
             . $Parse::Marpa::This::v->[3]
             . qq{';\n}
         }
@@ -217,7 +187,7 @@ my $rules = [
   	  "semantics keyword", 
 	],
         q{
-            q{my $semantics = '}
+            q{$new_semantics = '}
             . $Parse::Marpa::This::v->[0]
             . qq{';\n}
         }
@@ -230,8 +200,8 @@ my $rules = [
   	  "version number", 
 	],
         q{
-            q{my $version = '}
-            . ::canonical_version($Parse::Marpa::This::v->[3])
+            q{$new_version = '}
+            . Parse::Marpa::Source::canonical_version($Parse::Marpa::This::v->[3])
             . qq{';\n}
         }
     ],
@@ -243,8 +213,8 @@ my $rules = [
   	  "version keyword", 
 	],
         q{
-            q{my $version = '}
-            . ::canonical_version($Parse::Marpa::This::v->[0])
+            q{$new_version = '}
+            . Parse::Marpa::Source::canonical_version($Parse::Marpa::This::v->[0])
             . qq{';\n}
         }
     ],
@@ -257,7 +227,7 @@ my $rules = [
   	  "symbol phrase", 
 	],
         q{
-            q{my $start_symbol = "}
+            q{$new_start_symbol = "}
             . $Parse::Marpa::This::v->[4]
             . qq{";\n}
         }
@@ -271,7 +241,7 @@ my $rules = [
   	  "symbol keyword", 
 	],
         q{
-            q{my $start_symbol = }
+            q{$new_start_symbol = }
             . $Parse::Marpa::This::v->[0]
             . qq{;\n}
         }
@@ -286,7 +256,7 @@ my $rules = [
   	  "prefix keyword", 
 	],
         q{
-            q{our $default_lex_prefix = }
+            q{$new_default_lex_prefix = }
             . $Parse::Marpa::This::v->[0]
             . qq{;\n}
         }
@@ -301,7 +271,7 @@ my $rules = [
   	  "regex", 
 	],
         q{
-            q{our $default_lex_prefix = }
+            q{$new_default_lex_prefix = }
             . $Parse::Marpa::This::v->[5]
             . qq{;\n}
         }
@@ -324,7 +294,7 @@ my $rules = [
         "preamble definition",
         [ "a keyword", "preamble keyword", "is keyword", "string specifier", "period" ],
         q{
-            q{$preamble .= }
+            q{$new_preamble .= }
             . $Parse::Marpa::This::v->[3]
             . qq{;\n}
         }
@@ -339,7 +309,7 @@ my $rules = [
 	    "period",
 	],
         q{
-            q{my $default_action = }
+            q{$new_default_action = }
             . $Parse::Marpa::This::v->[0]
             . qq{;\n}
         }
@@ -391,7 +361,7 @@ my $rules = [
     {
 	lhs => "symbol phrase",
 	rhs => [ "symbol word" ],
-	action => q{ ::canonical_symbol_name(join("-", @$Parse::Marpa::This::v)) },
+	action => q{ Parse::Marpa::Source::canonical_symbol_name(join("-", @$Parse::Marpa::This::v)) },
 	min => 1,
     },
     {
@@ -509,7 +479,7 @@ my $rules = [
 	rhs => [ "regex", ],
 	action => q{
             my $regex = $Parse::Marpa::This::v->[0];
-            my ($symbol, $new) = ::gen_symbol_from_regex($regex);
+            my ($symbol, $new) = Parse::Marpa::Source::gen_symbol_from_regex($regex);
             our @implicit_terminals;
             if ($new) {
                 push(@implicit_terminals,
@@ -548,7 +518,7 @@ my $rules = [
         lhs => "terminal sentence",
 	rhs => [ "symbol phrase", "matches keyword", "regex", "period" ],
 	action => q{
-	    q{push(@$terminals, [ "}
+	    q{push(@$new_terminals, [ "}
 	    . $Parse::Marpa::This::v->[0]
 	    . q{" => [ }
 	    . $Parse::Marpa::This::v->[2]
@@ -559,7 +529,7 @@ my $rules = [
         lhs => "terminal sentence",
 	rhs => [ "match keyword", "symbol phrase", "using keyword", "string specifier", "period" ],
 	action => q{
-	    q{push(@$terminals, [ "}
+	    q{push(@$new_terminals, [ "}
 	    . $Parse::Marpa::This::v->[1]
 	    . q{" => }
 	    . $Parse::Marpa::This::v->[3]
@@ -665,31 +635,31 @@ my $terminals = [
 ];
 
 for my $terminal_rule (@$terminals) {
-    $terminal_rule->[0] = canonical_symbol_name($terminal_rule->[0]);
+    $terminal_rule->[0] = Parse::Marpa::Source::canonical_symbol_name($terminal_rule->[0]);
 }
 
 for my $rule (@$rules) {
     given (ref $rule) {
         when ("ARRAY") {
-	    $rule->[0] = canonical_symbol_name($rule->[0]);
+	    $rule->[0] = Parse::Marpa::Source::canonical_symbol_name($rule->[0]);
 	    my $rhs = $rule->[1];
 	    my $new_rhs = [];
 	    for my $symbol (@$rhs) {
-		push(@$new_rhs, canonical_symbol_name($symbol));
+		push(@$new_rhs, Parse::Marpa::Source::canonical_symbol_name($symbol));
 	    }
 	    $rule->[1] = $new_rhs;
 	}
 	when ("HASH") {
 	     for (keys %$rule) {
-	         when ("lhs") { $rule->{$_} = canonical_symbol_name($rule->{$_}) }
+	         when ("lhs") { $rule->{$_} = Parse::Marpa::Source::canonical_symbol_name($rule->{$_}) }
 	         when ("rhs") {
 		     my $new_rhs = [];
 		     for my $symbol (@{$rule->{$_}}) {
-			 push(@$new_rhs, canonical_symbol_name($symbol));
+			 push(@$new_rhs, Parse::Marpa::Source::canonical_symbol_name($symbol));
 		     }
 		     $rule->{$_} = $new_rhs;
 		 }
-	         when ("separator") { $rule->{$_} = canonical_symbol_name($rule->{$_}) }
+	         when ("separator") { $rule->{$_} = Parse::Marpa::Source::canonical_symbol_name($rule->{$_}) }
 	     }
 	}
 	default { croak ("Invalid rule ref: ", ($_ ? $_ : "undefined")) }
@@ -697,21 +667,20 @@ for my $rule (@$rules) {
 }
 
 my $g = new Parse::Marpa(
-    start => canonical_symbol_name("grammar"),
+    start => Parse::Marpa::Source::canonical_symbol_name("grammar"),
     rules => $rules,
     terminals => $terminals,
     # default_action => $default_action,
     # ambiguous_lex => 0,
     default_lex_prefix => $default_lex_prefix,
     # trace_rules => 1,
-   preamble => $preamble,
+    preamble => $preamble,
+    warnings => 0,
 );
 
 my $parse = new Parse::Marpa::Parse(
    grammar=> $g,
-   # trace_actions => 1,
 );
-# $parse->trace("lex");
 
 # print STDERR $g->show_rules(), "\n";
 
@@ -754,7 +723,7 @@ my $spec;
 {
     local($RS) = undef;
     $spec = <GRAMMAR>;
-    if ((my $earleme = $parse->lex_string(\$spec)) >= 0) {
+    if ((my $earleme = $parse->text(\$spec)) >= 0) {
 	# print $parse->show_status();
         # for the editors, line numbering starts at 1
         # do something about this?
@@ -767,7 +736,6 @@ my $spec;
 	say STDERR +(" " x ($earleme-$line_start)), "^";
 	exit 1;
     }
-    $parse->lex_end();
 }
 
 unless ($parse->initial()) {
@@ -788,14 +756,16 @@ unless ($parse->initial()) {
     exit 1;
 }
 
-my $headers;
-{ local($RS) = undef; open(HEADERS, "<", "headers.pl"); $headers = <HEADERS>; }
+our $HEADER; # to silence spurious warning
+my $header;
+{ open(HEADER, "<", $header_file_name); local($RS) = undef; $header = <HEADER>; }
 
-my $trailers;
-{ local($RS) = undef; open(TRAILERS, "<", "trailers.pl"); $trailers = <TRAILERS>; }
+our $TRAILER; # to silence spurious warning
+my $trailer;
+{ open(TRAILER, "<", $trailer_file_name); local($RS) = undef; $trailer = <TRAILER>; }
 
 my $value = $parse->value();
-print $headers, $value, $trailers;
+print $header, $$value, $trailer;
 
 # Local Variables:
 #   mode: cperl

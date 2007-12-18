@@ -75,16 +75,16 @@ EOCODE
 
 my $parse = new Parse::Marpa::Parse($g);
 
-my $minus = $g->get_symbol("Minus");
-my $number = $g->get_symbol("Number");
-$parse->lex_earleme([$number, 6, 1]);
-$parse->lex_earleme([$minus, "+", 1]);
-$parse->lex_earleme([$minus, "+", 1]);
-$parse->lex_earleme([$minus, "+", 1]);
-$parse->lex_earleme([$minus, "+", 1]);
-$parse->lex_earleme([$minus, "+", 1]);
-$parse->lex_earleme([$number, 1, 1]);
-$parse->lex_end();
+my $minus = $g->get_canonical_symbol("Minus");
+my $number = $g->get_canonical_symbol("Number");
+$parse->earleme([$number, 6, 1]);
+$parse->earleme([$minus, "+", 1]);
+$parse->earleme([$minus, "+", 1]);
+$parse->earleme([$minus, "+", 1]);
+$parse->earleme([$minus, "+", 1]);
+$parse->earleme([$minus, "+", 1]);
+$parse->earleme([$number, 1, 1]);
+$parse->end_input();
 
 # print $g->show_rules(), "\n";
 is( $g->show_rules(), <<'END_RULES', "Minuses Equation Rules" );
@@ -166,9 +166,9 @@ $parse->initial();
 PARSE: for my $i (0 .. 20) {
     my $value = $parse->value();
     if ($i > $#expected) {
-       fail("Minuses equation has extra value: $value\n");
+       fail("Minuses equation has extra value: " . $$value . "\n");
     } else {
-        is($value, $expected[$i], "Minuses Equation Value $i");
+        is($$value, $expected[$i], "Minuses Equation Value $i");
     }
     last PARSE unless $parse->next();
 }
