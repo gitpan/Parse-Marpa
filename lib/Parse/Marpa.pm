@@ -25,7 +25,7 @@ use warnings;
 no warnings "recursion";
 use strict;
 
-our $VERSION = '0.001_057';
+our $VERSION = '0.001_058';
 $VERSION = eval $VERSION;
 
 package Parse::Marpa::Internal;
@@ -398,6 +398,39 @@ sub Parse::Marpa::Internal::raw_grammar_eval {
 
 package Parse::Marpa::Internal;
 
+sub Parse::Marpa::marpa {
+    my $grammar = shift;
+    my $text = shift;
+    my $options = shift;
+
+    my $ref = ref $grammar;
+    croak(qq{grammar arg to marpa() was ref type "$ref", must be string ref})
+        unless $ref eq "SCALAR";
+
+    $ref = ref $text;
+    croak(qq{text arg to marpa() was ref type "$ref", must be string ref})
+        unless $ref eq "SCALAR";
+
+    $options //= {};
+    $ref = ref $options;
+    croak(qq{text arg to marpa() was ref type "$ref", must be hash ref})
+        unless $ref eq "HASH";
+
+    my $g = new Parse::Marpa(
+        source => $grammar,
+        %{$options}
+    );
+    my $parse = new Parse::Marpa::Parse($g);
+    $parse->text($text);
+
+    $parse->initial();
+    my @values;
+    push(@values, $parse->value());
+    return $values[0] unless wantarray;
+    push(@values, $parse->value()) while $parse->next;
+    @values;
+}
+
 sub Parse::Marpa::new {
     my $class = shift;
     my %args  = @_;
@@ -482,7 +515,7 @@ sub die_with_parse_failure {
     # for the editors, line numbering starts at 1
     # do something about this?
     my ($line, $line_start) = locator($earleme, $source);
-    my @msg = ("Parse exhausted at line ", $line+1, ", earleme $earleme\n");
+    my @msg = ("Parse failed at line ", $line+1, ", earleme $earleme\n");
     given (index($$source, "\n", $line_start)) {
         when (undef) { push(@msg, substr($$source, $line_start), "\n") }
         default { push(@msg, substr($$source, $line_start, $_-$line_start), "\n") }
@@ -492,6 +525,9 @@ sub die_with_parse_failure {
 }
 
 
+# First arg is the current grammar, that is, the one being
+# built.
+# Second arg is ref to string containing Marpa source
 sub source_grammar {
     my $grammar = shift;
     my $source  = shift;
@@ -538,9 +574,10 @@ sub Parse::Marpa::set {
         when (Parse::Marpa::Internal::Grammar::SOURCE_RULES) {$precomputed = 0}
     }
 
+    # value of source needs to be a *REF* to a string
     my $source = $args{"source"};
     if ( defined $source ) {
-        croak("Cannot source grammar with defined rules")
+        croak("Cannot source grammar with some rules already defined")
             if $state ne Parse::Marpa::Internal::Grammar::NEW;
         source_grammar( $grammar, $source );
     }
@@ -613,6 +650,11 @@ sub Parse::Marpa::set {
             when ("trace_file_handle") {
                 $grammar->[Parse::Marpa::Internal::Grammar::TRACE_FILE_HANDLE]
                     = $value;
+            }
+            when ("trace_actions") {
+                $grammar->[ Parse::Marpa::Internal::Grammar::TRACE_ACTIONS ] =
+                    $value;
+                $grammar->[ Parse::Marpa::Internal::Grammar::TRACING ] = 1;
             }
             when ("trace_lex") {
                 $grammar->[ Parse::Marpa::Internal::Grammar::TRACE_LEX_TRIES ]
@@ -702,6 +744,34 @@ sub Parse::Marpa::set {
     $grammar;
 }
 
+=begin Implementation:
+
+In order to automatically ELIMINATE inaccessible and unproductive
+productions from a grammar, you have to first eliminate the
+unproductive productions, THEN the inaccessible ones.  I don't do
+this in the below.
+
+The reason is my purposes are primarily diagnostic.  The difference
+shows in the case of an unproductive start symbol.  Following the
+correct procedure for automatically cleaning the grammar, I would
+have to regard the start symbol and its productions as eliminated
+and therefore go on to report every other production and symbol as
+inaccessible.  Almost certainly all these inaccessiblity reports,
+while theoretically correct, are irrelevant, since the user will
+probably respond by making the start symbol productive, and the
+extra "information" would only get in the way.
+
+The downside is that in a few uncommon cases, a user relying entirely
+on the Marpa warnings to clean up his grammar will have to go through
+more than a single pass of the diagnostics.  I think even those
+users unlucky enough to hit upon such cases may prefer simpler
+diagnostics, and in any case, simpler diagnostics are clearly best
+for the most common problems.
+
+=end Implementation:
+
+=cut
+
 # returns undef if there was a problem
 sub Parse::Marpa::precompute {
     my $grammar = shift;
@@ -758,6 +828,15 @@ sub Parse::Marpa::precompute {
     $grammar;
 }
 
+sub Parse::Marpa::show_problems {
+    my $grammar = shift;
+
+    my $problems = $grammar->[Parse::Marpa::Internal::Grammar::PROBLEMS];
+    "Grammar has these problems:\n"
+        . join("\n", @$problems)
+        . "\n"
+}
+
 # Deep Copy Grammar
 #
 # Could this be made more efficient with a custom routine?
@@ -770,6 +849,15 @@ sub Parse::Marpa::compile {
     my $trace_fh;
     if ($tracing) {
         $trace_fh = $grammar->[Parse::Marpa::Internal::Grammar::TRACE_FILE_HANDLE];
+    }
+
+    my $problems = $grammar->[Parse::Marpa::Internal::Grammar::PROBLEMS];
+    if ($problems) {
+        croak(
+            show_problems($grammar),
+            "Attempt to compile grammar with fatal problems\n",
+            "Marpa cannot proceed"
+        );
     }
 
     my $state = $grammar->[ Parse::Marpa::Internal::Grammar::STATE ];
@@ -1744,9 +1832,8 @@ sub set_start {
     my $start_name = shift;
     my $success = 1;
 
-    # There are non-optional warnings here, so we always need trace_fh
-    my $trace_fh =
-        $grammar->[Parse::Marpa::Internal::Grammar::TRACE_FILE_HANDLE ];
+    # my $trace_fh =
+        # $grammar->[Parse::Marpa::Internal::Grammar::TRACE_FILE_HANDLE ];
     my $symbol_hash =
         $grammar->[Parse::Marpa::Internal::Grammar::SYMBOL_HASH];
     my $problems =
@@ -1755,7 +1842,6 @@ sub set_start {
 
     if ( not defined $start ) {
         my $problem = "Start symbol: " . $start_name . " not defined";
-        say $trace_fh $problem;
         push(
             @{ $grammar->[Parse::Marpa::Internal::Grammar::PROBLEMS] },
             $problem
@@ -1772,7 +1858,6 @@ sub set_start {
 
     if ( not scalar @$lhs and not $terminal ) {
         my $problem = "Start symbol " . $start_name . " not on LHS of any rule";
-        say $trace_fh $problem;
         push(
             @{ $grammar->[Parse::Marpa::Internal::Grammar::PROBLEMS] },
             $problem
@@ -1782,7 +1867,6 @@ sub set_start {
 
     if ( not $productive ) {
         my $problem = "Unproductive start symbol: " . $start_name;
-        say $trace_fh $problem;
         push(
             @{ $grammar->[Parse::Marpa::Internal::Grammar::PROBLEMS] },
             $problem
@@ -2315,7 +2399,6 @@ sub nullable {
         ];
         if ( $nullable and $counted ) {
             my $problem = "Nullable symbol $name is on rhs of counted rule";
-            say $trace_fh "Nullable symbol $name is on rhs of counted rule";
             push(
                 @{ $grammar->[Parse::Marpa::Internal::Grammar::PROBLEMS] },
                 $problem
@@ -2325,8 +2408,6 @@ sub nullable {
     }
     if ($counted_nullable_count) {
         my $problem =
-            "Counted nullables confuse Marpa -- please rewrite the grammar";
-        say $trace_fh
             "Counted nullables confuse Marpa -- please rewrite the grammar";
         push(
             @{ $grammar->[Parse::Marpa::Internal::Grammar::PROBLEMS] },
@@ -3622,8 +3703,7 @@ sub Parse::Marpa::Parse::new {
     my $problems = $grammar->[Parse::Marpa::Internal::Grammar::PROBLEMS];
     if ($problems) {
         croak(
-            "Attempting to parse grammar with these fatal problems:\n",
-            (map { $_ . "\n" } @$problems), 
+            Parse::Marpa::show_problems($grammar),
             "Attempt to parse grammar with fatal problems\n",
             "Marpa cannot proceed",
         );
@@ -3908,6 +3988,10 @@ sub Parse::Marpa::Parse::earleme {
 
 # Returns the position where the parse was exhausted,
 # or -1 if the parse is not exhausted
+
+# First arg is the current parse object
+# Second arg is ref to string
+# Third arg is the length of the portion to be used
 sub Parse::Marpa::Parse::text {
     my $parse     = shift;
     my $input_ref = shift;

@@ -13,7 +13,9 @@
 # which at this point I ask users to consider off-limits.
 
 use 5.009005;
-# An ambiguous equation
+
+# An ambiguous equation,
+# this time using the lexer
 
 use strict;
 use warnings;
@@ -37,73 +39,63 @@ my $g = new Parse::Marpa(
     rules => [
 	[ "E", [qw/E Minus E/],
 <<'EOCODE'
-            my ($right_string, $right_value)
-                = ($Parse::Marpa::This::v->[2] =~ /^(.*)==(.*)$/);
-            my ($left_string, $left_value)
-                = ($Parse::Marpa::This::v->[0] =~ /^(.*)==(.*)$/);
-            my $value = $left_value - $right_value;
-            "(" . $left_string . "-" . $right_string . ")==" . $value;
+    my ($right_string, $right_value)
+        = ($Parse::Marpa::This::v->[2] =~ /^(.*)==(.*)$/);
+    my ($left_string, $left_value)
+        = ($Parse::Marpa::This::v->[0] =~ /^(.*)==(.*)$/);
+    my $value = $left_value - $right_value;
+    "(" . $left_string . "-" . $right_string . ")==" . $value;
 EOCODE
         ],
-	[ "E", [qw/E Minus Minus/],
+	[ "E", [qw/E MinusMinus/],
 <<'EOCODE'
-            my ($string, $value)
-                = ($Parse::Marpa::This::v->[0] =~ /^(.*)==(.*)$/);
-            "(" . $string . "--" . ")==" . $value--;
+    my ($string, $value)
+        = ($Parse::Marpa::This::v->[0] =~ /^(.*)==(.*)$/);
+    "(" . $string . "--" . ")==" . $value--;
 EOCODE
         ],
-	[ "E", [qw/Minus Minus E/],
+	[ "E", [qw/MinusMinus E/],
 <<'EOCODE'
-            my ($string, $value)
-                = ($Parse::Marpa::This::v->[2] =~ /^(.*)==(.*)$/);
-            "(" . "--" . $string . ")==" . --$value;
+    my ($string, $value)
+        = ($Parse::Marpa::This::v->[1] =~ /^(.*)==(.*)$/);
+    "(" . "--" . $string . ")==" . --$value;
 EOCODE
         ],
 	[ "E", [qw/Minus E/],
 <<'EOCODE'
-            my ($string, $value)
-                = ($Parse::Marpa::This::v->[1] =~ /^(.*)==(.*)$/);
-            "(" . "-" . $string . ")==" . -$value;
+    my ($string, $value)
+        = ($Parse::Marpa::This::v->[1] =~ /^(.*)==(.*)$/);
+    "(" . "-" . $string . ")==" . -$value;
 EOCODE
         ],
 	[ "E", [qw/Number/],
 <<'EOCODE'
-            my $value = $Parse::Marpa::This::v->[0];
-            "$value==$value";
+    my $value = $Parse::Marpa::This::v->[0];
+    "$value==$value";
 EOCODE
         ],
     ],
     terminals => [
 	[ "Number" => [qr/\d+/] ],
-	[ "Minus" => [qr/[-] /] ],
+	[ "Minus" => [qr/[-]/] ],
+	[ "MinusMinus" => [qr/[-][-]/] ],
     ],
     default_action =>
-<<'EOCODE'
-         my $v_count = scalar @$Parse::Marpa::This::v;
-         return "" if $v_count <= 0;
-         return $Parse::Marpa::This::v->[0] if $v_count == 1;
-         "(" . join(";", @$Parse::Marpa::This::v) . ")";
+<<'EOCODE',
+     my $v_count = scalar @$Parse::Marpa::This::v;
+     return "" if $v_count <= 0;
+     return $Parse::Marpa::This::v->[0] if $v_count == 1;
+     "(" . join(";", @$Parse::Marpa::This::v) . ")";
 EOCODE
 );
 
 my $parse = new Parse::Marpa::Parse($g);
 
-my $minus = $g->get_canonical_symbol("Minus");
-my $number = $g->get_canonical_symbol("Number");
-$parse->earleme([$number, 6, 1]);
-$parse->earleme([$minus, "+", 1]);
-$parse->earleme([$minus, "+", 1]);
-$parse->earleme([$minus, "+", 1]);
-$parse->earleme([$minus, "+", 1]);
-$parse->earleme([$minus, "+", 1]);
-$parse->earleme([$number, 1, 1]);
-$parse->end_input();
-
 # print $g->show_rules(), "\n";
 is( $g->show_rules(), <<'END_RULES', "Minuses Equation Rules" );
 0: E -> E Minus E
-1: E -> E Minus Minus
-2: E -> Minus Minus E
+1: E -> E MinusMinus
+2: E -> MinusMinus E
 3: E -> Minus E
 4: E -> Number
 5: E['] -> E
@@ -111,56 +103,50 @@ END_RULES
 
 # print $g->show_ii_SDFA(), "\n";
 is( $g->show_ii_SDFA(), <<'END_SDFA', "Minuses Equation SDFA" );
-St0: 1,5,9,13,16
+St0: 1,5,8,11,14
 E ::= . E Minus E
-E ::= . E Minus Minus
-E ::= . Minus Minus E
+E ::= . E MinusMinus
+E ::= . MinusMinus E
 E ::= . Minus E
 E ::= . Number
- <E> => St8 (2,6)
- <Minus> => St1 (10,14)
- <Number> => St5 (17)
-St1: 10,14
-E ::= Minus . Minus E
+ <E> => St7 (2,6)
+ <Minus> => St2 (12)
+ <MinusMinus> => St11 (9)
+ <Number> => St4 (15)
+St1: 10
+E ::= MinusMinus E .
+St2: 12
 E ::= Minus . E
- empty => St0 (1,5,9,13,16)
- <E> => St4 (15)
- <Minus> => St2 (11)
-St2: 11
-E ::= Minus Minus . E
- empty => St0 (1,5,9,13,16)
- <E> => St3 (12)
-St3: 12
-E ::= Minus Minus E .
-St4: 15
+ empty => St0 (1,5,8,11,14)
+ <E> => St3 (13)
+St3: 13
 E ::= Minus E .
-St5: 17
+St4: 15
 E ::= Number .
-St6: 18
+St5: 16
 E['] ::= . E
- empty => St0 (1,5,9,13,16)
- <E> => St7 (19)
-St7: 19
+ empty => St0 (1,5,8,11,14)
+ <E> => St6 (17)
+St6: 17
 E['] ::= E .
-St8: 2,6
+St7: 2,6
 E ::= E . Minus E
-E ::= E . Minus Minus
- <Minus> => St9 (3,7)
-St9: 3,7
+E ::= E . MinusMinus
+ <Minus> => St8 (3)
+ <MinusMinus> => St10 (7)
+St8: 3
 E ::= E Minus . E
-E ::= E Minus . Minus
- empty => St0 (1,5,9,13,16)
- <E> => St10 (4)
- <Minus> => St11 (8)
-St10: 4
+ empty => St0 (1,5,8,11,14)
+ <E> => St9 (4)
+St9: 4
 E ::= E Minus E .
-St11: 8
-E ::= E Minus Minus .
+St10: 7
+E ::= E MinusMinus .
+St11: 9
+E ::= MinusMinus . E
+ empty => St0 (1,5,8,11,14)
+ <E> => St1 (10)
 END_SDFA
-
-# print $parse->show_status(1);
-
-# $Parse::Marpa::This::trace = 1;
 
 my @expected = (
     '(((6--)--)-1)==5',
@@ -172,12 +158,20 @@ my @expected = (
     '(6-(-(-(-(-1)))))==5',
     '(6-(-(--(-1))))==4',
 );
+
+$parse->text(\("6-----1"));
+
 $parse->initial();
+
+# SKIP: {
+    # skip "Not yet debugged", (scalar @expected);
+
 
 # Set max at 20 just in case there's an infinite loop.
 # This is for debugging, after all
 PARSE: for my $i (0 .. 20) {
     my $value = $parse->value();
+    # print $parse->show();
     if ($i > $#expected) {
        fail("Minuses equation has extra value: " . $$value . "\n");
     } else {
@@ -185,6 +179,8 @@ PARSE: for my $i (0 .. 20) {
     }
     last PARSE unless $parse->next();
 }
+
+# } # SKIP
 
 # Local Variables:
 #   mode: cperl

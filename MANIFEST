@@ -9,7 +9,7 @@ lib/Parse/Marpa/ALGORITHM.pod
 lib/Parse/Marpa/WHY_CALL_IT_MARPA.pod
 lib/Parse/Marpa/Lex.pm
 lib/Parse/Marpa/preamble_Source.pm
-lib/Parse/Marpa/Source_Eval.pm
+lib/Parse/Marpa/Source.pm
 t/00-load.t
 t/ah.t
 t/ah2.t
@@ -20,10 +20,11 @@ t/weaken.t
 t/equation.t
 t/equation_s.t
 t/minus.t
-t/lex_minus.t
+t/minus_s.t
 t/pascal.t
 t/wall.t
 t/bootstrap.t
+t/randal.pl
 bootstrap/bootstrap.pl
 bootstrap/bootstrap_header.pl
 bootstrap/bootstrap_trailer.pl
@@ -32,4 +33,4 @@ bootstrap/raw_dump_header.pl
 bootstrap/raw_dump_trailer.pl
 bootstrap/raw_to_compiled.pl
 bootstrap/not_quite.marpa
-bootstrap/test.sh
+bootstrap/Makefile
