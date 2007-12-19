@@ -25,7 +25,7 @@ use warnings;
 no warnings "recursion";
 use strict;
 
-our $VERSION = '0.001_056';
+our $VERSION = '0.001_057';
 $VERSION = eval $VERSION;
 
 package Parse::Marpa::Internal;

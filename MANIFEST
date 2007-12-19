@@ -18,6 +18,7 @@ t/gj.t
 t/hu.t
 t/weaken.t
 t/equation.t
+t/equation_s.t
 t/minus.t
 t/lex_minus.t
 t/pascal.t
