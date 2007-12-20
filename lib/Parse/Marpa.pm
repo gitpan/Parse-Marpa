@@ -25,7 +25,7 @@ use warnings;
 no warnings "recursion";
 use strict;
 
-our $VERSION = '0.001_058';
+our $VERSION = '0.001_059';
 $VERSION = eval $VERSION;
 
 package Parse::Marpa::Internal;
@@ -177,6 +177,8 @@ package Parse::Marpa::Internal::Grammar;
 
 use constant ID              => 0;    # number of this grammar
 use constant NAME            => 1;    # namespace special to this grammar
+                                      # it should only be used BEFORE compilation, because it's not
+                                      # guaranteed unique after decompilation
 use constant RULES           => 2;    # array of rule refs
 use constant SYMBOLS         => 3;    # array of symbol refs
 use constant RULE_HASH       => 4;    # hash by name of symbol refs
@@ -356,10 +358,14 @@ sub Parse::Marpa::Internal::raw_grammar_eval {
 
      Carp::croak("Version must be set in marpa grammar")
          if not defined $new_version;
+
+     no integer;
      Carp::croak(
          "Version in marpa grammar does not match: $new_version vs. ",
          $Parse::Marpa::VERSION
      ) if $new_version != $Parse::Marpa::VERSION;
+     use integer;
+
      $grammar->[ Parse::Marpa::Internal::Grammar::VERSION ] = $new_version;
      say $trace_fh "Version set to ", $new_version
           if $trace_predefineds;
@@ -398,6 +404,9 @@ sub Parse::Marpa::Internal::raw_grammar_eval {
 
 package Parse::Marpa::Internal;
 
+# returns failure if no parses
+# on success, returns first parse in scalar context,
+# all of them in list context
 sub Parse::Marpa::marpa {
     my $grammar = shift;
     my $text = shift;
@@ -421,9 +430,14 @@ sub Parse::Marpa::marpa {
         %{$options}
     );
     my $parse = new Parse::Marpa::Parse($g);
-    $parse->text($text);
 
-    $parse->initial();
+    my $failed_at_earleme = $parse->text($text);
+    if ($failed_at_earleme >= 0) {
+        die_with_parse_failure($text, $failed_at_earleme);
+    }
+
+    my $result = $parse->initial();
+    return unless defined $result;
     my @values;
     push(@values, $parse->value());
     return $values[0] unless wantarray;
@@ -531,7 +545,13 @@ sub die_with_parse_failure {
 sub source_grammar {
     my $grammar = shift;
     my $source  = shift;
-    my $source_grammar = Parse::Marpa::decompile($Parse::Marpa::Internal::compiled_source_grammar);
+
+    my $trace_fh = $grammar->[ Parse::Marpa::Internal::Grammar::TRACE_FILE_HANDLE ];
+    my $source_grammar = Parse::Marpa::decompile(
+        $Parse::Marpa::Internal::compiled_source_grammar,
+        $trace_fh
+    );
+
     my $grammar_version = $source_grammar->[ Parse::Marpa::Internal::Grammar::VERSION ];
     no integer;
     if ($VERSION != $grammar_version) {
@@ -542,14 +562,12 @@ sub source_grammar {
         grammar => $source_grammar,
     );
 
-    # print STDERR $source_grammar->show_rules();
-    # print STDERR $source_grammar->show_SDFA();
- 
     my $failed_at_earleme = $parse->text($source);
     if ($failed_at_earleme >= 0) {
         die_with_parse_failure($source, $failed_at_earleme);
     }
-    $parse->initial();
+    my $result = $parse->initial();
+    return unless defined $result;
     my $value = $parse->value();
     raw_grammar_eval($grammar, $value);
     # croak("sourcing grammars not yet implemented");
@@ -579,6 +597,10 @@ sub Parse::Marpa::set {
     if ( defined $source ) {
         croak("Cannot source grammar with some rules already defined")
             if $state ne Parse::Marpa::Internal::Grammar::NEW;
+        croak("Source for grammar must be specified as string ref")
+            unless ref $source eq "SCALAR";
+        croak("Source for grammar undefined")
+            if not defined $$source;
         source_grammar( $grammar, $source );
     }
 
@@ -879,10 +901,14 @@ sub Parse::Marpa::compile {
     return \($d->Dump());
 }
 
+# First arg is compiled grammar
+# Second arg (optional) is trace file handle, either saved and restored
+# If not trace file handle supplied, it reverts to the default, STDERR
 sub Parse::Marpa::decompile {
-    # doesn't set trace file handle -- no subroutines called
-    # uses a ref -- grammars can be long
     my $compiled_grammar = shift;
+    my $trace_fh;
+    $trace_fh //= *STDERR;
+
     my $grammar;
     {
         my @warnings;
@@ -899,6 +925,8 @@ sub Parse::Marpa::decompile {
             );
         }
     }
+
+    $grammar->[ Parse::Marpa::Internal::Grammar::TRACE_FILE_HANDLE ] = $trace_fh;
 
     # Eliminate or weaken all circular references
     my $symbol_hash =
@@ -3695,10 +3723,10 @@ sub Parse::Marpa::Parse::new {
 
     Parse::Marpa::set($grammar, @grammar_args);
     my $tracing = $grammar->[Parse::Marpa::Internal::Grammar::TRACING ];
-    my $trace_fh;
-    if ($tracing) {
-        $trace_fh = $grammar->[Parse::Marpa::Internal::Grammar::TRACE_FILE_HANDLE]
-    }
+
+    # We always get the trace file handle, because we often need it to pass to
+    # decompile, below.
+    my $trace_fh = $grammar->[Parse::Marpa::Internal::Grammar::TRACE_FILE_HANDLE];
 
     my $problems = $grammar->[Parse::Marpa::Internal::Grammar::PROBLEMS];
     if ($problems) {
@@ -3724,15 +3752,15 @@ sub Parse::Marpa::Parse::new {
         given ($state) {
             when (Parse::Marpa::Internal::Grammar::PERL_RULES) {
                 my $compiled_grammar = Parse::Marpa::compile($grammar);
-                $grammar = Parse::Marpa::decompile($compiled_grammar);
+                $grammar = Parse::Marpa::decompile($compiled_grammar, $trace_fh);
             }
             when (Parse::Marpa::Internal::Grammar::SOURCE_RULES) {
                 my $compiled_grammar = Parse::Marpa::compile($grammar);
-                $grammar = Parse::Marpa::decompile($compiled_grammar);
+                $grammar = Parse::Marpa::decompile($compiled_grammar, $trace_fh);
             }
             when (Parse::Marpa::Internal::Grammar::PRECOMPUTED) {
                 my $compiled_grammar = Parse::Marpa::compile($grammar);
-                $grammar = Parse::Marpa::decompile($compiled_grammar);
+                $grammar = Parse::Marpa::decompile($compiled_grammar, $trace_fh);
             }
             when (Parse::Marpa::Internal::Grammar::COMPILED) {
                 eval_grammar( $parse, $grammar, $preamble, $default_action );
@@ -3996,6 +4024,9 @@ sub Parse::Marpa::Parse::text {
     my $parse     = shift;
     my $input_ref = shift;
     my $length    = shift;
+
+    croak("text argument to Parse::Marpa::Parse::text() must be string ref")
+        unless ref $input_ref eq "SCALAR";
 
     my ( $grammar, $earley_sets, $current_set, 
         $ambiguous_lex, $lexers, )
@@ -5392,16 +5423,430 @@ and the documentation is also inchoate.
 Those not developing this module will want to wait
 for at least a released, beta version.
 
+I've no personal experience with them, but
+C<Parse::Yapp> and C<Parse::RecDescent> are
+alternatives to this module which are well reviewed and
+much more mature and stable.
+Until C<Parse::Marpa> goes at least beta,
+users with a deadline or
+targeting anything close to a production environment
+should look there.
+
 =cut
 
 =head1 SYNOPSIS
 
-    TO DO
+    UNDER CONSTRUCTION ...
+
+=head2 The Easy Way
+
+It's possible to specify the grammar and the text to be parsed all in one step
+
+    use Parse::Marpa;
+    my $value = Parse::Marpa::marpa(\$grammar, \$text_to_parse);
+
+and you can even include options if you make a hash ref the third argument.
+
+    my $value = Parse::Marpa::marpa(
+        \$grammar,
+        \$text_to_parse
+        {
+            warnings => 1,
+            ...
+        }
+    );
+
+You can get all the values of an ambiguous parse by invoking C<Parse::Marpa::marpa> in
+list context.
+
+    my @values = Parse::Marpa::marpa(\$ambiguous_grammar, \$text_to_parse);
+
+=head2 Exercising more control
+
+You can also proceed step by step.  For example, ...
+
+    use Parse::Marpa;
+
+    my @tests = split(/\n/, <<'EO_TESTS');
+    time  / 25 ; # / ; die "this dies!";
+    localtime  / 25 ; # / ; die "this dies!";
+    EO_TESTS
+
+First creating the grammar object ...
+
+    my $g = new Parse::Marpa(
+        warnings => 1,
+        code_lines => -1,
+    );
+
+Then setting the grammar ...
+
+    my $mini_perl_grammar; { local($RS) = undef; $mini_perl_grammar = <DATA> };
+    $g->set( source => \$mini_perl_grammar);
+
+And then as many times as you like ...
+
+    TEST: while (my $test = pop @tests) {
+
+Create a parse object ...
+
+        my $parse = new Parse::Marpa::Parse($g);
+
+Pass text to the recognizer ...
+
+        $parse->text(\$test);
+
+Set an initial parse ...
+
+        $parse->initial();
+        my @parses;
+        push(@parses, $parse->value);
+
+Get others, if there are any ...
+
+        while ($parse->next) {
+            push(@parses, $parse->value);
+        }
+
+And then go on with your other processing ...
+
+        say "I've got ", scalar @parses, " parses:";
+        for (my $i = 0; $i < @parses; $i++) {
+            say "Parse $i: ", ${$parses[$i]};
+        }
+    }
+
+    __DATA__
     ...
 
 =head1 DESCRIPTION
 
-Notes toward the documentation: Point out that lexing honors the pos setting
+    UNDER CONSTRUCTION AND VERY INCOMPLETE
+
+=head2 Overview
+
+C<Parse::Marpa> parses text given an arbitrary context-free grammar.
+
+=over 4
+
+=item *
+
+Grammar may be anything which can be specified in BNF.
+
+=item *
+
+This includes
+left-recursive grammars,
+right-recursive grammars,
+grammars with empty productions,
+grammars with cycles
+and ambigious grammars.
+
+=item *
+
+In fact, ambiguous grammars are a Marpa specialty.
+They are useful even when you never want more than one parse.
+Human languages have an ambiguous grammars,
+from which the listener pulls the parse that makes most sense.
+An ambiguous grammar is often
+the easiest and most sensible way to express a language.
+Marpa allows the user to prioritize rules
+so that the preferred parse comes up first.
+
+=item *
+
+Of course, you can also have C<Marpa> return all the parses of an ambiguous grammar.
+
+=item *
+
+Marpa allows predictive lexing and uses LR(0) precomputation.
+It incorporates the latest academic research for speeding up Earley's
+algorithm, along with further innovations.
+
+=back
+
+=head2 The Easy Way function: C<Parse::Marpa::marpa()>
+
+=over 4
+
+=item Parse::Marpa::marpa(I<\$grammar>, I<\$text_to_parse>, I<option hash>);
+
+The C<marpa> function takes three arguments:
+a ref to a string containing a Marpa source description of the grammar;
+a ref to a string with the text to be parsed;
+and (optionally) a ref to a hash with options.
+If there are no parses, C<marpa()> returns failure.
+If there are parses,
+and C<marpa()> was called in list context,
+it returns a list of references to the values of all the parses.
+If there are parses,
+and C<marpa> was called in scalar context,
+it returns a reference to the value of the first parse.
+
+=back
+
+=head2 Marpa Grammar Source Files: The Format
+
+=head3 Overview
+
+Not all parsers are capable of parsing their own description languages.
+The source files specifying grammars to Marpa are parsed by Marpa
+in the same way that Marpa parses user-specified grammars.
+In fact, the grammar for Marpa's grammar description language is
+written in that grammar description language.
+
+It is entirely
+possible for a Marpa user to write their own interface language to
+replace Marpa's.
+The result could be easily be an improvement on the original in
+expressive power or efficiency.
+Humbling as it is to admit, it might be an improvement in both
+respects.
+There are better language designers than me out there and
+my goal with Marpa is to empower them.
+
+Marpa's self-describing grammar source file is in the distribution,
+and is named C<self.marpa>.
+Most of the examples of the Marpa grammar description language below are
+adopted from that file or previous versions of it.
+
+=head3 Paragraphs and Sentences
+
+The file is divided into paragraphs, separated by blank lines, that is lines
+containing only horizontal whitespace.  Comments do not count as whitespace
+for the purpose of separating paragraphs.
+Paragraphs contain sentences, which must end in a period.
+
+There are definition paragraphs, production paragraphs and terminal paragraphs.
+Definition paragraphs contain one or more definitions.  For example,
+
+    semantics are perl5.  version is 0.1.59.  the start symbol is
+    grammar.
+
+=head3 Reserved words in the Marpa Grammar Descriptions
+
+Case matters in all the reserved words and names in
+the Marpa grammar description language.
+They must be in lower case.
+This is in line with the position Larry Wall took in his 2007
+"State of the Onion" talk.
+The idea is that what the user is doing should be
+emphasized over the framework of the language.
+
+=head3 User Specified Names
+
+User specified names are case-indifferent.
+"Symbol" is the same name as "SYMBOL", "symbol" and even "sYmBoL".
+The user may use case as an expressive element, or to distinguish
+his names from Marpa's keywords.
+
+Names may be more than one word and may be separated by whitespace
+or hyphens as the user chooses.  User names are separation-indifferent as well
+as case-indifferent.
+"My symbol" and "my-symbol" are the same name.
+
+A user specified name may be all lowercase,
+just as Marpa's keywords are required to be.
+This allows the user to reuse the Marpa description's
+keywords for his purposes.
+For example, in Marpa's self-definition, the following occurs:
+
+    rhs element: Optional rhs element.
+
+As you'll see elsewhere "optional" is a Marpa keyword which can be
+meaningful in that context,
+and if "optional" were lower case in this example,
+the Marpa's preferred parse would result in this sentence
+being interpreted as a rule which states
+that a C<rhs element> can consist either of nothing,
+or else itself.
+Marpa allows both circular and null rules,
+and so this rule, which probably not a good idea, is
+perfectly legal.
+
+However, since "Optional" begins with a capital letter, it must
+be a user name or part of one.
+And in fact, an "Optional rhs element" is defined later as
+
+    optional rhs element: /optional/, rhs symbol specifier.
+
+As will be explained in more detail below, this states that
+an C<optional rhs element> is not an optional element at all.
+It an non-nullable and non-optional element,
+composed of
+the keyword <optional> followed by a C<rhs symbol specifier>.
+
+Note that on the left hand side of this second rule, the "optional" in
+C<optional rhs element> is not capitalized.  The "optional" keyword only
+makes sense on the left hand side, and no possible parse allows "optional"
+to be interpreted as a Marpa keyword, so it isn't.
+
+Humans often use the same word to mean two different things,
+relying on context to resolve the ambiguity.
+This makes human languages powerful, compact and expressive.
+Other parsers allow the user to use ambiguity
+only to a very limited degree.
+In Perl 5, Larry Wall was probably about as aggressive in this respect
+as anyone using an LALR parser could be.
+
+=head3 Definition Sentences
+
+Definition sentences contain the name of a Marpa predefined and its value,
+separated by the word "is" or "are".
+The name of the predefined may be preceded
+by "the".
+
+The following all define the semantics of the grammar to be Perl 5.
+
+    semantics are perl5.
+    perl5 is the semantics.
+    perl5 is semantics.
+    the semantics are perl5.
+    the semantics is perl5.
+
+Note that "is" or "are" always works.
+Marpa can't be bothered figuring out
+whether semantics is (are?) really singular or plural,
+and I think it has the right attitude about this.
+Marpa is similarly liberal about "is" versus "are" for all names, whether Marpa
+predefined or user-specified.
+
+The syntax for the other definitions of predefineds
+obeys the above rules, except where spefically noted
+otherwise.
+
+=head3 Semantics definition
+
+The semantics definition is not optional.
+Marpa is ultimately targeted to perl6, and that is considered its "default"
+semantics, even though it's not currently available.
+Currently, the only available semantics is C<perl5>.
+
+I require every Marpa grammar description to contain a line explicitly stating
+that its semantics are Perl 5, in order to limit
+problems with old Marpa source files
+once Perl 6 becomes available and the default.
+
+=head3 Version definition
+
+    version is 0.1.59.
+
+This also is not optional, and as long as Marpa is in alpha,
+the version has to match B<exactly>.
+This causes me a lot of trouble because all the test cases and examples
+and the bootstraping code must be edited whenever I up the version number,
+but nonetheless I regard it as a feature.
+It forces the user to be aware of version changes.
+This is essential while Marpa is in alpha,
+because versions will change frequently,
+and features will be volatile.
+There will be no attempt to maintain compatibility from version to version
+until Marpa goes beta.
+
+=head3 Start symbol definition
+
+    the start symbol is grammar.
+
+
+The start symbol is optional,
+in the sense that it may be specified later.
+If no start symbol has been specified by precomputation time,
+Marpa will fail.
+
+=head3 String definitions
+
+Strings are used in Marpa for several important purposes.
+Many of the definitions require strings.
+"Actions" (the semantics of the rules) are specified as
+strings with Perl 5 code in them.
+Custom lexers can also be specified, and these also are strings
+containing Perl 5 code.
+
+Here's an example of a string definition:
+
+    concatenate lines is q{
+        my $v_count = scalar @$Parse::Marpa::This::v;
+        return undef if $v_count <= 0;
+        join("\n", grep { $_ } @$Parse::Marpa::This::v);
+    }.
+
+=head3 Literal strings
+
+Literal strings can be single quoted, double quoted, C<q>-quoted or C<qq>-quoted.
+The syntax is much the same in Perl 5.
+Marpa recognizes backslashes,
+and will not terminate a single- or double-quoted string at a
+delimiting quote when it is preceded by a backslash.
+
+For the C<q> and C<qq> strings, Marpa allows as delimiters
+everything in the POSIX C<punct> character class, except backslash and
+the four right hand side bracketing symbols --
+angle and square bracket, curly brace and parentheses.
+(These are the same restrictions that Perl 5 imposes, or are at least very close.)
+Backslashes escape the end delimiters in C<q> and C<qq> strings,
+just as they do in single and double-quoted strings.
+
+Like Perl 5, Marpa treats a C<q> or C<qq> string with a left-hand bracketing symbol as a
+opening delimiter as special cases.
+The corresponding right hand bracketing symbol becomes the end-delimiter.
+Backslashes escape as usual.
+Nesting of the brackets within the quote is also tracked and the string
+will not terminate until there's an unescaped closing bracket at the same
+nesting level as the opening bracket.
+
+Marpa's literal strings are often Perl 5 code,
+and it must be remembered that Marpa does B<not> understand Perl 5 syntax.
+Treatment of brackets and string delimiters is more complex in Perl 5 than described
+above and Marpa's ideas of how to deal with them are limited to those described above.
+
+This means that in complex cases, such as when an end delimiter appears in a Perl 5
+character class, or within a string inside code
+Marpa's idea of where the closing delimiter is may not
+correspond to what Perl 5's would be.
+Users should choose from among Marpa's large variety of the quoting construct one
+that sidesteps potential issues.
+
+Once a literal string is recognized, it's passed on unaltered
+to Perl 5 for the usual Perl 5 interpretation.
+The string literal is passed to Perl 5 delimited in the
+same way that it was in Marpa.
+You can, for example,
+use single and double quotes in the Marpa source file
+and expect Perl 5's interpretation of
+that string literal will follow the same rules as if you'd 
+specified it directly to Perl 5.
+
+=head3 Default action definition
+
+You can specify a "default action", that is, an action to be used in rules which do
+not explicitly specify an action.  By default, rules return a
+return a "no value" (which in Marpa is B<not> the same as an undefined).
+
+Marpa's evaluation code optimizes in the presence
+of "no value" returns, and you will seldom want to change it.
+The current version of C<self.marpa> uses the no-value "default default".
+Here's the specification of a default action from an earlier version.
+
+    concatenate lines is the default action. 
+
+In this case, the string specifier is C<concatenate lines>, the string name
+defined in an earlier example.
+In any definition which takes a string at the value,
+the string may be specified either by name
+or as a literal string.
+
+=head3 Default null value definition
+
+=head2 Error processing
+
+Some of the Marpa functions and methods have error returns,
+as explained in the descriptions of those functions.
+Most often Marpa reports a problem by throwing an exception using C<croak()>.
+You can catch these using C<eval>, if you don't want them to be fatal.
+
+=head2 Notes not yet properly incorporated in this document
+
+Point out that lexing honors the pos setting
 and must not alter it, even on successful match.  Warn user of counter-intuitive
 behavior.
 
@@ -5409,13 +5854,28 @@ Warn user that in the lex patterns all named captures beginning with any
 "MARPA_" in any capitalization variant ("marpa_", "MaRpA_", etc.) is
 reserved.
 
+All Perl code supplied by the user via the Marpa source file by default
+is run with "use integer" in effect.  If the user wants floating point arithmetic
+she must specify "no integer".
+
 =head1 AUTHOR
 
 Jeffrey Kegler
 
 =head1 DEPENDENCIES
 
-Requires Perl 5.8.
+Requires Perl 5.10.
+Users who want or need to stick with Perl 5.8 or earlier
+probably are also best off with 
+more mature alternatives to C<Marpa>.
+
+=head1 IMPLEMENTATION NOTES
+
+It's often and correctly said by those experienced in Perl that passing
+string refs instead of strings is a pointless or even counter-productive
+optimization and I agree.  I believe that C<Marpa> is an exception and have
+designed the interface accordingly.  The strings involved here can be 
+very long and copying and recopying them a major waste of time.
 
 =head1 BUGS
 

@@ -1,7 +1,8 @@
-* Deal with the issue of trace file handle for a grammar that is deep-copied.  Fall back
-  to STDERR, and allow override?
+* There needs to be a way of explicitly setting "no value" for the
+  default action and the default null value.
 
-* Rename grammar when deep-copied.  Check that this works.
+* Is null values and the default null value handled right?  They
+  should internally be *REFS* to the values, not the values.
 
 * Test these traces, to ensure tracing reform did not break them:
     TRACE_ITERATION_SEARCHES TRACE_ITERATION_CHANGES
@@ -10,10 +11,9 @@
 
 * Ensure Parse::Marpa::Internal::This::grammar set wherever appropriate.
 
-* Check version, semantics in grammar, for sourced grammars and
-  for source grammar itself.
+* Check version, semantics in grammar for source grammar itself.
 
-* Add right and left evaluation in rules
+* Test right and left evaluation in rules
 
 * Test proper and perl5 separation
 
@@ -32,9 +32,9 @@
 
 * Add locations for earlemes.  Also for rules?  Use in Carp messages.
 
-* Allow alternation.
+* Allow alternation?
 
-* Allow compiled grammars (also, inplace option?)
+* Inplace option for grammars?
 
 * Add to test set
    - basic test for all branches of counted rules: matrix is

@@ -5,20 +5,25 @@ use warnings;
 use lib "../lib";
 use English;
 
-# use Test::More tests => 2;
+use Test::More tests => 5;
 
-# BEGIN {
-	# use_ok( 'Parse::Marpa' );
-# }
+BEGIN {
+    use_ok( 'Parse::Marpa' );
+}
 use Parse::Marpa;
 
 my @tests = split(/\n/, <<'EO_TESTS');
 time  / 25 ; # / ; die "this dies!";
 sin  / 25 ; # / ; die "this dies!";
-caller  / 25 ; # / ; die "this dies!";
-eof  / 25 ; # / ; die "this dies!";
-localtime  / 25 ; # / ; die "this dies!";
 EO_TESTS
+
+# my @tests = split(/\n/, <<'EO_TESTS');
+# time  / 25 ; # / ; die "this dies!";
+# sin  / 25 ; # / ; die "this dies!";
+# caller  / 25 ; # / ; die "this dies!";
+# eof  / 25 ; # / ; die "this dies!";
+# localtime  / 25 ; # / ; die "this dies!";
+# EO_TESTS
 
 my $source; { local($RS) = undef; $source = <DATA> };
 
@@ -32,7 +37,6 @@ $g->set( source => \$source);
 $g->precompute();
 
 TEST: while (my $test = pop @tests) {
-    say "Here's what I'm parsing: ", $test;
     my $parse = new Parse::Marpa::Parse($g);
     $parse->text(\$test);
     $parse->initial();
@@ -41,17 +45,43 @@ TEST: while (my $test = pop @tests) {
     while ($parse->next) {
         push(@parses, $parse->value);
     }
-    if (scalar @parses == 1) {
-       say "Things look good, I've got just one parse:";
-       say ${$parses[0]};
-       print "\n";
-       next TEST;
+    my @expected_parses;
+    my ($test_name) = ($test =~ /^([a-z]+) /);
+    given($test_name) {
+        when("time") {
+	    @expected_parses = (
+		"division, comment"
+	    );
+	}
+        when("sin") {
+	    @expected_parses = (
+		"division, comment",
+		"sin function call, die statement",
+	    );
+	}
+	default {
+	    croak("unexpected test: $test_name");
+	}
     }
-    say "Things look complicated here, I've got ", scalar @parses, " parses:";
-    for (my $i = 0; $i < @parses; $i++) {
-        say "Parse $i: ", ${$parses[$i]};
+    my $expected_parse_count = scalar @expected_parses;
+    my $parse_count = scalar @parses;
+    is($parse_count, $expected_parse_count, "Parse count for $test_name is $parse_count");
+    my $mismatch_count = 0;
+    for (my $i = 0; $i < $parse_count && $i < $expected_parse_count; $i++) {
+         if (${$parses[$i]} ne $expected_parses[$i]) {
+	     diag(
+		 "Mismatch on parse $i for test $test_name: "
+		 . ${$parses[$i]}
+		 . " vs. "
+		 . $expected_parses[$i]
+	     );
+	     $mismatch_count++;
+	 }
     }
-    print "\n";
+    ok(!$mismatch_count,
+	($expected_parse_count-$mismatch_count)
+	    . " of the $expected_parse_count parses expected succeeded"
+    );
 }
 
 __DATA__

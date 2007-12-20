@@ -20985,7 +20985,7 @@ $grammar = bless( [
 ',
   'precomputed grammar',
   1,
-  '0.001058',
+  '0.001059',
   30,
   'perl5'
 ], 'Parse::Marpa' );

@@ -25,6 +25,7 @@ t/pascal.t
 t/wall.t
 t/bootstrap.t
 t/randal.pl
+t/randal.t
 bootstrap/bootstrap.pl
 bootstrap/bootstrap_header.pl
 bootstrap/bootstrap_trailer.pl
@@ -32,5 +33,5 @@ bootstrap/compile_trailer.pl
 bootstrap/raw_dump_header.pl
 bootstrap/raw_dump_trailer.pl
 bootstrap/raw_to_compiled.pl
-bootstrap/not_quite.marpa
+bootstrap/self.marpa
 bootstrap/Makefile
