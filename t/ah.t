@@ -1,5 +1,3 @@
-#!perl
-
 # PLEASE DO NOT USE THIS AS AN EXAMPLE
 
 # If you're a savvy Perl programmer, you look in the tests directory

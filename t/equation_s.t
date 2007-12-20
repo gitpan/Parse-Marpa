@@ -1,5 +1,3 @@
-#!perl
-
 # An ambiguous equation
 
 use 5.009005;
@@ -68,7 +66,7 @@ PARSE: for my $i (0 .. 10) {
 # vim: expandtab shiftwidth=4:
 
 __DATA__
-semantics are perl5.  version is 0.1.59.
+semantics are perl5.  version is 0.1.60.
 
 start symbol is E.
 

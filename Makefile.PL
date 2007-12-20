@@ -9,6 +9,9 @@ WriteMakefile(
     VERSION_FROM        => 'lib/Parse/Marpa.pm',
     ABSTRACT_FROM       => 'lib/Parse/Marpa.pm',
     PL_FILES            => {},
+    EXE_FILES => [
+                           'bootstrap/test.sh',
+    ],
     PREREQ_PM => {
         'Test::More' => 0,
     },

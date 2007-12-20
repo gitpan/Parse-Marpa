@@ -26,6 +26,7 @@ t/wall.t
 t/bootstrap.t
 t/randal.pl
 t/randal.t
+bootstrap/test.sh
 bootstrap/bootstrap.pl
 bootstrap/bootstrap_header.pl
 bootstrap/bootstrap_trailer.pl
