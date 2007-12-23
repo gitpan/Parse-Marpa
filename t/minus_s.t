@@ -18,7 +18,7 @@ my $grammar_source; { local($RS) = undef; $grammar_source = <DATA> };
 
 my $text = "6-----1";
 
-my @values = Parse::Marpa::marpa(\$grammar_source, \$text);
+my @values = Parse::Marpa::marpa(\$grammar_source, \$text, { max_parses => 30 });
 
 my @expected = (
     '(((6--)--)-1)==5',
@@ -55,7 +55,7 @@ for (my $i = 0; $i <= $#expected; $i++) {
 # a start symbol that appears repeatedly on the RHS.
 
 __DATA__
-semantics are perl5.  version is 0.1.61.
+semantics are perl5.  version is 0.1.62.
 
 the start symbol is E.
 

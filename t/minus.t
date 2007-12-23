@@ -89,9 +89,10 @@ EOCODE
 EOCODE
 );
 
-my $parse = new Parse::Marpa::Parse($g);
+my $parse = new Parse::Marpa::Parse(
+    grammar => $g,
+);
 
-# print $g->show_rules(), "\n";
 is( $g->show_rules(), <<'END_RULES', "Minuses Equation Rules" );
 0: E -> E Minus E
 1: E -> E MinusMinus
@@ -101,7 +102,6 @@ is( $g->show_rules(), <<'END_RULES', "Minuses Equation Rules" );
 5: E['] -> E
 END_RULES
 
-# print $g->show_ii_SDFA(), "\n";
 is( $g->show_ii_SDFA(), <<'END_SDFA', "Minuses Equation SDFA" );
 St0: 1,5,8,11,14
 E ::= . E Minus E
@@ -159,13 +159,12 @@ my @expected = (
     '(6-(-(--(-1))))==4',
 );
 
-$parse->text(\("6-----1"));
+my $fail_offset = $parse->text(\("6-----1"));
+if ($fail_offset >= 0) {
+   die("Parse failed at offset $fail_offset");
+}
 
-$parse->initial();
-
-# SKIP: {
-    # skip "Not yet debugged", (scalar @expected);
-
+die("Could not initialize parse") unless $parse->initial();
 
 # Set max at 20 just in case there's an infinite loop.
 # This is for debugging, after all
@@ -179,8 +178,6 @@ PARSE: for my $i (0 .. 20) {
     }
     last PARSE unless $parse->next();
 }
-
-# } # SKIP
 
 # Local Variables:
 #   mode: cperl

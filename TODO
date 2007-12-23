@@ -1,3 +1,6 @@
+* Eliminate "raw canoncial" names -- simply reject anything ending in a
+  closing square bracket
+
 * Explicitly setting start symbol -- sort this out.  Set it in internal
   form?  canonical form?
 
@@ -8,9 +11,12 @@
   should internally be *REFS* to the values, not the values.
 
 * Test these traces, to ensure tracing reform did not break them:
-    TRACE_ITERATION_SEARCHES TRACE_ITERATION_CHANGES
-    TRACE_EVALUATION_CHOICES TRACE_COMPLETIONS
-    TRACE_VALUES TRACE_PRIORITIES
+    TRACE_COMPLETIONS TRACE_PRIORITIES
+
+* Test that max_parses is enforced
+
+* Check Parse::Marpa::Parse::new options.  Do defaults from grammar
+  work as advertized?
 
 * Ensure Parse::Marpa::Internal::This::grammar set wherever appropriate.
 
@@ -43,7 +49,3 @@
    - basic test for all branches of counted rules: matrix is
      keep/no-keep, separated yes/no, right/left,
      0-1, 1-1, 0-2, 0-5, 1-2, 1-5, 0-*, 1-*, 2-*, 5-*
-
-* (Later) Look at Yacc macros yyerrok YYERROR YYACCEPT YYABORT YYRECOVERING.
-
-* (Later) Look at error recovery.   Is anything in Parse::Yapp or yacc useful?

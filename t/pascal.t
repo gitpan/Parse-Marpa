@@ -54,7 +54,7 @@ sub ah_extended {
     my @parse_counts;
     for my $loc (0 .. $n) {
         my $parse_number = 0;
-        $parse->initial($loc);
+        die("Cannot initialize parse at location $loc") unless $parse->initial($loc);
 
         # An arbitrary maximum is put on the number of parses -- this is for
         # debugging, and infinite loops happen.

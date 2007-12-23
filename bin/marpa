@@ -47,4 +47,9 @@ sub do_parse {
     );
     my $text; { local($RS) = undef; $text = <STDIN>; }
 
+    if ((my $fail_location = $parse->text($text)) >= 0) {
+        print STDERR Parse::Marpa::show_location("Parse failed", \$text, $fail_location);
+	exit 1;
+    }
+
 }

@@ -25,7 +25,7 @@ use warnings;
 no warnings "recursion";
 use strict;
 
-our $VERSION = '0.001_061';
+our $VERSION = '0.001_062';
 $VERSION = eval $VERSION;
 
 package Parse::Marpa::Internal;
@@ -35,7 +35,14 @@ use Data::Dumper;
 use Scalar::Util qw(weaken);
 
 use Parse::Marpa::Lex;
-use Parse::Marpa::Source;
+my $source_eval_error;
+BEGIN {
+    eval "use Parse::Marpa::Source";
+    if ($@) { eval "use Parse::Marpa::Raw_Source" }
+    $source_eval_error = $@;
+}
+
+croak($source_eval_error) if $source_eval_error;
 
 =begin Apology:
 
@@ -51,35 +58,35 @@ This because parsers run inside tight loops.  In particular the rap
 against Earley's has always been speed.  Readability is not a good
 reason to writing a uselessly slow module.  In a sense, if you hate
 the style, I've done my job -- you probably wouldn't be reading the
-code unless the module proved to be of use.
+code unless the module proved to be useful.
 
 I've written very C-ish Perl -- lots of references, avoidances of
 hashes, no internal OO, etc.  To repeat, I don't think that trying
-to make Perl look like C is, in general, a good idea.  But as the
-lawyers say, circumstances make cases.
+to make Perl look like C is a good idea in general, and I don't
+usually write Perl that way.  But as the lawyers say, circumstances
+make cases.
 
 C conversion is important because one of two things are going to
 happen to Marpa: it turns out to be so slow it's difficult to use,
 or it does not.  If Marpa is slow, the next thing to try is conversion
 to C.  If it's fast, Marpa will be highly useful, and there will
-almost certainly be demand for a yet faster version -- in C.  As
-of this writing, my guess is that Marpa is doomed to a C
-re-implementation, or oblivion.
+almost certainly be demand for a yet faster version -- in C.
 
-The candid reader, having read the above and perused the below,
-might not be interested in my recommendations on books about Perl
-style, but for what it's worth, I recommend Damian Conway's _Perl
-Best Practices_.  Damian is the best starting point for thinking
-about Perl style, whether you agree with him or not.  I've made
-many exceptions due to necessity, as described above.   Many more
-I've no doubt made out of ignorance.  A few other exceptions are
-because I can't agree with Damian.
+For what it's worth, I recommend Damian Conway's _Perl Best Practices_.
+Damian is the best starting point for thinking about Perl style,
+whether you agree with him or not.  I've made many exceptions due
+to necessity, as described above.   Many more I've no doubt made
+out of ignorance.  A few other exceptions are because I can't agree
+with Damian.
 
-Especially noticeable will be that I don't append "_ref" to the
-name references -- almost every variable name in the below is a
-reference.  I don't for a moment imagine it's easy code to read,
-but I can't believe having 90% of the variable names end in "_ref"
-will make it any easier.
+An example of a deliberate exception I've made to Damian's guidelines:
+I don't append "_ref" to the name references -- almost every variable
+name in the below is a reference.  This may not be easy code to
+read, but I can't believe having 90% of the variable names end in
+"_ref" would it any easier.
+
+As Damian notes, his own CPAN modules don't follow his guidelines all
+that closely, either.
 
 =end Apology:
 
@@ -220,6 +227,7 @@ use constant TRACE_EVALUATION_CHOICES => 36;
 use constant TRACE_COMPLETIONS        => 37;
 use constant TRACE_ACTIONS            => 38;
 use constant TRACE_VALUES             => 39;
+use constant MAX_PARSES               => 40;
 
 # values for state
 use constant NEW          => "grammar without rules";
@@ -481,11 +489,17 @@ sub Parse::Marpa::new {
     $grammar->[Parse::Marpa::Internal::Grammar::RULES]        = [];
     $grammar->[Parse::Marpa::Internal::Grammar::RULE_HASH]    = {};
     $grammar->[Parse::Marpa::Internal::Grammar::SDFA_BY_NAME] = {};
+    $grammar->[Parse::Marpa::Internal::Grammar::MAX_PARSES ] = -1;
 
     $grammar->set(%args);
 }
 
 our $compiled_source_grammar;
+
+sub Parse::Marpa::show_source_grammar_status {
+    return "Compiled" if defined $compiled_source_grammar;
+    "Raw";
+}
 
 # some day use to make locator more efficient on repeated calls
 sub binary_search {
@@ -507,7 +521,7 @@ sub locator {
     my $earleme = shift;
     my $string = shift;
 
-    state $lines;
+    my $lines;
     $lines //= [0];
     my $pos = pos $$string = 0;
     NL: while ($$string =~ /\n/g) {
@@ -520,24 +534,36 @@ sub locator {
     return ($line, $line_start);
 }
 
-sub die_with_parse_failure {
+sub Parse::Marpa::show_location {
+    my $msg = shift;
     my $source = shift;
     my $earleme = shift;
 
-    # print $parse->show_status();
-
-    # for the editors, line numbering starts at 1
-    # do something about this?
     my ($line, $line_start) = locator($earleme, $source);
-    my @msg = ("Parse failed at line ", $line+1, ", earleme $earleme\n");
+    my @msg = ($msg, " at line ", $line+1, ", earleme $earleme\n");
     given (index($$source, "\n", $line_start)) {
         when (undef) { push(@msg, substr($$source, $line_start), "\n") }
         default { push(@msg, substr($$source, $line_start, $_-$line_start), "\n") }
     }
-    push(@msg, (" " x ($earleme-$line_start)), "^\n");
-    croak(@msg);
+    join("", @msg, (" " x ($earleme-$line_start)), "^\n");
 }
 
+sub die_with_parse_failure {
+    my $source = shift;
+    my $earleme = shift;
+
+    croak(Parse::Marpa::show_location("Parse failed", $source, $earleme));
+}
+
+sub Parse::Marpa::create_compiled_source_grammar {
+    # If it's called from a utility, we may already have the compiled source grammar
+    return $Parse::Marpa::Internal::compiled_source_grammar
+        if defined $Parse::Marpa::Internal::compiled_source_grammar;
+
+    my $raw_source_grammar = Parse::Marpa::Internal::raw_source_grammar();
+    $raw_source_grammar->precompute();
+    $raw_source_grammar->compile();
+}
 
 # First arg is the current grammar, that is, the one being
 # built.
@@ -547,6 +573,10 @@ sub source_grammar {
     my $source  = shift;
 
     my $trace_fh = $grammar->[ Parse::Marpa::Internal::Grammar::TRACE_FILE_HANDLE ];
+    if (not defined $Parse::Marpa::Internal::compiled_source_grammar) {
+        $Parse::Marpa::Internal::compiled_source_grammar
+            = Parse::Marpa::create_compiled_source_grammar();
+    }
     my $source_grammar = Parse::Marpa::decompile(
         $Parse::Marpa::Internal::compiled_source_grammar,
         $trace_fh
@@ -719,6 +749,22 @@ sub Parse::Marpa::set {
                     $value;
                 $grammar->[ Parse::Marpa::Internal::Grammar::TRACING  ] = 1;
             }
+            when ("trace_iterations") {
+                $grammar->[ Parse::Marpa::Internal::Grammar::TRACE_ITERATION_SEARCHES ]
+                    = $grammar->[ Parse::Marpa::Internal::Grammar::TRACE_ITERATION_CHANGES ]
+                    = $value;
+                $grammar->[ Parse::Marpa::Internal::Grammar::TRACING  ] = 1;
+            }
+            when ("trace_iteration_searches") {
+                $grammar->[ Parse::Marpa::Internal::Grammar::TRACE_ITERATION_SEARCHES ] =
+                    $value;
+                $grammar->[ Parse::Marpa::Internal::Grammar::TRACING  ] = 1;
+            }
+            when ("trace_iteration_changes") {
+                $grammar->[ Parse::Marpa::Internal::Grammar::TRACE_ITERATION_CHANGES ] =
+                    $value;
+                $grammar->[ Parse::Marpa::Internal::Grammar::TRACING  ] = 1;
+            }
             when ("trace_priorities") {
                 $grammar->[ Parse::Marpa::Internal::Grammar::TRACE_PRIORITIES ] =
                     $value;
@@ -739,6 +785,10 @@ sub Parse::Marpa::set {
             }
             when ("code_lines") {
                 $grammar->[Parse::Marpa::Internal::Grammar::CODE_LINES] =
+                    $value;
+            }
+            when ("max_parses") {
+                $grammar->[Parse::Marpa::Internal::Grammar::MAX_PARSES ] =
                     $value;
             }
             when ("version") {
@@ -893,7 +943,7 @@ sub Parse::Marpa::compile {
     }
     my $d = Data::Dumper->new( [$grammar], ["grammar"] );
     $d->Purity(1);
-    $d->Indent(1);
+    $d->Indent(0);
     # returns a ref -- dumps can be long
     return \($d->Dump());
 }
@@ -3364,6 +3414,7 @@ use constant PRIORITIES        => 24;    # an array, indexed by SDFA state id,
                                          # of its priority
 use constant STREAM            => 25;    # streaming input?
 use constant LAST_COMPLETED_SET => 26;   # last earley set completed
+use constant PARSE_COUNT        => 27;   # number of parses in an ambiguous parse
 
 # Set rule actions
 sub set_actions {
@@ -3996,7 +4047,7 @@ sub Parse::Marpa::Parse::clear_notations {
                 Parse::Marpa::Internal::Earley_item::EFFECT,
                 Parse::Marpa::Internal::Earley_item::LHS,
                 ]
-                = ( undef, [], 0, 0, 0, undef, undef, undef, undef, undef, );
+                = ( undef, undef, 0, 0, 0, undef, undef, undef, undef, undef, );
         }
     }
 }
@@ -4588,10 +4639,6 @@ sub Parse::Marpa::Parse::initial {
     my $parse         = shift;
     my $parse_set_arg = shift;
 
-    # TODO: At some point I may need to ensure that evaluation notations are
-    # cleared, rather than just assume it.
-
-    # Is the best way to do this?
     my $parse_class = ref $parse;
     my $right_class = "Parse::Marpa::Parse";
     croak(
@@ -4599,15 +4646,12 @@ sub Parse::Marpa::Parse::initial {
     ) unless $parse_class eq $right_class;
 
     my ($grammar,                 $earley_sets,
-        $start_item,              $current_parse_set,
         $volatile,
         $stream,
         )
         = @{$parse}[
         Parse::Marpa::Internal::Parse::GRAMMAR,
         Parse::Marpa::Internal::Parse::EARLEY_SETS,
-        Parse::Marpa::Internal::Parse::START_ITEM,
-        Parse::Marpa::Internal::Parse::CURRENT_PARSE_SET,
         Parse::Marpa::Internal::Parse::VOLATILE,
         Parse::Marpa::Internal::Parse::STREAM,
         ];
@@ -4627,58 +4671,30 @@ sub Parse::Marpa::Parse::initial {
     }
     my $default_parse_set = $parse->[ Parse::Marpa::Internal::Parse::DEFAULT_PARSE_SET ];
 
-    if ( defined $current_parse_set ) {
-        my $need_to_clear = $volatile;
-        if ( defined $parse_set_arg
-            and $parse_set_arg != $current_parse_set )
-        {
-            $current_parse_set = $parse_set_arg;
-            $start_item        = undef;
-            $need_to_clear++;
-        }
-        Parse::Marpa::Parse::clear_notations($parse) if $need_to_clear;
-    }
+    $parse->[ Parse::Marpa::Internal::Parse::PARSE_COUNT ] = 0;
+    Parse::Marpa::Parse::clear_notations($parse);
 
-    if ( not defined $current_parse_set ) {
-        $start_item = undef;
-        $current_parse_set = $parse_set_arg // $default_parse_set;
-    }
+    my $current_parse_set = $parse_set_arg // $default_parse_set;
 
-    # If we already have a start item, use it
+    # Look for the start item and start rule
+    my $earley_set = $earley_sets->[$current_parse_set];
+
+    # The start rule, if not nulling, must be a pure links rule
+    # (no tokens) because I don't allow tokens to be recognized
+    # for the start symbol
+
+    my $start_item;
     my $start_rule;
-    if ( defined $start_item ) {
+
+    # mark start items with LHS?
+    EARLEY_ITEM: for ( my $ix = 0; $ix <= $#$earley_set; $ix++ ) {
+        $start_item = $earley_set->[$ix];
         my $state = $start_item->[Parse::Marpa::Internal::Earley_item::STATE];
         $start_rule = $state->[Parse::Marpa::Internal::SDFA::START_RULE];
-    }
-
-    # Otherwise, look for the start item and start rule
-    if ( not defined $start_rule ) {
-        my $earley_set = $earley_sets->[$current_parse_set];
-
-        # The start rule, if not nulling, must be a pure links rule
-        # (no tokens) because I don't allow tokens to be recognized
-        # for the start symbol
-
-        my $item;
-        my $rule;
-
-        # mark start items with LHS?
-        EARLEY_ITEM: for ( my $ix = 0; $ix <= $#$earley_set; $ix++ ) {
-            $item = $earley_set->[$ix];
-            my $state = $item->[Parse::Marpa::Internal::Earley_item::STATE];
-            $rule = $state->[Parse::Marpa::Internal::SDFA::START_RULE];
-            last EARLEY_ITEM if $rule;
-        }
-
-        $start_item = $item;
-        $start_rule = $rule;
+        last EARLEY_ITEM if $start_rule;
     }
 
     return unless $start_rule;
-
-    my $previous_value =
-        $start_item->[Parse::Marpa::Internal::Earley_item::VALUE];
-    return 1 if $previous_value;
 
     @{$parse}[
         Parse::Marpa::Internal::Parse::START_ITEM,
@@ -4686,11 +4702,39 @@ sub Parse::Marpa::Parse::initial {
         ]
         = ( $start_item, $current_parse_set );
 
-    my ($lhs) = @$start_rule[Parse::Marpa::Internal::Rule::LHS];
+     finish_evaluation($parse);
+
+     1;
+}
+
+sub finish_evaluation {
+    my $parse = shift;
+
+    # mark start items with LHS?
+    my $start_item = $parse->[ Parse::Marpa::Internal::Parse::START_ITEM ];
+    my $grammar = $parse->[ Parse::Marpa::Internal::Parse::GRAMMAR ];
+
+    my $previous_value =
+        $start_item->[Parse::Marpa::Internal::Earley_item::VALUE];
+    return 1 if $previous_value;
+
+    my $state = $start_item->[Parse::Marpa::Internal::Earley_item::STATE];
+    my $start_rule = $state->[Parse::Marpa::Internal::SDFA::START_RULE];
+
+    my $lhs = $start_rule->[Parse::Marpa::Internal::Rule::LHS];
     my ( $nulling, $null_value ) = @{$lhs}[
         Parse::Marpa::Internal::Symbol::NULLING,
         Parse::Marpa::Internal::Symbol::NULL_VALUE
     ];
+
+    my $tracing
+        = $grammar->[ Parse::Marpa::Internal::Grammar::TRACING ];
+    my $trace_fh;
+    my $trace_iteration_changes;
+    if ($tracing) {
+        $trace_fh = $grammar->[ Parse::Marpa::Internal::Grammar::TRACE_FILE_HANDLE ];
+        $trace_iteration_changes = $grammar->[ Parse::Marpa::Internal::Grammar::TRACE_ITERATION_CHANGES ];
+    }
 
     if ($nulling) {
         @{$start_item}[
@@ -4702,7 +4746,7 @@ sub Parse::Marpa::Parse::initial {
             Parse::Marpa::Internal::Earley_item::LHS,
             ]
             = ( \$null_value, 0, 0, 0, [$start_rule], $lhs, );
-        if ($trace_iteration_changes) {
+        if ($tracing && $trace_iteration_changes) {
             print $trace_fh
                 "Setting nulling start value of ",
                 Parse::Marpa::brief_earley_item($start_item), ", ",
@@ -4722,7 +4766,7 @@ sub Parse::Marpa::Parse::initial {
         Parse::Marpa::Internal::Earley_item::LHS,
         ]
         = ( \$value, 0, 0, 0, [$start_rule], $lhs, );
-    if ($trace_iteration_changes) {
+    if ($tracing && $trace_iteration_changes) {
         print $trace_fh "Setting start value of ",
             Parse::Marpa::brief_earley_item($start_item), ", ",
             $lhs->[Parse::Marpa::Internal::Symbol::NAME], " to ",
@@ -4853,8 +4897,21 @@ sub initialize_children {
             $child_symbol->[Parse::Marpa::Internal::Symbol::NULLING];
 
         if ($nulling) {
-            $Parse::Marpa::This::v->[$child_number] =
-                $child_symbol->[Parse::Marpa::Internal::Symbol::NULL_VALUE];
+            my $null_value
+                = $child_symbol->[Parse::Marpa::Internal::Symbol::NULL_VALUE];
+            $Parse::Marpa::This::v->[$child_number] = $null_value;
+
+            if ($trace_values) {
+                my $value_description =
+                    (not defined $$null_value) ? "undefined" :
+                    $$null_value;
+                say $trace_fh
+                    "Using null value for ",
+                    $child_symbol->[ Parse::Marpa::Internal::Symbol::NAME ],
+                    ": ",
+                    $value_description;
+            }
+
             next CHILD;
         }
 
@@ -4871,6 +4928,18 @@ sub initialize_children {
         if ( defined $previous_value ) {
             $Parse::Marpa::This::v->[$child_number] = $$previous_value;
             $item = $previous_predecessor;
+
+            if ($trace_values) {
+                my $value_description =
+                    (not defined $$previous_value) ? "undefined" :
+                    $$previous_value;
+                say $trace_fh
+                    "Using previous value for ",
+                    $child_symbol->[ Parse::Marpa::Internal::Symbol::NAME ],
+                    ": ",
+                    $value_description;
+            }
+
             next CHILD;
         }
 
@@ -4957,7 +5026,6 @@ sub initialize_children {
             }
         }
 
-        # my $value = initialize_children($cause, $child_symbol);
         my $work_entry =
             [ $predecessor, $item, $child_number, $cause, $child_symbol, ];
 
@@ -4983,7 +5051,6 @@ sub initialize_children {
             $child_symbol,
             );
 
-        # $Parse::Marpa::This::v->[ $child_number ] = $value;
         weaken(
             $predecessor->[Parse::Marpa::Internal::Earley_item::SUCCESSOR] =
                 $item );
@@ -5032,7 +5099,11 @@ sub initialize_children {
     }
 
     if ($trace_values) {
-        say $trace_fh "Rule ", Parse::Marpa::brief_rule($rule), "; value:\n", $result;
+        my $result_description =
+            (not defined $result) ? "no value" :
+            (not defined $$result) ? "undefined" :
+            $$result;
+        say $trace_fh "Rule ", Parse::Marpa::brief_rule($rule), "; value: ", $result_description;
     }
 
     $result;
@@ -5072,6 +5143,11 @@ sub Parse::Marpa::Parse::next {
         $start_item->[Parse::Marpa::Internal::Earley_item::VALUE];
     croak("Parse not initialized: no start value")
         unless defined $start_value;
+
+    my $max_parses = $grammar->[ Parse::Marpa::Internal::Grammar::MAX_PARSES ];
+    if ($max_parses > 0 && $parse->[ Parse::Marpa::Internal::Parse::PARSE_COUNT ]++ > $max_parses) {
+        croak("Maximum parse count ($max_parses) exceeded");
+    }
 
     local ($Parse::Marpa::Internal::This::grammar) = $grammar;
     my $tracing = $grammar->[ Parse::Marpa::Internal::Grammar::TRACING ];
@@ -5347,7 +5423,7 @@ sub Parse::Marpa::Parse::next {
         }    # STEP_UP_TREE
 
         # Initialize everything else left unvalued.
-        Parse::Marpa::Parse::initial( $parse, $current_parse_set );
+        finish_evaluation( $parse );
 
         # Rejected evaluations are not yet implemented.
         # Therefore this evaluation pass succeeded.
@@ -5725,13 +5801,39 @@ with help from routines supplied for this purpose with Marpa.
 
 Extends the parse in the 
 I<parse> object with the input I<text>, a reference to a string.
-Returns -1 if the parse succeeded.
-If the parse was exhausted in the course of processing the input string
-(what in most contexts is called a parse "failure"), the location
-where the parse failed is returned.
-Note that if the parse was exhausted by the first character of input,
-that location is zero.
-Other failures are reported via exceptions thrown using C<croak>.
+Returns -1 if the parse is still active after the entire input text
+has been processed.  Otherwise the offset of the character where the parse was exhausted
+is returned.
+Failures, other than exhausted parses,
+are reported as exceptions thrown using C<croak>.
+
+The text is parsed treating each character as an earleme,
+and using the lexers specified in the source file,
+or with the raw interface.
+
+The character offset where the parse was exhausted
+is reported as characters from
+the start of C<text>.
+The first character is at offset zero.
+A zero return from C<text()>, therefore, indicates
+that the parse was exhausted at the first character.
+
+A parse is "exhausted" at a point in the input
+where no successful parses are possible.
+In most contexts and with most applications,
+an exhausted parse is treated as a failed parse.
+
+=item Parse::Marpa::show_location(I<message>, I<text>, I<offset>)
+
+I<message> must a string,
+I<text> a B<reference> to a string,
+and I<offset>, a character offset within that string.
+C<show_location> returns a multi-line string with a header
+line containing I<message>,
+the line from I<text> containing I<offset>,
+and a "pointer" line.
+The pointer line uses the
+ASCII "caret" symbol to point to the exact offset.
 
 =back
 
@@ -5852,6 +5954,10 @@ Only grammars and parses are objects, and they are not
 designed to be inherited.
 
 =head1 BUGS
+
+The assumption that the default Marpa grammar description
+language is being used is hardwired into C<get_symbol>.  This
+will be fixed before going beta.
 
 Please report any bugs or feature requests to
 C<bug-parse-marpa at rt.cpan.org>, or through the web interface at
