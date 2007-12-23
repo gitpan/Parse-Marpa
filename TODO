@@ -1,7 +1,10 @@
+* Explicitly setting start symbol -- sort this out.  Set it in internal
+  form?  canonical form?
+
 * There needs to be a way of explicitly setting "no value" for the
   default action and the default null value.
 
-* Is null values and the default null value handled right?  They
+* Are null values and the default null value handled right?  They
   should internally be *REFS* to the values, not the values.
 
 * Test these traces, to ensure tracing reform did not break them:

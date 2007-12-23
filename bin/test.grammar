@@ -1,0 +1,17 @@
+semantics are perl5.  version is 0.1.61.  the start symbol is
+S.  the default null value is q{}.  the default action is q{
+     my $v_count = scalar @$Parse::Marpa::This::v;
+     return "" if $v_count <= 0;
+     return $Parse::Marpa::This::v->[0] if $v_count == 1;
+     "(" . join(";", @$Parse::Marpa::This::v) . ")";
+}.
+
+S: A, A, A, A.
+
+A: lowercase a.
+
+lowercase a matches /a/.
+
+E: . # empty
+
+A: E.

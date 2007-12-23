@@ -1,0 +1,261 @@
+=head1 NAME
+
+Parse::Marpa::Language - The Marpa Grammar Description Language
+
+    THIS DOCUMENT IS UNDER CONSTRUCTION AND VERY INCOMPLETE
+
+=head2 Overview
+
+Not all parsers are capable of parsing their own description languages.
+The source files specifying grammars to Marpa are parsed by Marpa
+in the same way that Marpa parses user-specified grammars.
+In fact, the grammar for Marpa's grammar description language is
+written in that grammar description language.
+
+It is entirely
+possible for a Marpa user to write their own interface language to
+replace Marpa's.
+The result could be easily be an improvement on the original in
+expressive power or efficiency.
+Humbling as it is to admit, it might be an improvement in both
+respects.
+There are better language designers than me out there and
+my goal with Marpa is to empower them.
+
+Marpa's self-describing grammar source file is in the distribution,
+and is named C<self.marpa>.
+Most of the examples of the Marpa grammar description language below are
+adopted from that file or previous versions of it.
+
+=head2 Paragraphs and Sentences
+
+The file is divided into paragraphs, separated by blank lines, that is lines
+containing only horizontal whitespace.  Comments do not count as whitespace
+for the purpose of separating paragraphs.
+Paragraphs contain sentences, which must end in a period.
+
+There are definition paragraphs, production paragraphs and terminal paragraphs.
+Definition paragraphs contain one or more definitions.  For example,
+
+    semantics are perl5.  version is 0.1.59.  the start symbol is
+    grammar.
+
+=head2 Reserved words in the Marpa Grammar Descriptions
+
+Case matters in all the reserved words and names in
+the Marpa grammar description language.
+They must be in lower case.
+This is in line with the position Larry Wall took in his 2007
+"State of the Onion" talk.
+The idea is that what the user is doing should be
+emphasized over the framework of the language.
+
+=head2 User Specified Names
+
+User specified names are case-indifferent.
+"Symbol" is the same name as "SYMBOL", "symbol" and even "sYmBoL".
+The user may use case as an expressive element, or to distinguish
+his names from Marpa's keywords.
+
+Names may be more than one word and may be separated by whitespace
+or hyphens as the user chooses.  User names are separation-indifferent as well
+as case-indifferent.
+"My symbol" and "my-symbol" are the same name.
+
+A user specified name may be all lowercase,
+just as Marpa's keywords are required to be.
+This allows the user to reuse the Marpa description's
+keywords for his purposes.
+For example, in Marpa's self-definition, the following occurs:
+
+    rhs element: Optional rhs element.
+
+As you'll see elsewhere "optional" is a Marpa keyword which can be
+meaningful in that context,
+and if "optional" were lower case in this example,
+the Marpa's preferred parse would result in this sentence
+being interpreted as a rule which states
+that a C<rhs element> can consist either of nothing,
+or else itself.
+Marpa allows both circular and null rules,
+and so this rule, which probably not a good idea, is
+perfectly legal.
+
+However, since "Optional" begins with a capital letter, it must
+be a user name or part of one.
+And in fact, an "Optional rhs element" is defined later as
+
+    optional rhs element: /optional/, rhs symbol specifier.
+
+As will be explained in more detail below, this states that
+an C<optional rhs element> is not an optional element at all.
+It an non-nullable and non-optional element,
+composed of
+the keyword <optional> followed by a C<rhs symbol specifier>.
+
+Note that on the left hand side of this second rule, the "optional" in
+C<optional rhs element> is not capitalized.  The "optional" keyword only
+makes sense on the left hand side, and no possible parse allows "optional"
+to be interpreted as a Marpa keyword, so it isn't.
+
+Humans often use the same word to mean two different things,
+relying on context to resolve the ambiguity.
+This makes human languages powerful, compact and expressive.
+Other parsers allow the user to use ambiguity
+only to a very limited degree.
+In Perl 5, Larry Wall was probably about as aggressive in this respect
+as anyone using an LALR parser could be.
+
+=head2 Definition Sentences
+
+Definition sentences contain the name of a Marpa predefined and its value,
+separated by the word "is" or "are".
+The name of the predefined may be preceded
+by "the".
+
+The following all define the semantics of the grammar to be Perl 5.
+
+    semantics are perl5.
+    perl5 is the semantics.
+    perl5 is semantics.
+    the semantics are perl5.
+    the semantics is perl5.
+
+Note that "is" or "are" always works.
+Marpa can't be bothered figuring out
+whether semantics is (are?) really singular or plural,
+and I think it has the right attitude about this.
+Marpa is similarly liberal about "is" versus "are" for all names, whether Marpa
+predefined or user-specified.
+
+The syntax for the other definitions of predefineds
+obeys the above rules, except where spefically noted
+otherwise.
+
+=head2 Semantics definition
+
+The semantics definition is not optional.
+Marpa is ultimately targeted to perl6, and that is considered its "default"
+semantics, even though it's not currently available.
+Currently, the only available semantics is C<perl5>.
+
+I require every Marpa grammar description to contain a line explicitly stating
+that its semantics are Perl 5, in order to limit
+problems with old Marpa source files
+once Perl 6 becomes available and the default.
+
+=head2 Version definition
+
+    version is 0.1.59.
+
+This also is not optional, and as long as Marpa is in alpha,
+the version has to match B<exactly>.
+This causes me a lot of trouble because all the test cases and examples
+and the bootstraping code must be edited whenever I up the version number,
+but nonetheless I regard it as a feature.
+It forces the user to be aware of version changes.
+This is essential while Marpa is in alpha,
+because versions will change frequently,
+and features will be volatile.
+There will be no attempt to maintain compatibility from version to version
+until Marpa goes beta.
+
+=head2 Start symbol definition
+
+    the start symbol is grammar.
+
+
+The start symbol is optional,
+in the sense that it may be specified later.
+If no start symbol has been specified by precomputation time,
+Marpa will fail.
+
+=head2 String definitions
+
+Strings are used in Marpa for several important purposes.
+Many of the definitions require strings.
+"Actions" (the semantics of the rules) are specified as
+strings with Perl 5 code in them.
+Custom lexers can also be specified, and these also are strings
+containing Perl 5 code.
+
+Here's an example of a string definition:
+
+    concatenate lines is q{
+        my $v_count = scalar @$Parse::Marpa::This::v;
+        return undef if $v_count <= 0;
+        join("\n", grep { $_ } @$Parse::Marpa::This::v);
+    }.
+
+=head2 Literal strings
+
+Literal strings can be single quoted, double quoted, C<q>-quoted or C<qq>-quoted.
+The syntax is much the same in Perl 5.
+Marpa recognizes backslashes,
+and will not terminate a single- or double-quoted string at a
+delimiting quote when it is preceded by a backslash.
+
+For the C<q> and C<qq> strings, Marpa allows as delimiters
+everything in the POSIX C<punct> character class, except backslash and
+the four right hand side bracketing symbols --
+angle and square bracket, curly brace and parentheses.
+(These are the same restrictions that Perl 5 imposes, or are at least very close.)
+Backslashes escape the end delimiters in C<q> and C<qq> strings,
+just as they do in single and double-quoted strings.
+
+Like Perl 5, Marpa treats a C<q> or C<qq> string with a left-hand bracketing symbol as a
+opening delimiter as special cases.
+The corresponding right hand bracketing symbol becomes the end-delimiter.
+Backslashes escape as usual.
+Nesting of the brackets within the quote is also tracked and the string
+will not terminate until there's an unescaped closing bracket at the same
+nesting level as the opening bracket.
+
+Marpa's literal strings are often Perl 5 code,
+and it must be remembered that Marpa does B<not> understand Perl 5 syntax.
+Treatment of brackets and string delimiters is more complex in Perl 5 than described
+above and Marpa's ideas of how to deal with them are limited to those described above.
+
+This means that in complex cases, such as when an end delimiter appears in a Perl 5
+character class, or within a string inside code
+Marpa's idea of where the closing delimiter is may not
+correspond to what Perl 5's would be.
+Users should choose from among Marpa's large variety of the quoting construct one
+that sidesteps potential issues.
+
+Once a literal string is recognized, it's passed on unaltered
+to Perl 5 for the usual Perl 5 interpretation.
+The string literal is passed to Perl 5 delimited in the
+same way that it was in Marpa.
+You can, for example,
+use single and double quotes in the Marpa source file
+and expect Perl 5's interpretation of
+that string literal will follow the same rules as if you'd 
+specified it directly to Perl 5.
+
+=head2 Default action definition
+
+You can specify a "default action", that is, an action to be used in rules which do
+not explicitly specify an action.  By default, rules return a
+return a "no value" (which in Marpa is B<not> the same as an undefined).
+
+Marpa's evaluation code optimizes in the presence
+of "no value" returns, and you will seldom want to change it.
+The current version of C<self.marpa> uses the no-value "default default".
+Here's the specification of a default action from an earlier version.
+
+    concatenate lines is the default action. 
+
+In this case, the string specifier is C<concatenate lines>, the string name
+defined in an earlier example.
+In any definition which takes a string at the value,
+the string may be specified either by name
+or as a literal string.
+
+=head2 Default null value definition
+
+=head2 Notes not yet properly incorporated in this document
+
+All Perl code supplied by the user via the Marpa source file by default
+is run with "use integer" in effect.  If the user wants floating point arithmetic
+she must specify "no integer".

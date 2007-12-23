@@ -10,6 +10,7 @@ lib/Parse/Marpa/WHY_CALL_IT_MARPA.pod
 lib/Parse/Marpa/Lex.pm
 lib/Parse/Marpa/preamble_Source.pm
 lib/Parse/Marpa/Source.pm
+lib/Parse/Marpa/LANGUAGE.pod
 t/00-load.t
 t/ah.t
 t/ah2.t
@@ -36,3 +37,5 @@ bootstrap/raw_dump_trailer.pl
 bootstrap/raw_to_compiled.pl
 bootstrap/self.marpa
 bootstrap/Makefile
+bin/marpa
+bin/test.grammar

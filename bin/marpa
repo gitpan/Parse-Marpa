@@ -1,0 +1,50 @@
+#!/usr/bin/env perl
+require 5.009005;
+use feature ":5.10";
+
+use Carp;
+use Getopt::Long;
+use Parse::Marpa;
+use English;
+
+my $command = shift;
+my %options;
+
+given ($command) {
+    when ('compile') {
+        GetOptions("option" => \%options);
+	do_compile();
+    }
+    when ('parse') {
+        GetOptions("option" => \%options);
+	do_parse();
+    }
+    default {
+        croak("Unimplemented marpa command: $command");
+    }
+}
+
+sub do_compile {
+    my $grammar_source; { local($RS) = undef; $grammar_source = <STDIN>; }
+
+    my $grammar = new Parse::Marpa(
+	 source => \$grammar_source,
+	 %options
+    );
+
+    $grammar->precompute();
+    my $compiled_grammar = $grammar->compile();
+    print $$compiled_grammar;
+}
+
+sub do_parse {
+    my $compiled_grammar; { local($RS) = undef; $compiled_grammar = <STDIN>; }
+
+    my $grammar = Parse::Marpa::decompile();
+    my $parse = new Parse::Marpa::Parse(
+        grammar => $grammar,
+	%options
+    );
+    my $text; { local($RS) = undef; $text = <STDIN>; }
+
+}
