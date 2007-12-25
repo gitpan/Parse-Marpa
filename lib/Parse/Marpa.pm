@@ -1,4 +1,3 @@
-package Parse::Marpa;
 require 5.009005;
 
 # the public namespace
@@ -20,25 +19,35 @@ require 5.009005;
 
 # thanks, Jeffrey Kegler
 
+package Parse::Marpa;
+
 use feature ":5.10";
 use warnings;
 no warnings "recursion";
 use strict;
 
-our $VERSION = '0.001_062';
-$VERSION = eval $VERSION;
+BEGIN {
+    our $VERSION = '0.001_063';
+    our $STRING_VERSION = $VERSION;
+    $VERSION = eval $VERSION;
+}
 
 package Parse::Marpa::Internal;
 
 use Carp;
 use Data::Dumper;
 use Scalar::Util qw(weaken);
-
 use Parse::Marpa::Lex;
+
+our $compiled_eval_error;
 my $source_eval_error;
 BEGIN {
-    eval "use Parse::Marpa::Source";
-    if ($@) { eval "use Parse::Marpa::Raw_Source" }
+    eval "use Parse::Marpa::Source $Parse::Marpa::STRING_VERSION";
+    $compiled_eval_error = $@;
+    if ($compiled_eval_error) {
+        undef $Parse::Marpa::Internal::compiled_source_grammar;
+        eval "use Parse::Marpa::Raw_Source"
+    }
     $source_eval_error = $@;
 }
 
@@ -369,8 +378,9 @@ sub Parse::Marpa::Internal::raw_grammar_eval {
 
      no integer;
      Carp::croak(
-         "Version in marpa grammar does not match: $new_version vs. ",
-         $Parse::Marpa::VERSION
+         "Version in marpa grammar ($new_version) does not match Marpa (",
+         $Parse::Marpa::VERSION,
+         ")"
      ) if $new_version != $Parse::Marpa::VERSION;
      use integer;
 
@@ -497,8 +507,11 @@ sub Parse::Marpa::new {
 our $compiled_source_grammar;
 
 sub Parse::Marpa::show_source_grammar_status {
-    return "Compiled" if defined $compiled_source_grammar;
-    "Raw";
+    my $status = $compiled_source_grammar ?  "Compiled" : "Raw";
+    if ( $Parse::Marpa::Internal::compiled_eval_error ) {
+        $status .= "\nCompiled source had error:\n" . $Parse::Marpa::Internal::compiled_eval_error;
+    }
+    $status;
 }
 
 # some day use to make locator more efficient on repeated calls
@@ -584,8 +597,8 @@ sub source_grammar {
 
     my $grammar_version = $source_grammar->[ Parse::Marpa::Internal::Grammar::VERSION ];
     no integer;
-    if ($VERSION != $grammar_version) {
-        croak("Version mismatch between Marpa ($VERSION) and its source grammar ($grammar_version)");
+    if ($Parse::Marpa::VERSION != $grammar_version) {
+        croak("Version mismatch between Marpa ($Parse::Marpa::VERSION) and its source grammar ($grammar_version)");
     }
     use integer;
     my $parse = new Parse::Marpa::Parse(
@@ -600,7 +613,6 @@ sub source_grammar {
     return unless defined $result;
     my $value = $parse->value();
     raw_grammar_eval($grammar, $value);
-    # croak("sourcing grammars not yet implemented");
 }
 
 sub Parse::Marpa::set {
@@ -767,6 +779,11 @@ sub Parse::Marpa::set {
             }
             when ("trace_priorities") {
                 $grammar->[ Parse::Marpa::Internal::Grammar::TRACE_PRIORITIES ] =
+                    $value;
+                $grammar->[ Parse::Marpa::Internal::Grammar::TRACING  ] = 1;
+            }
+            when ("trace_completions") {
+                $grammar->[ Parse::Marpa::Internal::Grammar::TRACE_COMPLETIONS ] =
                     $value;
                 $grammar->[ Parse::Marpa::Internal::Grammar::TRACING  ] = 1;
             }
@@ -1326,11 +1343,6 @@ one underscore, but not two, are reserved for internal uses
 
 =cut
 
-sub canonical_name {
-    my $name = shift;
-    $name =~ /]$/ ? $name . "_" : $name;
-}
-
 sub add_terminal {
     my $grammar  = shift;
     my $name     = shift;
@@ -1431,7 +1443,9 @@ sub assign_symbol {
 sub assign_user_symbol {
     my $self = shift;
     my $name = shift;
-    assign_symbol( $self, canonical_name($name) );
+    croak("Symbol name $name ends in ']': that's not allowed")
+        if $name =~ /_$/;
+    assign_symbol( $self, $name );
 }
 
 sub add_user_rule {
@@ -1443,10 +1457,10 @@ sub add_user_rule {
 
     my ($rule_hash) = @{$grammar}[Parse::Marpa::Internal::Grammar::RULE_HASH];
 
-    my $lhs_symbol = assign_symbol( $grammar, canonical_name($lhs_name) );
+    my $lhs_symbol = assign_user_symbol( $grammar, $lhs_name );
     $rhs_names //= [];
     my $rhs_symbols =
-        [ map { assign_symbol( $grammar, canonical_name($_) ); }
+        [ map { assign_user_symbol( $grammar, $_ ); }
             @$rhs_names ];
 
     # Don't allow the user to duplicate a rule
@@ -1738,26 +1752,26 @@ sub add_rules_from_hash {
 
     # create the rhs symbol
     my $rhs_name           = pop @$rhs_names;
-    my $canonical_rhs_name = canonical_name($rhs_name);
-    my $rhs                = assign_symbol( $grammar, $canonical_rhs_name );
+    my $rhs                = assign_user_symbol( $grammar, $rhs_name );
     $rhs->[Parse::Marpa::Internal::Symbol::COUNTED] = 1;
 
     # create the separator symbol, if we're using one
     my $separator;
-    my $canonical_separator_name;
     if ( defined $separator_name ) {
-        $canonical_separator_name = canonical_name($separator_name);
-        $separator = assign_symbol( $grammar, $canonical_separator_name );
+        $separator = assign_user_symbol( $grammar, $separator_name );
         $separator->[Parse::Marpa::Internal::Symbol::COUNTED] = 1;
     }
 
     # create the sequence symbol
-    my $sequence_name = $canonical_rhs_name . "[Seq][$min-*]";
-    $sequence_name .= "[Sep][" . $canonical_separator_name . "]"
-        if defined $separator_name;
+    my $sequence_name = $rhs_name . "[Seq][$min-*]";
+    if (defined $separator_name) {
+        my $punctuation_free_separator_name = $separator_name;
+        $punctuation_free_separator_name =~ s/[^[:alnum:]]/_/g;
+        $sequence_name .= "[Sep][" . $punctuation_free_separator_name . "]"
+    }
     my $sequence = assign_symbol( $grammar, $sequence_name );
 
-    my $lhs = assign_symbol( $grammar, canonical_name($lhs_name) );
+    my $lhs = assign_user_symbol( $grammar, $lhs_name );
 
     # Don't allow the user to duplicate a rule
     # I'm pretty general here -- I consider a sequence rule a duplicate is rhs, lhs
@@ -1898,10 +1912,12 @@ sub add_user_terminals {
 
 sub add_user_terminal {
     my $grammar  = shift;
-    my $lhs_name = shift;
+    my $name = shift;
     my $lexer    = shift;
 
-    add_terminal( $grammar, canonical_name($lhs_name), $lexer );
+    croak("Symbol name $name ends in ']': that's not allowed")
+        if $name =~ /_$/;
+    add_terminal( $grammar, $name, $lexer );
 }
 
 sub set_start {
@@ -3084,6 +3100,7 @@ sub rewrite_as_CHAF {
         # Finally, in one more complication, remember that the nullable flag
         # was unset if a nullable was aliased.  So we need to check both the
         # NULL_ALIAS (for proper nullables) and the NULLING flags to see if
+        # the original rule was nullable.
 
         my $last_nonnullable = -1;
         my $proper_nullables = [];
@@ -3331,7 +3348,7 @@ sub rewrite_as_CHAF {
         ]
         = ( $productive, 1, 1, q{ $Parse::Marpa::This::v->[0] } );
 
-    # If we created a null alias for the original start symobl, we need
+    # If we created a null alias for the original start symbol, we need
     # to create a nulling start rule
     my $old_start_alias =
         $old_start_symbol->[Parse::Marpa::Internal::Symbol::NULL_ALIAS];
@@ -4794,7 +4811,6 @@ sub Parse::Marpa::Parse::find_complete_rule {
     $last_earleme = $default_parse_set if $last_earleme > $default_parse_set;
 
     # We symbol from the user, so we need to canonicalize it.
-    $symbol = canonical_name($symbol) if defined $symbol;
 
     EARLEME:
     for (
@@ -4903,8 +4919,7 @@ sub initialize_children {
 
             if ($trace_values) {
                 my $value_description =
-                    (not defined $$null_value) ? "undefined" :
-                    $$null_value;
+                    (not defined $null_value) ?  "undefined" : $null_value;
                 say $trace_fh
                     "Using null value for ",
                     $child_symbol->[ Parse::Marpa::Internal::Symbol::NAME ],
@@ -5100,9 +5115,7 @@ sub initialize_children {
 
     if ($trace_values) {
         my $result_description =
-            (not defined $result) ? "no value" :
-            (not defined $$result) ? "undefined" :
-            $$result;
+            (not defined $result) ?  "undefined" : $result;
         say $trace_fh "Rule ", Parse::Marpa::brief_rule($rule), "; value: ", $result_description;
     }
 
@@ -5120,7 +5133,6 @@ sub Parse::Marpa::Parse::value {
     return $value_ref;
 }
 
-# TODO Add check to ensure that the argument is an evaluated parse.
 sub Parse::Marpa::Parse::next {
     my $parse = shift;
 
@@ -5138,6 +5150,8 @@ sub Parse::Marpa::Parse::next {
         Parse::Marpa::Internal::Parse::CURRENT_PARSE_SET,
         Parse::Marpa::Internal::Parse::VOLATILE,
         ];
+
+    # TODO: Is this check enough be sure that this is an evaluated parse?
     croak("Parse not initialized: no start item") unless defined $start_item;
     my $start_value =
         $start_item->[Parse::Marpa::Internal::Earley_item::VALUE];
@@ -5490,6 +5504,10 @@ sub canonical_version {
 
 Parse::Marpa - (pre-Alpha) Jay Earley's general parsing algorithm, with LR(0) precomputation
 
+=head1 BEWARE!  THIS DOCUMENT IS UNDER CONSTRUCTION AND VERY INCOMPLETE
+
+    BEWARE: THIS DOCUMENT IS UNDER CONSTRUCTION AND VERY INCOMPLETE
+
 =head1 VERSION
 
 Pre-alpha Version
@@ -5834,6 +5852,70 @@ the line from I<text> containing I<offset>,
 and a "pointer" line.
 The pointer line uses the
 ASCII "caret" symbol to point to the exact offset.
+
+=item Parse::Marpa::Parse::initial(I<parse>, I<parse_end>)
+
+Performs the recognition phase on a parse.
+On success, C<initial()> returns a value of 1.
+The user may then get values of the parse with I<Parse::Marpa::Parse::value>, 
+and interate it with I<Parse::Marpa::Parse::next>.
+
+C<initial()> returns undef if it fails to find a parse.
+Other failures are thrown as exceptions.
+
+The I<parse_end> argument is optional.
+If provided, it must be an earleme number specifying where the end
+of the parse is to be sought.
+In the standard case, a successful parse in non-streaming mode,
+the default is to parse to the end of the input,
+which is usually what the user wants.
+
+In case of an exhausted parse,
+the default is the point at which the parse was exhausted.
+Frankly, most of the time that won't be very helpful.
+An exhausted parse means either that the parse has failed
+or that a user is using some advanced wizardry with grammars.
+A failed parse is usually addressed by fixing the grammar or the
+input, but if the user does want to attempt
+error recovery,
+the C<Parse::Marpa::Parse::find_complete_rule()> method may help.
+
+At this point stream mode is also bleeding-edge wizardry.
+It is not well tested.
+In stream mode there is no obvious "end of input".
+At this moment Marpa doesn't provide a lot of tools for working with
+stream mode.
+It's up to the user to determine where to look for parses,
+perhaps using her specific knowledge of the grammar and the problem
+space.
+
+=item Parse::Marpa::Parse::next(I<parse>)
+
+Takes an parse object, which must have already been evaluated once with
+C<Parse::Marpa::Parse::initial()> and performs the next evaluation.
+Returns 1 if there was another evaluation, C<undef> if there are no more
+values for this initialization of this parse object.
+Other failures are thrown as C<croak()> exceptions.
+
+Parses are returned from rightmost to leftmost, but their order
+may be manipulated by assigning priorities to the rules and to
+terminals.
+
+=item Parse::Marpa::Parse::value(I<parse>)
+
+Takes a parse object, which must have been set up with
+C<Parse::Marpa::Parse::initial()>
+and possibly iterated with
+C<Parse::Marpa::Parse::next()>
+and returns a reference to its current value.
+Any failures are thrown as C<croak()> exceptions.
+
+The return value may be C<undef>, which is considered a
+Marpa "no value".  This is not the same as a Perl C<undefined>,
+which would be returned as a reference to an undefined value.
+The allows the user to distinguish between those rules for which
+a Perl was calculated and came out undefined,
+and those rules for which no value was calculated.
 
 =back
 

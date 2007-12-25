@@ -1,5 +1,7 @@
-semantics are perl5.  version is 0.1.61.  the start symbol is
-S.  the default null value is q{}.  the default action is q{
+semantics are perl5.  version is 0.1.63.  the start symbol is
+S.
+the default null value is q{@}.
+the default action is q{
      my $v_count = scalar @$Parse::Marpa::This::v;
      return "" if $v_count <= 0;
      return $Parse::Marpa::This::v->[0] if $v_count == 1;
@@ -8,7 +10,9 @@ S.  the default null value is q{}.  the default action is q{
 
 S: A, A, A, A.
 
-A: lowercase a.
+S: .  q{ "(@;@;@;@)" }. # empty, but with action to supply null value
+
+A: lowercase a.  priority 1000.
 
 lowercase a matches /a/.
 

@@ -6,17 +6,23 @@ use Carp;
 use Getopt::Long;
 use Parse::Marpa;
 use English;
+use Fatal qw(open close);
 
 my $command = shift;
+my $grammar_file;
 my %options;
 
 given ($command) {
     when ('compile') {
-        GetOptions("option" => \%options);
+        croak unless GetOptions("option=s" => \%options);
 	do_compile();
     }
     when ('parse') {
-        GetOptions("option" => \%options);
+        croak unless GetOptions(
+	    "grammar=s" => \$grammar_file,
+	    "compiled_grammar=s" => \$compiled_grammar_file,
+	    "option=s" => \%options
+	);
 	do_parse();
     }
     default {
@@ -38,18 +44,51 @@ sub do_compile {
 }
 
 sub do_parse {
-    my $compiled_grammar; { local($RS) = undef; $compiled_grammar = <STDIN>; }
 
-    my $grammar = Parse::Marpa::decompile();
+    my $grammar;
+    if (defined $compiled_grammar_file) {
+	open(GRAMMAR, "<", $compiled_grammar_file);
+	my $compiled_grammar; { local($RS) = undef; $compiled_grammar = <GRAMMAR>; }
+	$grammar = Parse::Marpa::decompile();
+    }
+    elsif (defined $grammar_file) {
+	open(GRAMMAR, "<", $grammar_file);
+	my $grammar_source; { local($RS) = undef; $grammar_source = <GRAMMAR>; }
+	eval {
+	    $grammar = new Parse::Marpa(
+		source => \$grammar_source,
+		(%options)
+	    );
+	};
+	if ($@) {
+	    die("Parse of $grammar_file failed:\n", $@);
+	}
+	%options = ();
+    }
+    else {
+        croak("No grammar specified");
+    }
+
     my $parse = new Parse::Marpa::Parse(
         grammar => $grammar,
-	%options
+	(%options)
     );
     my $text; { local($RS) = undef; $text = <STDIN>; }
 
-    if ((my $fail_location = $parse->text($text)) >= 0) {
+    if ((my $fail_location = $parse->text(\$text)) >= 0) {
         print STDERR Parse::Marpa::show_location("Parse failed", \$text, $fail_location);
 	exit 1;
+    }
+
+    if (!$parse->initial()) {
+        croak("No parse")
+    }
+
+    my $value = $parse->value();
+    if (defined $value) {
+	say $$value;
+    } else {
+	say 'Marpa returned a "Marpa No Value"';
     }
 
 }

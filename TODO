@@ -1,19 +1,15 @@
-* Eliminate "raw canoncial" names -- simply reject anything ending in a
-  closing square bracket
-
-* Explicitly setting start symbol -- sort this out.  Set it in internal
-  form?  canonical form?
+* Explicitly setting start symbol -- sort this out.  Note in docs that it
+  needs to be set in canonical form.
 
 * There needs to be a way of explicitly setting "no value" for the
   default action and the default null value.
 
-* Are null values and the default null value handled right?  They
-  should internally be *REFS* to the values, not the values.
-
-* Test these traces, to ensure tracing reform did not break them:
-    TRACE_COMPLETIONS TRACE_PRIORITIES
-
 * Test that max_parses is enforced
+
+* Bugs with comments, especially after null productions and before
+  action?
+
+* Priorities cannot be set in grammar source files for terminals.  Fix that.
 
 * Check Parse::Marpa::Parse::new options.  Do defaults from grammar
   work as advertized?

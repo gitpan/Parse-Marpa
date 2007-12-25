@@ -18,8 +18,6 @@ WriteMakefile(
 	    => '$(INST_LIB)/Parse/Marpa/LANGUAGE.pod',
 	'lib/Parse/Marpa/ALGORITHM.pod'
 	    => '$(INST_LIB)/Parse/Marpa/ALGORITHM.pod',
-	'lib/Parse/Marpa/preamble_Source.pm'
-	    => '$(INST_LIB)/Parse/Marpa/preamble_Source.pm',
 	'lib/Parse/Marpa/Lex.pm'
 	    => '$(INST_LIB)/Parse/Marpa/Lex.pm',
 	'lib/Parse/Marpa.pm'
