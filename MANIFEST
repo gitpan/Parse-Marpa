@@ -7,6 +7,7 @@ TODO
 lib/Parse/Marpa.pm
 lib/Parse/Marpa/ALGORITHM.pod
 lib/Parse/Marpa/WHY_CALL_IT_MARPA.pod
+lib/Parse/Marpa/CONCEPTS.pod
 lib/Parse/Marpa/Lex.pm
 lib/Parse/Marpa/header_Raw_Source.pm
 lib/Parse/Marpa/trailer_Raw_Source.pm

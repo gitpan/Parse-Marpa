@@ -1,0 +1,167 @@
+=head1 NAME
+
+Parse::Marpa::CONCEPTS - Concepts helpful for Using Marpa
+
+=head1 BEWARE: THIS DOCUMENT IS UNDER CONSTRUCTION AND VERY INCOMPLETE
+
+    THIS DOCUMENT IS UNDER CONSTRUCTION AND VERY INCOMPLETE
+
+=head1 OVERVIEW
+
+This document is about practical concepts,
+concepts for actually putting Marpa to work in your applications.
+It's not about the mathematics or the parsing theory behind Marpa.
+That's documented L<elsewhere|Parse::Marpa::ALGORITHM>.
+
+It's also not a tutorial on grammars or BNF.  For that consult
+a modern textbook, such as Grune and Jacobs I<Parsing Techniques -
+Second Edition>, or Wikipedia.  In Wikipedia, the article on
+I<Backus-Naur form> is a good place to start.
+
+Only concepts common to all of Marpa's grammar interfaces
+are covered.
+Speaking of which ...
+
+=head1 GRAMMAR INTERFACES
+
+A grammar is specified to Marpa through a B<grammar interface>,
+which may itself be described by Marpa grammar.
+Right now there are only two grammar interfaces:
+the B<Marpa Demonstration Language>
+and the B<raw grammar interface>.
+
+=head2 The Raw Grammar Interface
+
+The B<raw grammar interface> is a set of options to the constructor for
+Marpa grammar objects, C<Parse::Marpa::new()>.
+All the other grammar interfaces will need to use the raw grammar interface indirectly.
+It is efficient, but for most situations
+users will want something higher level.
+The documentation for the raw grammar interface
+(as yet unwritten) is at  L<Parse::Marpa::RAW>.
+
+=head2 The Marpa Demonstration Language
+
+In Marpa's eyes all
+higher level grammar interfaces will
+be equal.
+I call the one that I am delivering with 
+Marpa the B<Marpa Demonstration Language> instead
+of the "Marpa Language" to emphasize that it is not
+intended to have special status.
+Its documentation is at L<Parse::Marpa::LANGUAGE>.
+
+=head2 Your Grammar Interface Here
+
+Users are not only allowed to design their own
+Marpa interfaces, I hope they feel enticed to do so.
+
+=head1 STEPS IN PARSING A TEXT
+
+In parsing a text, Marpa follows a strict sequence, although much of it
+is hidden from the user.
+For example, when a parse object is created from a grammar
+which has not been precomputed, the parse object constructor
+will silently perform not just the precomputation of the grammar,
+but also a deep copy of it.
+In fact, if the C<Parse::Marpa::marpa()> routine is used,
+the entire sequence below will be performed automatically
+and none of the methods listed below need be called directly.
+ 
+In each step listed, the B<lowest level method> performing it is mentioned.
+Calling these methods in this sequence will rarely be the best approach.
+For example, calling C<Parse::Marpa::precompute()> directly is rarely necessary
+and clutters the code.
+See the main L<Parse::Marpa> documentation page for
+pointers to the easiest interfaces,
+and ways to exercise greater control when that is desired.
+Also see the detailed documentation for each method for hints as to
+when it is best used.
+
+=over 4
+
+=item * Creation of a grammar object
+
+A grammar object is created with C<Parse::Marpa::new()>.
+although it may called indirectly.
+
+=item * Adding rules to the grammar object
+
+Rules must added to the grammar object.
+This is done using the interfaces, and the raw
+interface is always involved.
+The raw interface may be called directly,
+or it may be hidden behind a higher level interface.
+At the lowest level, rules are added with the
+C<Parse::Marpa::new()> and the C<Parse::Marpa::set()> methods.
+
+=item * Precomputing the grammar object
+
+Before a parse object can be created,
+Marpa must do a series of precomputations on the grammar.
+This step rarely needs to be performed explicitly, but when that is
+necessary, the method call is C<Parse::Marpa::precompute>.
+
+=item * Deep copying the grammar
+
+Marpa parse objects work with a copy of the grammar, so that
+multiple parses may go on at once.
+The deep copying is done by writing the grammar out with C<Data::Dumper>,
+then eval'ing the result and tweaking it.
+
+These two subphases are available to the user as
+C<Parse::Marpa::compile()> and C<Parse::Marpa::decompile()>.
+The result of C<compile()> is a string, which may be written into a file.
+A subsequent Marpa process may read this file and continue the parse.
+See the descriptions of
+C<Parse::Marpa::compile()> and C<Parse::Marpa::decompile()> for
+more details.
+
+=item * Creating the parse object
+
+To parse a text, a parse object must be created.
+The constructor C<Parse::Marpa::Parse::new()> is always called
+to do this, whether directly or indirectly.
+Strings and options specifying semantics may have been set in earlier phases,
+but it is only now that the semantics are determined.
+After this point they cannot change.
+
+=item * Token Input
+
+A series of tokens is input to the parse object,
+and recognition is performed as the input is received.
+Marpa, therefore, will eventually be
+capable of on-line or stream processing.
+
+If Marpa's input is structured in the same way as conventional
+parsers, the input is recognized and ready to be evaluated
+when at the same time a conventional on-line parser would be ready.
+Marpa can deal with ambiguous,
+variable length, and even overlapping tokens,
+and the question of
+when the user can expect these input tokens to be
+recognized and ready to be evaluated as
+part of a parse
+is more complicated than with other parsers.
+See elsewhere in this document, under "Earlemes and Tokens".
+
+Currently input may be specified as text,
+with the C<Parse::Marpa::Parse::text()> method or directly as tokens
+with the C<Parse::Marpa::Parse::earleme()> method.
+
+=item * Initial Parse Evaluation
+
+Once the input is recognized, it can be evaluated.
+The first value is computed with the C<Parse::Marpa::Parse::initial()> method.
+C<initial()'s> return value is to indicate success or failure.
+The value of the parse is accessible with the C<Parse::Marpa::Parse::value()> method.
+
+=item * Parse Iteration
+
+In Marpa a token sequence can have more than one parse.
+These are iterated through with the
+C<Parse::Marpa::Parse::next()> method
+and values are retrieved with
+C<Parse::Marpa::Parse::value()> method.
+
+=back

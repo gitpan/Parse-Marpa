@@ -27,7 +27,7 @@ no warnings "recursion";
 use strict;
 
 BEGIN {
-    our $VERSION = '0.001_063';
+    our $VERSION = '0.001_064';
     our $STRING_VERSION = $VERSION;
     $VERSION = eval $VERSION;
 }
@@ -4257,7 +4257,7 @@ sub Parse::Marpa::Parse::end_input {
 
 It's bad style, but this routine is in a tight loop and for efficiency
 I pull the token alternatives out of @_ one by one as I go in the code,
-rather than at the beginning of the subroutine.
+rather than at the beginning of the method.
 
 The remaining arguments should be a list of token alternatives, as
 array references.  The array for each alternative is (token, value,
@@ -5618,7 +5618,7 @@ And then go on with your other processing ...
 
     UNDER CONSTRUCTION AND VERY INCOMPLETE
 
-=head2 Overview
+=head1 OVERVIEW
 
 C<Parse::Marpa> parses text given an arbitrary context-free grammar.
 
@@ -5626,7 +5626,7 @@ C<Parse::Marpa> parses text given an arbitrary context-free grammar.
 
 =item *
 
-Grammar may be anything which can be specified in BNF.
+The grammar may be anything which can be specified in BNF.
 
 =item *
 
@@ -5660,27 +5660,51 @@ algorithm, along with further innovations.
 
 =back
 
-=head2 C<Parse::Marpa::marpa()>: The Easy Way function
+
+=head1 IMPORTANT CONCEPTS
+
+The L<Parse::Marpa::CONCEPTS> should be read before actually
+using Marpa, and even before a careful reading of the other documents.
+The "concepts" in it are practical
+-- the math and the more purely theoretical discussions went
+into L<Parse::Marpa::ALGORITHM>.
+
+Since the L<Parse::Marpa::CONCEPTS> document is essential, why not put it here
+at the
+the beginning of the base document?
+Perl programmers like to get their initial feel for a module by skimming
+the nuts and bolts of the Perl methods.
+And most return visits are to refer to the document for exactly those
+details.
+Either way a lot of straight text up front gets in the way.
+And in fact, you'd like me to get on with it, wouldn't you?
+
+=head1 C<Parse::Marpa::marpa()>: THE EASY WAY
 
 =over 4
 
-=item Parse::Marpa::marpa(I<\$grammar>, I<\$text_to_parse>, I<option hash>);
+=item Parse::Marpa::marpa(I<grammar>, I<text_to_parse>, I<option hash>);
 
-The C<marpa> function takes three arguments:
-a ref to a string containing a Marpa source description of the grammar;
-a ref to a string with the text to be parsed;
-and (optionally) a ref to a hash with options.
+The C<marpa()> method takes three arguments:
+a B<reference> to a string containing a Marpa source description of the grammar;
+a B<reference> to a string with the text to be parsed;
+and (optionally) a B<reference> to a hash with options.
 If there are no parses, C<marpa()> returns failure.
 If there are parses,
 and C<marpa()> was called in list context,
 it returns a list of references to the values of all the parses.
 If there are parses,
-and C<marpa> was called in scalar context,
+and C<marpa()> was called in scalar context,
 it returns a reference to the value of the first parse.
+
+The description referenced by the I<grammar> argument must use
+one of the high-level Marpa grammar interfaces.
+Currently the default (and only) high-level grammar interface is the
+L<Marpa Demonstration Language|Parse::Marpa::LANGUAGE>.
 
 =back
 
-=head2 Functions and Methods for More Control
+=head1 METHODS FOR FINER CONTROL
 
 =over 4
 
@@ -5919,7 +5943,7 @@ and those rules for which no value was calculated.
 
 =back
 
-=head2 Less used methods
+=head1 LESS USED METHODS
 
 Some of these methods explicitly put the grammar through processing phases 
 which Marpa typically does implicitly, as necessary.
@@ -5986,19 +6010,51 @@ the C<marpa> utility's C<compile> command for that purpose.
 
 =back
 
-=head2 Marpa Processing Phases
+=head1 IMPLEMENTATION NOTES
 
-Whatever the virtues of the Marpa parser, it is certainly not single-pass.
-Phases visible to the user to one extent or another include.
+=head2 String references
 
-=head2 Error processing
+It's often said by those experienced in Perl that passing
+string refs instead of strings is a pointless
+and usually counter-productive optimization.
+I agree.
+But I believe that C<Marpa> is an exception.
+Many strings are passed and returned by reference.
+These are situations where the strings can be 
+very long.
+Copying and recopying them would be a major waste of time.
 
-A few of the Marpa functions and methods have error returns,
-as explained in the descriptions of those functions.
-Most often Marpa reports a problem by throwing an exception using C<croak()>.
-You can catch these using C<eval>, if you don't want them to be fatal.
+=head2 Object Orientation
 
-=head2 Notes not yet properly incorporated in this document
+Use of object orientation in Marpa is superficial.
+Only grammars and parses are objects, and they are not
+designed to be inherited.
+
+=head2 Returns and exceptions
+
+Most Marpa methods return only on success and throw an exception using
+C<croak()> if there's a failure.
+If you don't want an exception to be fatal, catch it using C<eval>.
+Failures are returned only where they are "non-exceptional".
+
+An example of a "non-exceptional" failure is an exhausted parse.
+Exhausted parses are usually parse failures, though the user
+may also be doing some advanced wizardry.
+Even parse failures are often routine -- the user may be testing
+texts to see if they parse.
+So <Parse::Marpa::Parse::text()> returns on an exhausted parse,
+rather than throw an exception.
+
+An even better example is a failed parse in <Parse::Marpa::Parse::next()>.
+This method is used to iterate through the multiple parses of an ambiguous parse.
+Its eventual failure, that is, inability to find another parse,
+is almost always expected and planned for.
+It returns this failure, rather than throw an exception.
+
+For all methods, any returned failures are specified in the detailed
+description of the method.
+
+=head1 NOTES NOT YET PROPERLY INCORPORATED IN THIS DOCUMENT
 
 Point out that lexing honors the pos setting
 and must not alter it, even on successful match.  Warn user of counter-intuitive
@@ -6019,21 +6075,8 @@ Jeffrey Kegler
 =head1 DEPENDENCIES
 
 Requires Perl 5.10.
-Users who want or need to stick with Perl 5.8 or earlier
-probably are also best off with 
-more mature alternatives to C<Marpa>.
-
-=head1 IMPLEMENTATION NOTES
-
-It's often and correctly said by those experienced in Perl that passing
-string refs instead of strings is a pointless or even counter-productive
-optimization and I agree.  I believe that C<Marpa> is an exception and have
-designed the interface accordingly.  The strings involved here can be 
-very long and copying and recopying them a major waste of time.
-
-My use of object orientation in Marpa is superficial.
-Only grammars and parses are objects, and they are not
-designed to be inherited.
+Users who want or need the maturity and/or stability of Perl 5.8 or earlier
+probably are also best off with more mature and stable alternatives to C<Marpa>.
 
 =head1 BUGS
 

@@ -26,7 +26,6 @@ install_raw: ../lib/Parse/Marpa/Raw_Source.pm
 
 ../lib/Parse/Marpa/Source.pm: \
     ../lib/Parse/Marpa/Raw_Source.pm \
-    ../lib/Parse/Marpa/preamble_Source.pm \
     ../lib/Parse/Marpa/Source.pm.PL \
     ../lib/Parse/Marpa/header_Raw_Source.pm
 	(cd ..; perl -Ilib lib/Parse/Marpa/Source.pm.PL lib/Parse/Marpa/Source.pm )

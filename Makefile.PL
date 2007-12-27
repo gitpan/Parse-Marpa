@@ -16,6 +16,8 @@ WriteMakefile(
 	    => '$(INST_LIB)/Parse/Marpa/Raw_Source.pm',
 	'lib/Parse/Marpa/LANGUAGE.pod'
 	    => '$(INST_LIB)/Parse/Marpa/LANGUAGE.pod',
+	'lib/Parse/Marpa/CONCEPTS.pod'
+	    => '$(INST_LIB)/Parse/Marpa/CONCEPTS.pod',
 	'lib/Parse/Marpa/ALGORITHM.pod'
 	    => '$(INST_LIB)/Parse/Marpa/ALGORITHM.pod',
 	'lib/Parse/Marpa/Lex.pm'

@@ -1,12 +1,14 @@
 --- #YAML:1.0
 name:                Parse-Marpa
-version:             0.001_063
-abstract:            (pre-Alpha) Jay Earley's general parsing algorithm, with LR(0) precomputation
-license:             ~
+version:             0.001_064
+abstract:            (pre-Alpha) Earley's algorithm, plus LR(0) precomputation and predictive lexing
+license:             perl
 generated_by:        ExtUtils::MakeMaker version 6.36
 distribution_type:   module
 requires:     
     Test::More:                    0
+recommends:
+    Test::Weaken            0.002002
 meta-spec:
     url:     http://module-build.sourceforge.net/META-spec-v1.2.html
     version: 1.2
