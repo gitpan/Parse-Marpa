@@ -20,23 +20,16 @@ my $new_default_null_value;
 my $new_default_lex_prefix;
 my %strings;
 
-# This file was automatically generated using Parse::Marpa 0.001064
+# This file was automatically generated using Parse::Marpa 0.001065
 $new_semantics = 'perl5';
 
- $new_version = '0.001064';
+ $new_version = '0.001065';
 
 $new_start_symbol = "grammar";
 
 $new_preamble .=  q{
     our $whitespace = qr/(?:[ \t]*(?:\n|(?:\#[^\n]*\n)))*[ \t]*/;
     our $default_lex_prefix = $whitespace;
-    our %strings;
-    my $new_start_symbol;
-    my $new_version;
-    my $new_semantics;
-    my $new_default_action;
-    my $new_default_null_value;
-    my $new_default_lex_prefix;
 };
 
 $new_default_lex_prefix = qr/(?:[ \t]*(?:\n|(?:\#[^\n]*\n)))*[ \t]*/;

@@ -10,6 +10,8 @@ use Fatal qw(open close);
 
 my $command = shift;
 my $grammar_file;
+my $text_to_parse;
+my $show_SDFA;
 my %options;
 
 given ($command) {
@@ -21,7 +23,9 @@ given ($command) {
         croak unless GetOptions(
 	    "grammar=s" => \$grammar_file,
 	    "compiled_grammar=s" => \$compiled_grammar_file,
-	    "option=s" => \%options
+	    "text=s" => \$text_to_parse,
+	    "show_SDFA" => \$show_SDFA,
+	    "option=s" => \%options,
 	);
 	do_parse();
     }
@@ -69,14 +73,19 @@ sub do_parse {
         croak("No grammar specified");
     }
 
+    if ($show_SDFA) {
+       print $grammar->show_SDFA();
+    }
+
     my $parse = new Parse::Marpa::Parse(
         grammar => $grammar,
-	(%options)
     );
-    my $text; { local($RS) = undef; $text = <STDIN>; }
+    if (not defined $text_to_parse) {
+	local($RS) = undef; $text_to_parse = <STDIN>;
+    }
 
-    if ((my $fail_location = $parse->text(\$text)) >= 0) {
-        print STDERR Parse::Marpa::show_location("Parse failed", \$text, $fail_location);
+    if ((my $fail_location = $parse->text(\$text_to_parse)) >= 0) {
+        print STDERR Parse::Marpa::show_location("Parse failed", \$text_to_parse, $fail_location);
 	exit 1;
     }
 
@@ -85,10 +94,14 @@ sub do_parse {
     }
 
     my $value = $parse->value();
-    if (defined $value) {
-	say $$value;
-    } else {
+    if (not defined $value) {
 	say 'Marpa returned a "Marpa No Value"';
+	return;
     }
+    if (not defined $$value) {
+	say 'Marpa returned an undefined';
+	return;
+    }
+    say $$value;
 
 }

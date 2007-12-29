@@ -21,38 +21,6 @@ require 5.009005;
 
 package Parse::Marpa;
 
-use feature ":5.10";
-use warnings;
-no warnings "recursion";
-use strict;
-
-BEGIN {
-    our $VERSION = '0.001_064';
-    our $STRING_VERSION = $VERSION;
-    $VERSION = eval $VERSION;
-}
-
-package Parse::Marpa::Internal;
-
-use Carp;
-use Data::Dumper;
-use Scalar::Util qw(weaken);
-use Parse::Marpa::Lex;
-
-our $compiled_eval_error;
-my $source_eval_error;
-BEGIN {
-    eval "use Parse::Marpa::Source $Parse::Marpa::STRING_VERSION";
-    $compiled_eval_error = $@;
-    if ($compiled_eval_error) {
-        undef $Parse::Marpa::Internal::compiled_source_grammar;
-        eval "use Parse::Marpa::Raw_Source"
-    }
-    $source_eval_error = $@;
-}
-
-croak($source_eval_error) if $source_eval_error;
-
 =begin Apology:
 
 An APOLOGY to the READER:
@@ -100,6 +68,34 @@ that closely, either.
 =end Apology:
 
 =cut
+
+use feature ":5.10";
+use warnings;
+no warnings "recursion";
+use strict;
+
+BEGIN {
+    our $VERSION = '0.001_065';
+    our $STRING_VERSION = $VERSION;
+    $VERSION = eval $VERSION;
+}
+
+package Parse::Marpa::Internal;
+
+use Carp;
+use Data::Dumper;
+use Scalar::Util qw(weaken);
+use Parse::Marpa::Lex;
+
+our $compiled_eval_error;
+BEGIN {
+    eval "use Parse::Marpa::Source $Parse::Marpa::STRING_VERSION";
+    $compiled_eval_error = $@;
+    undef $Parse::Marpa::Internal::compiled_source_grammar
+        if $compiled_eval_error;
+}
+
+use Parse::Marpa::Raw_Source;
 
 =begin Implementation:
 
@@ -237,6 +233,7 @@ use constant TRACE_COMPLETIONS        => 37;
 use constant TRACE_ACTIONS            => 38;
 use constant TRACE_VALUES             => 39;
 use constant MAX_PARSES               => 40;
+use constant ONLINE                   => 41;
 
 # values for state
 use constant NEW          => "grammar without rules";
@@ -500,6 +497,7 @@ sub Parse::Marpa::new {
     $grammar->[Parse::Marpa::Internal::Grammar::RULE_HASH]    = {};
     $grammar->[Parse::Marpa::Internal::Grammar::SDFA_BY_NAME] = {};
     $grammar->[Parse::Marpa::Internal::Grammar::MAX_PARSES ] = -1;
+    $grammar->[Parse::Marpa::Internal::Grammar::ONLINE ] = 0;
 
     $grammar->set(%args);
 }
@@ -569,11 +567,19 @@ sub die_with_parse_failure {
 }
 
 sub Parse::Marpa::create_compiled_source_grammar {
-    # If it's called from a utility, we may already have the compiled source grammar
-    return $Parse::Marpa::Internal::compiled_source_grammar
-        if defined $Parse::Marpa::Internal::compiled_source_grammar;
+    # Overwrite the existing compiled source grammar, if we already have one
+    # This allows us to bootstrap in a new version
 
     my $raw_source_grammar = Parse::Marpa::Internal::raw_source_grammar();
+    my $raw_source_version = $raw_source_grammar->[ Parse::Marpa::Internal::Grammar::VERSION ];
+    if ( $raw_source_version != $Parse::Marpa::VERSION)
+    {
+        croak(
+            "raw source grammar version ($raw_source_version) does not match Marpa version (",
+            $Parse::Marpa::VERSION,
+            ")"
+        );
+    }
     $raw_source_grammar->precompute();
     $raw_source_grammar->compile();
 }
@@ -800,6 +806,10 @@ sub Parse::Marpa::set {
                 $grammar->[Parse::Marpa::Internal::Grammar::WARNINGS] =
                     $value;
             }
+            when ("online") {
+                $grammar->[Parse::Marpa::Internal::Grammar::ONLINE] =
+                    $value;
+            }
             when ("code_lines") {
                 $grammar->[Parse::Marpa::Internal::Grammar::CODE_LINES] =
                     $value;
@@ -937,15 +947,6 @@ sub Parse::Marpa::compile {
         $trace_fh = $grammar->[Parse::Marpa::Internal::Grammar::TRACE_FILE_HANDLE];
     }
 
-    my $problems = $grammar->[Parse::Marpa::Internal::Grammar::PROBLEMS];
-    if ($problems) {
-        croak(
-            show_problems($grammar),
-            "Attempt to compile grammar with fatal problems\n",
-            "Marpa cannot proceed"
-        );
-    }
-
     my $state = $grammar->[ Parse::Marpa::Internal::Grammar::STATE ];
     given ($state) {
         when (Parse::Marpa::Internal::Grammar::PERL_RULES) { Parse::Marpa::precompute($grammar); }
@@ -958,6 +959,16 @@ sub Parse::Marpa::compile {
             );
         }
     }
+
+    my $problems = $grammar->[Parse::Marpa::Internal::Grammar::PROBLEMS];
+    if ($problems) {
+        croak(
+            Parse::Marpa::show_problems($grammar),
+            "Attempt to compile grammar with fatal problems\n",
+            "Marpa cannot proceed"
+        );
+    }
+
     my $d = Data::Dumper->new( [$grammar], ["grammar"] );
     $d->Purity(1);
     $d->Indent(0);
@@ -1929,8 +1940,6 @@ sub set_start {
         # $grammar->[Parse::Marpa::Internal::Grammar::TRACE_FILE_HANDLE ];
     my $symbol_hash =
         $grammar->[Parse::Marpa::Internal::Grammar::SYMBOL_HASH];
-    my $problems =
-        $grammar->[Parse::Marpa::Internal::Grammar::PROBLEMS];
     my $start = $symbol_hash->{$start_name};
 
     if ( not defined $start ) {
@@ -3419,17 +3428,12 @@ use constant FURTHEST_EARLEME         => 7;    # last earley set with a token
 use constant EXHAUSTED                => 8;    # parse can't continue?
 use constant DEFAULT_PARSE_SET        => 14;
 use constant PACKAGE       => 17;              # special "safe" namespace
-use constant AMBIGUOUS_LEX => 19;
-
-# use constant DEFAULT_ACTION           => 20;
-use constant VOLATILE          => 21;
 use constant LEXERS            => 22;    # an array, indexed by symbol id,
                                          # of the lexer for each symbol
 use constant LEXABLES_BY_STATE => 23;    # an array, indexed by SDFA state id,
                                          # of the lexables belonging in it
 use constant PRIORITIES        => 24;    # an array, indexed by SDFA state id,
                                          # of its priority
-use constant STREAM            => 25;    # streaming input?
 use constant LAST_COMPLETED_SET => 26;   # last earley set completed
 use constant PARSE_COUNT        => 27;   # number of parses in an ambiguous parse
 
@@ -3754,10 +3758,8 @@ sub Parse::Marpa::Parse::new {
     my $parse = [];
 
     my $grammar;
-    my $default_action;
     my $ambiguous_lex;
     my $preamble;
-    my $stream = 0;
 
     # default for parse is non-volatile, but grammar setting
     # and explicit setting both override
@@ -3770,11 +3772,6 @@ sub Parse::Marpa::Parse::new {
         while (my ($arg, $value) = each %$args) {
             given($arg) {
                 when ("grammar") { $grammar = $value }
-                when ("default_action") { $default_action = $value }
-                when ("ambiguous_lex") { $ambiguous_lex = $value }
-                when ("volatile") { $volatile = $value }
-                when ("preamble") { $preamble = $value }
-                when ("stream") { $stream = $value }
                 default {
                      push(@grammar_args, $arg, $value);
                 }
@@ -3831,6 +3828,8 @@ sub Parse::Marpa::Parse::new {
                 $grammar = Parse::Marpa::decompile($compiled_grammar, $trace_fh);
             }
             when (Parse::Marpa::Internal::Grammar::COMPILED) {
+                my $default_action
+                    = $grammar-> [ Parse::Marpa::Internal::Grammar::DEFAULT_ACTION ];
                 eval_grammar( $parse, $grammar, $preamble, $default_action );
             }
             when (Parse::Marpa::Internal::Grammar::IN_USE) {
@@ -3850,14 +3849,6 @@ sub Parse::Marpa::Parse::new {
 
     $grammar->[Parse::Marpa::Internal::Grammar::STATE] =
         Parse::Marpa::Internal::Grammar::IN_USE;
-
-    $ambiguous_lex =
-        $grammar->[Parse::Marpa::Internal::Grammar::AMBIGUOUS_LEX]
-        unless defined $ambiguous_lex;
-
-    # volatile can be set, but never unset
-    $volatile = $grammar->[Parse::Marpa::Internal::Grammar::VOLATILE]
-        unless $volatile;
 
     my $earley_hash;
     my $earley_set;
@@ -3901,14 +3892,11 @@ sub Parse::Marpa::Parse::new {
     @{$parse}[
         DEFAULT_PARSE_SET, CURRENT_SET,       FURTHEST_EARLEME,
         EARLEY_HASHES,     GRAMMAR,           EARLEY_SETS,
-        AMBIGUOUS_LEX,
-        STREAM,
         LAST_COMPLETED_SET,
         ]
         = (
         0, 0, 0, [$earley_hash],
-        $grammar, [$earley_set], $ambiguous_lex,
-        $stream,
+        $grammar, [$earley_set],
         -1,
         );
 
@@ -4069,6 +4057,16 @@ sub Parse::Marpa::Parse::clear_notations {
     }
 }
 
+sub clear_values {
+    my $parse = shift;
+    my ($earley_set_list) = @{$parse}[EARLEY_SETS];
+    for my $earley_set (@$earley_set_list) {
+        for my $earley_item (@$earley_set) {
+            $earley_item->[ Parse::Marpa::Internal::Earley_item::VALUE ] = undef;
+        }
+    }
+}
+
 # check parse?
 sub Parse::Marpa::Parse::earleme {
     my $parse = shift;
@@ -4098,12 +4096,11 @@ sub Parse::Marpa::Parse::text {
         unless ref $input_ref eq "SCALAR";
 
     my ( $grammar, $earley_sets, $current_set, 
-        $ambiguous_lex, $lexers, )
+        $lexers, )
         = @{$parse}[
         Parse::Marpa::Internal::Parse::GRAMMAR,
         Parse::Marpa::Internal::Parse::EARLEY_SETS,
         Parse::Marpa::Internal::Parse::CURRENT_SET,
-        Parse::Marpa::Internal::Parse::AMBIGUOUS_LEX,
         Parse::Marpa::Internal::Parse::LEXERS,
         ];
 
@@ -4118,8 +4115,12 @@ sub Parse::Marpa::Parse::text {
          $trace_lex_matches = $grammar->[ Parse::Marpa::Internal::Grammar::TRACE_LEX_MATCHES ];
     }
 
-    my ( $symbols, ) =
-        @{$grammar}[ Parse::Marpa::Internal::Grammar::SYMBOLS, ];
+    my (
+        $symbols, $ambiguous_lex
+    ) = @{$grammar}[
+        Parse::Marpa::Internal::Grammar::SYMBOLS,
+        Parse::Marpa::Internal::Grammar::AMBIGUOUS_LEX,
+    ];
 
     $length = length $$input_ref unless defined $length;
 
@@ -4663,14 +4664,10 @@ sub Parse::Marpa::Parse::initial {
     ) unless $parse_class eq $right_class;
 
     my ($grammar,                 $earley_sets,
-        $volatile,
-        $stream,
         )
         = @{$parse}[
         Parse::Marpa::Internal::Parse::GRAMMAR,
         Parse::Marpa::Internal::Parse::EARLEY_SETS,
-        Parse::Marpa::Internal::Parse::VOLATILE,
-        Parse::Marpa::Internal::Parse::STREAM,
         ];
     local ($Parse::Marpa::Internal::This::grammar) = $grammar;
     my $tracing = $grammar->[ Parse::Marpa::Internal::Grammar::TRACING ];
@@ -4683,7 +4680,8 @@ sub Parse::Marpa::Parse::initial {
 
     local ($Data::Dumper::Terse) = 1;
 
-    if (not $stream) {
+    my $online = $grammar->[ Parse::Marpa::Internal::Grammar::ONLINE ];
+    if (not $online) {
          Parse::Marpa::Parse::end_input($parse);
     }
     my $default_parse_set = $parse->[ Parse::Marpa::Internal::Parse::DEFAULT_PARSE_SET ];
@@ -5143,12 +5141,11 @@ sub Parse::Marpa::Parse::next {
         "Don't parse argument is class: $parse_class; should be: $right_class"
     ) unless $parse_class eq $right_class;
 
-    my ( $grammar, $start_item, $current_parse_set, $volatile, )
+    my ( $grammar, $start_item, $current_parse_set, )
         = @{$parse}[
         Parse::Marpa::Internal::Parse::GRAMMAR,
         Parse::Marpa::Internal::Parse::START_ITEM,
         Parse::Marpa::Internal::Parse::CURRENT_PARSE_SET,
-        Parse::Marpa::Internal::Parse::VOLATILE,
         ];
 
     # TODO: Is this check enough be sure that this is an evaluated parse?
@@ -5176,7 +5173,8 @@ sub Parse::Marpa::Parse::next {
 
     local ($Data::Dumper::Terse) = 1;
 
-    Parse::Marpa::Parse::clear_notations($parse) if $volatile;
+    my $volatile = $grammar->[ Parse::Marpa::Internal::Grammar::VOLATILE ];
+    clear_values($parse) if $volatile;
 
     # find the "bottom left corner item", by following predecessors,
     # and causes when there is no predecessor
@@ -5504,29 +5502,17 @@ sub canonical_version {
 
 Parse::Marpa - (pre-Alpha) Jay Earley's general parsing algorithm, with LR(0) precomputation
 
-=head1 BEWARE!  THIS DOCUMENT IS UNDER CONSTRUCTION AND VERY INCOMPLETE
-
     BEWARE: THIS DOCUMENT IS UNDER CONSTRUCTION AND VERY INCOMPLETE
 
 =head1 VERSION
 
-Pre-alpha Version
+This is Pre-alpha software.
 
-This is strictly a developer's version.
+It's strictly a developer's version.
 Nothing useful will be found here,
 and the documentation is also inchoate.
 Those not developing this module will want to wait
 for at least a released, beta version.
-
-I've no personal experience with them, but
-C<Parse::Yapp> and C<Parse::RecDescent> are
-alternatives to this module which are well reviewed and
-much more mature and stable.
-Until C<Parse::Marpa> goes at least beta,
-users with a deadline or
-targeting anything close to a production environment
-should look there.
-
 =cut
 
 =head1 SYNOPSIS
@@ -5616,10 +5602,6 @@ And then go on with your other processing ...
 
 =head1 DESCRIPTION
 
-    UNDER CONSTRUCTION AND VERY INCOMPLETE
-
-=head1 OVERVIEW
-
 C<Parse::Marpa> parses text given an arbitrary context-free grammar.
 
 =over 4
@@ -5660,26 +5642,57 @@ algorithm, along with further innovations.
 
 =back
 
+=head1 BEWARE!  PRE-ALPHA SOFTWARE
+
+Since this is pre-alpha software, users with immediate needs have to
+look elsewhere.
+
+I've no personal experience with them, but
+C<Parse::Yapp> and C<Parse::RecDescent> are
+alternatives to this module which are well reviewed and
+much more mature and stable.
+
+=head2 What to expect once Marpa goes alpha
+
+The alpha version will be intended to let people look Marpa over
+and even try it out.
+Uses beyond that are risky.
+
+There will be bugs and misfeatures when I go alpha,
+but (I hope) no show-stoppers and all with good workarounds.
+The documentation follows the industry convention of telling the
+user how Marpa should work.
+If there's a difference between that and how Marpa actually works
+currently, it's in the Bugs section, which you'll want to skim
+before using Marpa.
+
+While Marpa is in alpha,
+you may not want to automatically upgrade
+as new versions come out.
+Versions will often be incompatible.
+To emphasize this, the C<version> option is required
+in MDL, and it B<must> match Marpa's version number
+B<exactly>.
+That's a hassle, but so is working with alpha software.
+The version number regime will become less harsh before Marpa
+leaves beta.
+
+Obviously, while Marpa is in alpha, you won't want to use
+it for anything with a serious deadline or 
+mission-critical.
 
 =head1 IMPORTANT CONCEPTS
 
 The L<Parse::Marpa::CONCEPTS> should be read before actually
-using Marpa, and even before a careful reading of the other documents.
+using Marpa, in fact even before your first careful reading of this document.
 The "concepts" in it are practical
 -- the math and the more purely theoretical discussions went
 into L<Parse::Marpa::ALGORITHM>.
+Even experts in Earley parsing will want to skim L<Parse::Marpa::CONCEPTS>,
+because, as one example,
+the use of ambiguous lexing has unusual implications for term "token".
 
-Since the L<Parse::Marpa::CONCEPTS> document is essential, why not put it here
-at the
-the beginning of the base document?
-Perl programmers like to get their initial feel for a module by skimming
-the nuts and bolts of the Perl methods.
-And most return visits are to refer to the document for exactly those
-details.
-Either way a lot of straight text up front gets in the way.
-And in fact, you'd like me to get on with it, wouldn't you?
-
-=head1 C<Parse::Marpa::marpa()>: THE EASY WAY
+=head1 THE EASY WAY
 
 =over 4
 
@@ -5714,83 +5727,7 @@ The C<new> method takes a series of arguments which are treated as a hash
 with options as keys and the option values as the hash values.
 C<new> either throws an exception with C<croak>
 or returns a new grammar object.
-Valid options are:
-
-=over 4
-
-=item source
-
-This takes as its value a B<reference> to a string containing a description of
-the grammar in the L<Marpa grammar description language|Parse::Marpa::LANGUAGE>.
-
-=item start
-
-[ Need to figure out whether start symbol from source file should be allowed to
-be overwritten.  Issues of canonical and internal name form, etc. ]
-
-=item default_null_value
-
-=item default_action
-
-=item default_lex_prefix
-
-=item version
-
-=item semantics
-
-These predefineds may be specified as options.  If a Marpa predefined is
-specified both in a source file and as an option, the option overrides the
-value in the source file.
-For descriptions of these options, see
-the documentation for the
-L<Marpa grammar description language|Parse::Marpa::LANGUAGE>.
-
-=item ambiguous_lex
-
-=item volatile
-
-These are parse and evaluation time options.  Setting them in 
-the grammar makes that setting the default for all parses generated
-from that grammar.
-
-=item warnings
-
-This is a boolean which enables warnings
-about inaccessible and unproductive rules in the grammar.
-Warnings are written to the trace file handle.
-By default, warnings are on.
-
-Inaccessible rules can those which can never be reached from the start symbol.
-Unproductive rules are those which no possible input can ever generate.
-Marpa simply ignores these and generates a parser from the remaining rules.
-
-Often the presence of inaccessible and unproductive rules indicate problems
-in the grammar.
-But a user sometimes want to leave them while
-the grammar is under construction or use them as notes.
-
-=item code_lines
-
-If there is a problem with user supplied code,
-Marpa prints the error message and a description of where the code is being used.
-Marpa will display the code itself as well.
-The value of this option tells Marpa how many lines to print before truncating the
-code.
-If it's zero, no code is displayed.
-If it's negative, all the code is displayed, no matter how long it is.
-The default is 30 lines.
-
-=item preamble
-
-Another predefined which may also be specified as an option.  Note that
-while multiple preambles may be specified in a source file, and they are
-concatenated, if the I<preamble> option is used it overrides, replacing
-all the preamble code assembled so far.
-For a description of preambles, see
-the documentation for the
-L<Marpa grammar description language|Parse::Marpa::LANGUAGE>.
-
-=back
+For the valid options see the L<options section|/"Options">.
 
 =item new Parse::Marpa::Parse(I<option> => I<value>, [I<option> => I<value>, ...])
 
@@ -5802,42 +5739,7 @@ rules in it.
 Any options C<Parse::Marpa::Parse::new> does not directly handle are treated as options for this
 grammar.  See their description in the description the grammar constructor,
 C<Parse::Marpa::new>, above.
-The follows are the options directly handled by the parser constructor.
-
-=over 4
-
-=item grammar
-
-Takes as its value a grammar object.
-
-=item default_action
-
-=item ambiguous_lex
-
-=item volatile
-
-=item preamble
-
-=item stream
-
-A boolean.  If its value is true, the parser runs in "streaming" mode.
-Usually, Marpa assumes the input has ended when the first parse is requested,
-does some final bookkeeping in the Earley sets,
-refuses to accept any more input,
-and handles parse requests on
-the default assumption that the parses desired are of the entire input.
-
-In stream mode,
-which is still somewhat under construction and poorly tested,
-new tokens may be added at any point and
-final bookkeeping is never done.
-Marpa's default idea is still to parse the entire input up to that point,
-but without the final bookkeeping such parses will very likely fail.
-The user has to determine the right places to look for complete parses,
-based on her knowledge of the structure of the grammar and the input
-with help from routines supplied for this purpose with Marpa.
-
-=back
+The options are documented <below|/"Options">.
 
 =item Parse::Marpa::Parse::text(I<parse>, I<text>)
 
@@ -5890,7 +5792,7 @@ Other failures are thrown as exceptions.
 The I<parse_end> argument is optional.
 If provided, it must be an earleme number specifying where the end
 of the parse is to be sought.
-In the standard case, a successful parse in non-streaming mode,
+In the standard case, a successful parse in offline mode,
 the default is to parse to the end of the input,
 which is usually what the user wants.
 
@@ -5904,11 +5806,11 @@ input, but if the user does want to attempt
 error recovery,
 the C<Parse::Marpa::Parse::find_complete_rule()> method may help.
 
-At this point stream mode is also bleeding-edge wizardry.
+At this point online mode is also bleeding-edge wizardry.
 It is not well tested.
-In stream mode there is no obvious "end of input".
+In online mode there is no obvious "end of input".
 At this moment Marpa doesn't provide a lot of tools for working with
-stream mode.
+online mode.
 It's up to the user to determine where to look for parses,
 perhaps using her specific knowledge of the grammar and the problem
 space.
@@ -5934,12 +5836,19 @@ C<Parse::Marpa::Parse::next()>
 and returns a reference to its current value.
 Any failures are thrown as C<croak()> exceptions.
 
-The return value may be C<undef>, which is considered a
-Marpa "no value".  This is not the same as a Perl C<undefined>,
+In some unusual cases,
+the return value may be C<undef>, which is considered a
+Marpa "no value".
+A "no value" is the value of a rule for which no value was ever calculated.
+This is not the same as a Perl C<undefined>,
 which would be returned as a reference to an undefined value.
-The allows the user to distinguish between those rules for which
-a Perl was calculated and came out undefined,
-and those rules for which no value was calculated.
+
+"No values" are rare.
+Defaults, nulling rules, and non-existent optional items
+all result in Perl undefineds, which are considered "calculated values"
+and C<value()> will return these as a reference to an undefined.
+A no value will usually be the result of advanced
+parsing wizardry gone wrong.
 
 =back
 
@@ -6010,6 +5919,133 @@ the C<marpa> utility's C<compile> command for that purpose.
 
 =back
 
+=head1 OPTIONS
+
+These are the options recognized by the
+C<Parse::Marpa::new()>,
+C<Parse::Marpa::Parse::new()>,
+and C<Parse::Marpa::set()> methods.
+
+=over 4
+
+=item grammar
+
+Takes as its value a grammar object.
+Only valid as an option to
+C<Parse::Marpa::Parse::new()>.
+There's no default.
+
+=item default_action
+
+Takes as its value a string, which is expected to be Perl 5 code.
+This is used as the action for rules where no action is specified.
+Defaults to the "non-action" of having the rule return undefined.
+
+=item ambiguous_lex
+
+Treats its value a boolean. 
+If true, ambiguous lexing is used.
+This means that even if a terminal in found with a closure or a regex, the search for
+other terminals at that location continues.
+If multiple terminals match, all the tokens found are considered in the
+parse and all may end up being used if the parse is ambiguous.
+
+If false, lexing at a location ends with the first terminal matched,
+It is up to the user to ensure that lexing is deterministic.
+(Imposing this requirement on the grammar design is the standard in modern parser generators,
+and Marpa's option of ambiguous lexing is unusual.)
+Defaults to ambiguous lexing.
+
+=item volatile
+
+=item online
+
+A boolean.  If its value is true, the parser runs in C<online> mode.
+The default is C<offline> mode.
+In <offline> mode,
+Marpa assumes the input has ended when the first parse is requested.
+It does some final bookkeeping in the Earley sets,
+refuses to accept any more input,
+and sets its defaults to parse the entire input from beginning to end.
+
+In online mode,
+which is under construction and poorly tested,
+new tokens may be added at any point and
+final bookkeeping is never done.
+Marpa's default idea is still to parse the entire input up to the current earleme,
+but it's much less clear that's what the user wants.
+And if it's not, it up to her
+has to determine the right places to look for complete parses,
+based on her knowledge of the structure of the grammar and the input
+with help from routines supplied for this purpose with Marpa.
+
+=item source
+
+This takes as its value a B<reference> to a string containing a description of
+the grammar in the L<Marpa grammar description language|Parse::Marpa::LANGUAGE>.
+
+=item default_null_value
+
+=item default_lex_prefix
+
+=item version
+
+=item semantics
+
+These predefineds may be specified as options.  If a Marpa predefined is
+specified both in a source file and as an option, the option overrides the
+value in the source file.
+For descriptions of these options, see
+the documentation for the
+L<Marpa grammar description language|Parse::Marpa::LANGUAGE>.
+
+=item ambiguous_lex
+
+=item volatile
+
+These are parse and evaluation time options.  Setting them in 
+the grammar makes that setting the default for all parses generated
+from that grammar.
+
+=item warnings
+
+This is a boolean which enables warnings
+about inaccessible and unproductive rules in the grammar.
+Warnings are written to the trace file handle.
+By default, warnings are on.
+
+Inaccessible rules can those which can never be reached from the start symbol.
+Unproductive rules are those which no possible input can ever generate.
+Marpa simply ignores these and generates a parser from the remaining rules.
+
+Often the presence of inaccessible and unproductive rules indicate problems
+in the grammar.
+But a user sometimes want to leave them while
+the grammar is under construction or use them as notes.
+
+=item code_lines
+
+If there is a problem with user supplied code,
+Marpa prints the error message and a description of where the code is being used.
+Marpa will display the code itself as well.
+The value of this option tells Marpa how many lines to print before truncating the
+code.
+If it's zero, no code is displayed.
+If it's negative, all the code is displayed, no matter how long it is.
+The default is 30 lines.
+
+=item preamble
+
+Another predefined which may also be specified as an option.  Note that
+while multiple preambles may be specified in a source file, and they are
+concatenated, if the I<preamble> option is used it overrides, replacing
+all the preamble code assembled so far.
+For a description of preambles, see
+the documentation for the
+L<Marpa grammar description language|Parse::Marpa::LANGUAGE>.
+
+=back
+
 =head1 IMPLEMENTATION NOTES
 
 =head2 String references
@@ -6054,20 +6090,6 @@ It returns this failure, rather than throw an exception.
 For all methods, any returned failures are specified in the detailed
 description of the method.
 
-=head1 NOTES NOT YET PROPERLY INCORPORATED IN THIS DOCUMENT
-
-Point out that lexing honors the pos setting
-and must not alter it, even on successful match.  Warn user of counter-intuitive
-behavior.
-
-Warn user that in the lex patterns all named captures beginning with any
-"MARPA_" in any capitalization variant ("marpa_", "MaRpA_", etc.) is
-reserved.
-
-All Perl code supplied by the user via the Marpa source file by default
-is run with "use integer" in effect.  If the user wants floating point arithmetic
-she must specify "no integer".
-
 =head1 AUTHOR
 
 Jeffrey Kegler
@@ -6078,11 +6100,129 @@ Requires Perl 5.10.
 Users who want or need the maturity and/or stability of Perl 5.8 or earlier
 probably are also best off with more mature and stable alternatives to C<Marpa>.
 
-=head1 BUGS
+=head1 LIMITATIONS
 
-The assumption that the default Marpa grammar description
-language is being used is hardwired into C<get_symbol>.  This
-will be fixed before going beta.
+=head2 Speed
+
+As far as I've tested it, speed is remarkably good for an Earley's implementation.
+In fact, the current bottlenecks seem not to be in the Marpa parse engine, but
+in the lexing, and in the design of the Marpa Demonstration Language.
+
+=head3 Ambiguous Lexing and Speed
+
+Ambiguous lexing has a cost, and grammars which can turn ambiguous lexing off
+can expect to parse twice as fast.
+Right now when Marpa tries to lexing multiple regexes at one location, it does
+so with several regex matches.
+
+I plan to investigate whether there's
+a more efficient way to have Perl 5 return all of the matches in 
+a set of multiple possibilities.
+A complication is that since Marpa does predictive lexing, the
+possibilities are not known until the match is about to be attempted,
+so precompilation is not possible.
+I expect that the searches for exactly the same sets of terminals occur
+many times in a typical parse, and lazy evaluation and memoizing might
+pay off big
+
+=head3 The Marpa Demonstration Language and Speed
+
+The Marpa Demonstration Language was designed to show off Marpa's power,
+not necessarily to run quickly.
+This meant that where a feature's usefulness came at a relatively cost in efficiency, I
+kept it anyway if I thought it demonstrated an important capability of Marpa.
+
+=head2 Some General Comments about Speed and Parsers
+
+Potential users of Marpa need to be aware of where Marpa stands in the efficiency battle.
+If you rewrite a grammar to be LALR grammar, it would parse faster in Marpa,
+but it would parse faster yet with bison or yacc,
+and I'd expect with C<Parse::Yapp> as well.
+And certainly a regular expression will certainly parse faster using regex'es.
+
+When it comes to regexes that use backtracking, however, Marpa may surprise.
+Marpa can parse any context-free grammar and never needs to backtrack.
+Backtracking is horrible in worst cases, and in real life is subject to speed
+meltdowns.
+
+Also worth considering is that if you do come up with the perfect backtracking
+strategy for your regex, the resulting regex will most likely be unreadable,
+even with extensive commments,
+and the strategy will almost certainly break with even a small change in the regex.
+
+The same problem could be described to Marpa in the terms that seem most naturally you.
+Where and how any changes must be made is likely to be evident,
+and the speed of any changed grammar is much more likely to be about the same.
+
+=head1 BUGS AND MISFEATURES
+
+=head2 Options code poorly organized and probably buggy
+
+My strategy for dealing with options to the method calls
+evolved as I created them and the code shows that.
+Most options are only valid at certain points in the parsing,
+but this is haphazardly enforced and poorly documented.
+There are probably some just plain ol' bugs.
+The options code needs to be cleaned up.
+
+=head2 MDL hardwiring
+
+The assumption that the MDL is the high-level grammar interface
+in use is hardwired into C<get_symbol>.  This
+will be addressed before going beta.
+
+=head2 Timing of Semantics Finalization
+
+All Semantics should be finalized in the next phase
+after the creation of the Parse object.
+This is mainly true now, but the value of null objects (for example)
+is calculated while rules are being added.
+I need to change Marpa so that all semantics
+are computed in the phase after creation of the parse object.
+
+=head2 Non-intuitive Parse Order in Unusual Cases
+
+This problem occurs when a single production has more than two nullable symbols on the right hand side,
+so that it is ambiguous,
+and the order of the parses matters.
+Most practical grammars don't seem to be affected by this, because it's unusual to use ambiguity
+within a single rule in the semantics in a way that's impacted.
+There is a very straightforward workaround where the issue does arise.
+But the problem needs to be fixed, certainly before Marpa goes beta.
+
+The problem occurs because these productions are rewritten internally by CHAF.
+A rightmost parse comes first, but it is rightmost for the grammar B<as rewritten by CHAF>.
+CHAF rewritting is supposed to be invisible,
+the order is not intuitive,
+and is probably not the useful choice.
+Priorities are B<not> a workaround, because priorites cannot be set for rules
+within a CHAF rewrite.
+
+Workaround: Rewrite the rule for which this parse ordering is a problem.
+The problem only
+occurs where a rule is rewritten in CHAF form, and CHAF rewrites are only done to rules
+with more than two nullables on the right hand side.  It is always possible to break up a
+rule so that at most two nullables occur on the right hand side.
+
+=head2 Perl style comments not recognized in some places
+
+Perl style comments are not recognized just before literal regexes and q- and qq-quoted literal strings.
+The problem is that these are treated as whitespace, whitespace in implemented with lex prefixes,
+and Marpa internal lexing routines don't implement prefixes.
+This needs to be fixed.
+
+Workaround: Move the Perl 5 style comment nearby.
+
+=head2 Priorities cannot be set in MDL for terminals
+
+Priorities cannot be set in MDL for terminals.
+I haven't actually needed them, but someone is bound to want them.
+Fix this before going beta.
+
+Workaround: Use the priorities for rules.  As mentioned, I've not found it necessary, but extra rules
+can be added to simulate terminal priorities.
+
+=head2 What!  You found even more bugs!
 
 Please report any bugs or feature requests to
 C<bug-parse-marpa at rt.cpan.org>, or through the web interface at

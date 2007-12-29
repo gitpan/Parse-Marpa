@@ -23,24 +23,24 @@ It would be also be easy to write a more powerful one.
 And, humbling as it is to admit, it may not be all that hard to
 write a high-level interface to Marpa which is just plain better.
 There are better language designers than me out there.
-My goal with Marpa is to empower them with a better tool than
-any they've had up to now.
+My goal with Marpa is to empower them.
 
 Not all parsers can parse languages describing their own grammar.
 Marpa can.
-In fact, the Marpa Demonstration Language is parsed using the same
-grammar interface and methods available to the user.
-A bootstrap is needed to get around the chicken-and-egg issues,
-but the result is then parses itself to produce itself.
-The self-generated parser it then run through a third generation and
-the second and third generation results are compared to ensure that
-trace of the bootstrapping is left.
-The Marpa parser is fully self-generated.
+In fact, Marpa's parser started as a Marpa Demonstration Language file C<self.grammar>,
+and the parser in Marpa was
+parsed using the same grammar interface and with the same methods available to the user.
+A initial bootstrap is needed to get around chicken-and-egg issues,
+but the result produced from C<self.marpa>, then parses C<self.marpa> a second
+time to eliminate all signs of the initial bootstrap.
+The second-generation Marpa parser it then runs C<self.marpa>
+through a third generation.
+Only if the second and third generation parsing code are identical
+is the Marpa parser considered to be fully self-generated, and incorporated
+into a Parse::Marpa distribution.
 
-Marpa's self-describing grammar source file is in the distribution,
-and is named C<self.marpa>.
 Most of the examples of the Marpa grammar description language below are
-adopted from that file or previous versions of it.
+adopted from C<self.marpa> or previous versions of it.
 
 =head1 ELEMENTS OF MARPA GRAMMAR DESCRIPTIONS
 
@@ -291,13 +291,9 @@ Here's an example of a string definition:
 =head2 Default Action Definition
 
 You can specify a "default action", that is, an action to be used in rules which do
-not explicitly specify an action.  By default, rules return a
-return a "no value" (which in Marpa is B<not> the same as an undefined).
+not explicitly specify an action.  By default, rules return undefined.
 
-Usually, Marpa's "default default" of no value will be the best choice.
-Marpa's parse evaluations optimize in the presence
-of "no value" returns.
-The current version of C<self.marpa> uses the no-value "default default".
+The current version of C<self.marpa> uses the default.
 Here's the specification of a default action from an earlier version.
 
     concatenate lines is the default action. 
@@ -319,7 +315,7 @@ or indirectly through a series of other production which ultimately
 produce the empty string.
 
 When a symbol's "null value" is not explicitly set,
-it defaults to a Marpa "no value".
+it defaults to Perl undefined.
 This default can be changed.
 For example, to have all nulled symbols without explicitly set
 null values
@@ -379,11 +375,13 @@ Here's a self-describing example, simplified from C<self.marpa>:
 	non structural production sentences.
 
 A production paragraph is characterized by a production sentence.  This may optionally be followed by an
-action sentence.  Before and after these may be other "non structural production sentences".  In fact,
-currently the only other sentence allowed in a production paragraph is a priority sentence, but it can go
-anywhere.
+action sentence.  Before and after these may be other "non structural production sentences" -- sentences
+which can go anywhere in the paragraph.
+The "non structural" sentences are comment sentences and priority sentences.
 
 =head2 Production Sentence
+
+=head3 Conventional Production Sentences
 
 Again, let's start with a self-description:
 
@@ -419,11 +417,313 @@ and
 are both valid C<default action setting>'s if C<do whatever> has
 been defined as a string.
 
-=head1 NOTES NOT YET PROPERLY INCORPORATED IN THIS DOCUMENT
+Making a nullable symbol (one which can match the empty string)
+basically does the same thing twice and Marpa doesn't allow it.
+it's usually best in such cases to
+rewrite the grammar to settle on one strategy or the other.
 
-All Perl code supplied by the user via the Marpa source file by default
-is run with "use integer" in effect.  If the user wants floating point arithmetic
-she must specify "no integer".
+=head3 Sequence production sentences
 
-Also, in such code, "use strict" in effect,
-and all warnings are turned on, except warnings in the "recursion" category.
+Sequences of symbols are common in real-life grammars.
+(As an aside,
+sequences are not just of special practical interest,
+but are real keys to understanding in the theory of parsing.)
+Marpa provides four special forms of the production sentence for dealing with these.
+
+    definition paragraph: definition sequence.
+    
+    non structural production sentences:
+    optional non structural production sentence sequence.
+
+    paragraphs: empty line separated paragraph sequence.
+
+    rhs: optional comma separated rhs element sequence.
+
+In sequence production sentences, the right hand side of the production is
+a sequence description.  Only one sequence description is allowed on a right
+hand side, and it must be the only thing on the right hand side.
+
+(This restriction of sequence productions to a single sequence
+is not due to any limit of the Marpa parser.
+Extending productions to allow a series of elements on the right hand side
+including sequences and optional sequences would not be hard.
+Less easy is figuring out
+how to specify the child values for very complex right hand sides to the semantic actions.
+And it seemed to me the semantic actions in such right hand sides would be so complicated and
+bug-prone, so that nobody would really want to use the extension.
+But if there's demand, the one-sequence-to-a-production restriction would not be hard to lift.)
+
+The right hand side of a sequence production may be a sequence or a separated sequence.
+A simple sequence is designated by a symbol name followed by the keyword C<sequence>.
+If a symbol sequence is preceded by a symbol name followed by the keyword C<separated>,
+then the first symbol name is used a separator.
+
+The separated specified allows Perl-style trailing separators.
+For example, a C<rhs> is specified above as a comma-separated
+sequence of C<rhs element>'s.
+The above would parse both of the following as valid C<rhs>'s:
+
+    optional /the/, /default/, /action/, /is/, action specifier
+    optional /the/, /default/, /action/, /is/, action specifier,
+
+Preceding any sequence with the keyword C<optional> means that the entire
+sequence may be omitted.
+In the usual regular expression notation
+C<X sequence> is roughly equivalent to C<X+>
+and C<optional X sequence> to C<X*>.
+
+The value of the child symbols in a sequence production is available in the
+array referenced by C<$Parse::Marpa::This::v>.
+Unlike conventional
+productions, in sequence productions
+you don't know in advance the number of right hand side symbols or their
+indices in the array.
+You can deal with this by using operations like C<join> or C<map> which work
+on the entire array.
+You can obtain a count of the symbols on the right side
+and the index of the last symbol in the usual way,
+with with C<scalar @{$Parse::Marpa::This::v}>
+C<$#$Parse::Marpa::This::v>.
+Sequence productions work best where the semantics really are those of a sequence
+of semantically identical items.
+Any sequence production can be rewritten as conventional productions.
+Most parsers don't have sequence productions,
+and force you to write your sequences as one or more conventional productions.
+If your right hand side has more than sequence semantics, you may wish to do exactly that.
+
+Having nullable symbols (symbols which might match an empty string) in a sequence
+is not a good idea, and Marpa throws an exception if you try it.
+If you define an C<X> as a string of one or more non-nullable C<Y>'s,
+Marpa can recognize a single parse for the string C<"YY">.
+Now suppose C<Y> is nullable.
+How many null C<Y>'s are there in C<"YY">, and where are they?
+A nullable in a sequence is almost always an error in grammar design.
+
+But not always.
+Marpa's most basic test case is exactly that:
+creation of a sequence of nullables and a tally of the exponentially increasing results.
+The ban on nullables is only on sequences in sequence productions.
+Nothing prevents you from specifying a sequence of nullables with conventional productions,
+either for stress testing or any other use, if you can find one.
+
+=head2 Action sentences
+
+Action sentences describe a semantic action.  In the MDL, actions are string containing
+Perl 5 code.  For example, in C<self.marpa>:
+
+    action sentence:
+    optional /the/, /action/, /is/, action specifier, period.
+    q{
+	"    action => "
+	. $Parse::Marpa::This::v->[3]
+    }.
+
+the last four lines are an action sentence.  You can also be more verbose.
+
+    action sentence: action specifier, period.
+    the action is q{
+	"    action => "
+	. $Parse::Marpa::This::v->[0]
+In you find sequences of  grammar useful for something other than stress testing,
+use conventional productions.
+    }.
+
+As a reminder, strings are delimited as Marpa strings, not a Perl 5 code.
+Many Perl 5 code constructs which you might expect to "escape" the delimiters
+will not.
+
+The last value computed in the action will be the value returned by the
+production.
+Values from child productions are available through C<$Parse::Marpa::This::v>,
+a reference to an array of them.
+The array contains the value for the symbols of the right hand side, in order.
+In both the examples above, a string is prepended to the value of the
+C<action specifier>,
+and that becomes the value of C<action sentence> in any parent production.
+
+Users should be warned that direct availability of C<$Parse::Marpa::This::v>
+is a temporary substitute.
+A set of convenient macros will soon be provided.
+Once the macros are available, access to C<$Parse::Marpa::This::v> will be removed.
+
+All actions start with
+C<use integer>, and C<use strict> in effect.
+All warnings are also in effect except those in the "recursion" category.
+The code is run in a special namespace.
+Globals in that namespace may be initialized in the actions specified in
+preamble definitions.
+
+=head2 Priority Sentence
+
+A priority sentence is the keyword C<priority> followed by an integer value, which
+may be negative.  The default priority is 0.
+
+    definition: setting, period.  q{ $Parse::Marpa::This::v->[0] }.  priority 1000.
+
+In the example above, C<setting>'s are given a priority of 1000.
+
+Priorities are used to affect the order in which ambiguous parses are returned,
+and they are a very important tool in Marpa.
+The priority setting in the above example addresses the parsing of this sentence.
+
+    a preamble is q{ our $var }.
+
+This sentence has two parses in C<self.marpa>.  C<a preamble> could be a user name,
+and the above sentence could be a string definition.  Or "a" and "preamble" could
+be parsed as Marpa keywords, and in which case the string would be concatenated
+to the preamble setting.
+
+The ambiguity is resolved by giving C<setting>'s, like the preamble setting, a higher
+priority than string definitions.  That is, if a sentence in a definition paragraph
+can be interpreted as a setting, that will be the first parse.
+Since the MDL only uses its first parse, that means a setting becomes the parse in
+favor of any other.
+
+String definitions in C<self.grammar> have the default priority, zero.
+Only if a definition sentence cannot be interpreted as a setting, will Marpa
+fall back to treating it as a string definition.
+
+=head2 Comment sentences
+
+Comment sentences may occur anywhere in a production paragraph.
+They consist of a comment tag, followed by a colon and a series
+of whitespace-separated "comment words".  Comment words
+may contain anything except whitespace or a period.
+The comment tags are "to do", "note" and "comment".
+
+    note: I may look a lot like a production sentence; Marpa knows the difference.
+
+To force Marpa to treat something that looks like a comment sentence as a production,
+capitalize any letter in it.  To force Marpa to treat something that looks like a production
+as a comment sentence, stick some illegal syntax somewhere in it.  The above example uses a
+semi-colon.
+
+=head1 TERMINAL PARAGRAPHS
+
+A terminal paragraph is characterized by a terminal sentence.  It may also contain
+comment sentences, as described L<above|/"Comment sentences">.
+Terminal sentences come in two forms, the regex form and the closure form.
+
+=head2 Regex Form of Terminal Sentence
+
+The regex form of a terminal sentence is a symbol name, the keyword C<matches>,
+and a regex literal.  For example,
+
+    comma matches qr/\,/.
+
+These regex should not use any anchoring.
+Why you'd need captures, much less named ones, I don't know, but if you really
+must do so,
+you must treat all named captures beginning with 
+C<"MARPA_"> in any capitalization variant (C<"marpa_">, C<"MaRpA_">, etc.)
+are reserved.
+
+=head2 Closure Form of Terminal Sentence
+
+The closure form of a terminal sentence is the keyword C<match>, then a symbol name,
+followed first by the keyword C<using>, then a string name or a string literal.
+For example,
+
+    note: change this to use lex_q_quote sometime(?).
+    match single quoted string using q{
+	state $prefix_regex = qr/\G(?:[ \t]*(?:\n|(?:\#[^\n]*\n)))*[ \t]*'/o;
+	return unless $$STRING =~ /$prefix_regex/g;
+	state $regex = qr/\G[^'\0134]*('|\0134')/;
+	MATCH: while ($$STRING =~ /$regex/gc) {
+	    next MATCH unless defined $1;
+	    if ($1 eq q{'}) {
+		my $length = (pos $$STRING) - $START;
+		return (substr($$STRING, $START, $length), $length);
+	    }
+	}
+	return;
+    }.
+
+The string may contain Perl 5 code specifying a lexing closure,
+or be one of the special strings C<lex_q_quote> or C<lex_regex>.
+
+If the string is 'lex_q_quote' Marpa uses an internal routine that implements
+the q-quoting rules described L<above|/"Literal Strings">
+If the string is 'lex_regex' Marpa uses as the closure an internal routine
+that implements the rules for literal regexes described above.
+This makes the terminal paragraph for the C<regex> terminal quite simple:
+
+    match regex using "lex_regex".
+
+The comment in the previous example notes the code in that literal string could be replaced
+using an internal routine.
+It would make C<self.marpa> simpler, and making all the enclosures used in the MDL Marpa internal
+would make sense.
+But Marpa self-generates from C<self.marpa> and I like to have in that self-generation
+a test of lexing closures.
+If I make them all internals, I won't have that.
+
+The lexing closure gets the string to be matched as a C<pos> offset within
+B<the string referred to> by C<$STRING>.
+If you don't know what a C<pos> offset is, or what C<\G> does in a Perl 5 regular expression,
+you will need to go back to the Perl documentation.
+To write a lexing closure you'll need to know it cold.
+
+C<$STRING> is a reference because the strings Marpa lexes will often be entire files,
+and may be very long.  Passing them by copying is not realization.
+Similarly, repeatedly chopping the string up as each token is lexed would be very
+inefficient.
+Instead Marpa uses the mechanism used by the C<g> modifier for regular expressions
+to keep track of the internal position.
+
+In writing a lexing closure, keep the following in mind:
+
+=over 4
+
+=item * Simply matching from the beginning of C<$$STRING> won't work, and will cause your parser to
+fail in almost every case.
+
+=item * Always search from the current setting of C<pos $STRING>,
+also accessible with C<\G> anchoring.
+
+=item * Return failure to match with a simple return.
+If you really must throw an exception, use C<croak()>.
+
+=item * On success, return an array with one or two elements.
+The first element must be the value of the token at the match.
+This is often the matched substring, but it can be anything useful.
+
+=item * The second element of the array is the length of the token
+in earlemes
+(see L<the CONCEPTS document|Parse::Marpa::CONCEPTS> about earlemes).
+For lexing closures in MDL, the use of C<Parse::Marpa::Parse::text()> and
+the one-character-per-earleme model can be assumed.
+Negative-length tokens are not allowed.
+Less obviously, zero-length tokens will mess Marpa up just as totally.
+Token lengths must be B<greater than> zero.
+
+=item * If the first element of the array returned on success was a string,
+the second element is optional.
+The length of the token will be taken to be the same as the string length.
+
+=item * You do B<not> need to worry about where your code leaves the C<pos>
+position in the string.  Marpa has to move it around anyway to implement
+ambiguous lexing, and will use the length you returned for the match to
+set C<pos $$STRING> when it wants to move lexing forward.
+
+=item * Lexing closures run in the same namespace as semantic actions, and
+therefore also see any globals set up in the preamble.
+"use strict", "use integer" and all warnings except recursion are in effect.
+
+=item * As of this writing, lexing closures do not honor the default lex prefix.
+Code which want to remove prefixes, like the code in the example, must explicitly do so.
+This behavior no longer seems like a good idea.
+I will probably change it shortly.
+Since as of that version all lexing closures from previous versions
+will be broken, you may want to hold off on writing any.
+
+=item * $START is set to the position at which the string started,
+after taking prefix removal into account.
+Using C<$START> properly
+will become very significant once prefixes are removed prior to calling
+the lexing closure.
+When a prefix was removed, simply returning the matched string or taking its length
+with C<length> will produce the wrong answer.
+The code in the above example shows things being done right.
+
+=back

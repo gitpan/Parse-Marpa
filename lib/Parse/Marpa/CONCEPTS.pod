@@ -56,7 +56,69 @@ Its documentation is at L<Parse::Marpa::LANGUAGE>.
 Users are not only allowed to design their own
 Marpa interfaces, I hope they feel enticed to do so.
 
-=head1 STEPS IN PARSING A TEXT
+=head1 TOKENS AND EARLEMES
+
+As a reminder,
+the standard method of parsing is to first break the text up into tokens.
+Typically tokens are recognized with
+as regular expressions or something similar.
+The actual parsing is done on a sequence of tokens.
+In Earley parsing, there is one "earley set" per token.
+
+Marpa allows ambiguous tokens.  Marpa tokens allows recognition, at a single location,
+of several different tokens of varying length.  Tokens may fall into arbitrary patterns.
+For example, they can overlap.
+
+What is considered a "location" is entirely up to the user.
+There are only two restrictions:
+
+=over 4
+
+=item 1
+
+Tokens cannot be zero or negative in length.
+
+=item 2
+
+Tokens must be grouped into "locations" called "earlemes".
+and must be scanned in order.
+That is, all the tokens at earleme C<N>
+must be recognized before any tokens at the earleme <N+1>.
+
+=back
+
+A parse is said to start at earleme 0, and "earleme N" means the location C<N> earlemes
+after earleme 0.
+(Aside to experts: the implementation uses one earley set for each earleme.)
+I also refer to "distances" in earlemes and lengths in earlemes,
+and my meaning when I do is probably what you'd expect.
+The length from earleme 3 to earleme 6,
+for instance, is 3 earlemes.
+
+The standard model of Earley parsing corresponds to a situation where there is one
+earleme per token.  Marpa's C<Parse::Marpa::Parse::text()> method uses a model where
+there's one earleme per character.  That is,
+C<text()> lexes the input string for the user, 
+and feeds lexed substrings as tokens to Marpa, giving as their earleme length their length
+in characters.
+
+In standard Earley parsing, a "location" without a token means the parse is exhausted.
+In Marpa, tokens can span many earlemes.
+A parse is viable as long as some token
+has been recognized which ends at or after the current earleme.
+Only when there is no token at the current location, and no token reaches to the current
+location or past it, is the parse exhausted.
+Parses using the grammar for the Marpa Demonstration Language typically contain many stretches
+of empty earlemes, some quite long.
+(Experts: an "empty earleme" corresponds to an Earley set with no Earley items.)
+
+Users of Marpa are not restricted to either the one-token-per-earleme or the one-character-per-earleme
+schemes.
+Input tokens may be fed directly to Marpa with the C<Parse::Marpa::Parse::earleme()> method
+and a user may supply earleme lengths according to any rules he finds useful, subject to
+the two restrictions above.
+
+=head1 THE STEPS OF MARPA PARSING
 
 In parsing a text, Marpa follows a strict sequence, although much of it
 is hidden from the user.

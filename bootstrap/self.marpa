@@ -1,17 +1,8 @@
-semantics are perl5.  version is 0.1.64.  the start symbol is
+semantics are perl5.  version is 0.1.65.  the start symbol is
 grammar.  a preamble is q{
     our $whitespace = qr/(?:[ \t]*(?:\n|(?:\#[^\n]*\n)))*[ \t]*/;
     our $default_lex_prefix = $whitespace;
-    our %strings;
-    my $new_start_symbol;
-    my $new_version;
-    my $new_semantics;
-    my $new_default_action;
-    my $new_default_null_value;
-    my $new_default_lex_prefix;
-}.
-
-# the default lex prefix is qr/[ \t]*(\#[^\n]*\n|\n)?([ \t]*\#[^\n]*\n)*[ \t]*/.
+} .
 
 the default lex prefix is qr/(?:[ \t]*(?:\n|(?:\#[^\n]*\n)))*[ \t]*/.
 
@@ -19,8 +10,7 @@ concatenate lines is q{
     my $v_count = scalar @$Parse::Marpa::This::v;
     return undef if $v_count <= 0;
     join("\n", grep { $_ } @$Parse::Marpa::This::v);
-}.
-# concatenate lines is the default action. # perl5 style comment
+}.  # perl5 style comment
 
 grammar: paragraphs.  q{ $Parse::Marpa::This::v->[0] }.
 
@@ -406,7 +396,7 @@ empty line matches qr/^[ \t]*\n/m.
 
 bracketed comment matches qr/\x{5b}[^\x{5d}]*\x{5d}/.
 
-# change to lex_q_quote
+note: change this to use lex_q_quote sometime(?).
 match single quoted string using q{
     state $prefix_regex = qr/\G(?:[ \t]*(?:\n|(?:\#[^\n]*\n)))*[ \t]*'/o;
     return unless $$STRING =~ /$prefix_regex/g;

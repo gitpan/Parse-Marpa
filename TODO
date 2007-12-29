@@ -1,32 +1,9 @@
-* "my" definitions in self.marpa preamble.  Useful?  Try eliminating them.
-
 * Explicitly setting start symbol -- sort this out.  Note in docs that it
   needs to be set in canonical form.
 
-* Semantics are handled in several places, anywhere from when a rule is
-  added to when the parse object is created.  Change so that all semantics
-  are computed when the parse object is created.
-
-* When a single production can be ambiguous and is broken up by a CHAF
-  rewrite, that affects the order of the parses in a way that cannot be
-  manipulated via the priorites.  Do something about this.
-
-* There needs to be a way of explicitly setting "no value" for the
-  default action and the default null value.
-
 * Test that max_parses is enforced
 
-* Bugs with comments, especially after null productions and before
-  action?
-
-* Priorities cannot be set in grammar source files for terminals.  Fix that.
-
-* Check Parse::Marpa::Parse::new options.  Do defaults from grammar
-  work as advertized?
-
 * Ensure Parse::Marpa::Internal::This::grammar set wherever appropriate.
-
-* Check version, semantics in grammar for source grammar itself.
 
 * Test right and left evaluation in rules
 
@@ -44,8 +21,6 @@
      $VALUE{NAME}[n]
      @RULE
      $RULE_REF
-
-* Add locations for earlemes.  Also for rules?  Use in Carp messages.
 
 * Allow alternation?
 
