@@ -1,4 +1,4 @@
-use 5.009005;
+use 5.010_000;
 use strict;
 use warnings;
 use Test::More tests => 5;

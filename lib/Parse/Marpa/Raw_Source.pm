@@ -1,6 +1,5 @@
-require 5.009005;
+require 5.010_000;
 
-use feature ":5.10";
 use warnings;
 use strict;
 
@@ -20,10 +19,10 @@ my $new_default_null_value;
 my $new_default_lex_prefix;
 my %strings;
 
-# This file was automatically generated using Parse::Marpa 0.001065
+# This file was automatically generated using Parse::Marpa 0.001066
 $new_semantics = 'perl5';
 
- $new_version = '0.001065';
+ $new_version = '0.001066';
 
 $new_start_symbol = "grammar";
 
@@ -219,7 +218,7 @@ push(@$new_rules, {
 });
 push(@$new_rules, {
     lhs => "definition",
-    rhs => ["setting", "period"],
+    rhs => ["predefined-setting", "period"],
     action =>   q{ $Parse::Marpa::This::v->[0] },
 ,
 ,
@@ -248,7 +247,7 @@ push(@$new_rules, {
 
 });
 push(@$new_rules, {
-    lhs => "setting",
+    lhs => "predefined-setting",
     rhs => ["default-action-setting"],
     action => $strings{ "concatenate-lines" },
 ,
@@ -256,7 +255,7 @@ push(@$new_rules, {
 
 });
 push(@$new_rules, {
-    lhs => "setting",
+    lhs => "predefined-setting",
     rhs => ["default-null-value-setting"],
     action => $strings{ "concatenate-lines" },
 ,
@@ -264,7 +263,7 @@ push(@$new_rules, {
 
 });
 push(@$new_rules, {
-    lhs => "setting",
+    lhs => "predefined-setting",
     rhs => ["preamble-setting"],
     action => $strings{ "concatenate-lines" },
 ,
@@ -272,7 +271,7 @@ push(@$new_rules, {
 
 });
 push(@$new_rules, {
-    lhs => "setting",
+    lhs => "predefined-setting",
     rhs => ["semantics-setting"],
     action => $strings{ "concatenate-lines" },
 ,
@@ -280,7 +279,7 @@ push(@$new_rules, {
 
 });
 push(@$new_rules, {
-    lhs => "setting",
+    lhs => "predefined-setting",
     rhs => ["version-setting"],
     action => $strings{ "concatenate-lines" },
 ,
@@ -288,7 +287,7 @@ push(@$new_rules, {
 
 });
 push(@$new_rules, {
-    lhs => "setting",
+    lhs => "predefined-setting",
     rhs => ["start-symbol-setting"],
     action => $strings{ "concatenate-lines" },
 ,
@@ -296,7 +295,7 @@ push(@$new_rules, {
 
 });
 push(@$new_rules, {
-    lhs => "setting",
+    lhs => "predefined-setting",
     rhs => ["default-lex-prefix-setting"],
     action => $strings{ "concatenate-lines" },
 ,

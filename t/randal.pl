@@ -1,6 +1,5 @@
-use 5.009005;
+use 5.010_000;
 use strict;
-use feature ":5.10";
 use warnings;
 use lib "../lib";
 use English;

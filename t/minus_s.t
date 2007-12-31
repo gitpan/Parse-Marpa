@@ -1,4 +1,4 @@
-use 5.009005;
+use 5.010_000;
 
 # An ambiguous equation,
 # this time using the lexer
@@ -55,7 +55,7 @@ for (my $i = 0; $i <= $#expected; $i++) {
 # a start symbol that appears repeatedly on the RHS.
 
 __DATA__
-semantics are perl5.  version is 0.1.65.
+semantics are perl5.  version is 0.1.66.
 
 the start symbol is E.
 

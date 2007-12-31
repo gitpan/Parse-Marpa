@@ -1,6 +1,5 @@
-#!/usr/bin/env perl
-require 5.009005;
-use feature ":5.10";
+#!/usr/local/ActivePerl-5.10/bin/perl
+require 5.010_000;
 
 use Carp;
 use Getopt::Long;

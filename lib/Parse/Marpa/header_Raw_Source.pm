@@ -1,6 +1,5 @@
-require 5.009005;
+require 5.010_000;
 
-use feature ":5.10";
 use warnings;
 use strict;
 

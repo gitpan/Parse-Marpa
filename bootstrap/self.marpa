@@ -1,4 +1,4 @@
-semantics are perl5.  version is 0.1.65.  the start symbol is
+semantics are perl5.  version is 0.1.66.  the start symbol is
 grammar.  a preamble is q{
     our $whitespace = qr/(?:[ \t]*(?:\n|(?:\#[^\n]*\n)))*[ \t]*/;
     our $default_lex_prefix = $whitespace;
@@ -94,7 +94,7 @@ non-structural production sentence: comment sentence.  concatenate lines.
 
 non-structural terminal sentence: comment sentence.  concatenate lines.
 
-definition: setting, period.  q{ $Parse::Marpa::This::v->[0] }.  priority 1000.
+definition: predefined setting, period.  q{ $Parse::Marpa::This::v->[0] }.  priority 1000.
 
 definition: comment sentence.
 
@@ -102,19 +102,19 @@ definition: bracketed comment.
 
 definition: string definition.  concatenate lines.
 
-setting: default action setting.  concatenate lines.
+predefined setting: default action setting.  concatenate lines.
 
-setting: default null value setting.  concatenate lines.
+predefined setting: default null value setting.  concatenate lines.
 
-setting: preamble setting.  concatenate lines.
+predefined setting: preamble setting.  concatenate lines.
 
-setting: semantics setting.  concatenate lines.
+predefined setting: semantics setting.  concatenate lines.
 
-setting: version setting.  concatenate lines.
+predefined setting: version setting.  concatenate lines.
 
-setting: start symbol setting.  concatenate lines.
+predefined setting: start symbol setting.  concatenate lines.
 
-setting: default lex prefix setting.  concatenate lines.
+predefined setting: default lex prefix setting.  concatenate lines.
 
 semantics setting:  optional /the/, /semantics/, copula, /perl5/.
      q{

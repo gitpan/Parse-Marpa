@@ -8,10 +8,10 @@ Parse::Marpa::CONCEPTS - Concepts helpful for Using Marpa
 
 =head1 OVERVIEW
 
-This document is about practical concepts,
-concepts for actually putting Marpa to work in your applications.
-It's not about the mathematics or the parsing theory behind Marpa.
-That's documented L<elsewhere|Parse::Marpa::ALGORITHM>.
+This document is about
+concepts for putting Marpa to work in your applications.
+It's not about the mathematics or theory.
+The theory behind Marpa is documented L<elsewhere|Parse::Marpa::ALGORITHM>.
 
 It's also not a tutorial on grammars or BNF.  For that consult
 a modern textbook, such as Grune and Jacobs I<Parsing Techniques -
@@ -34,11 +34,11 @@ and the B<raw grammar interface>.
 
 The B<raw grammar interface> is a set of options to the constructor for
 Marpa grammar objects, C<Parse::Marpa::new()>.
-All the other grammar interfaces will need to use the raw grammar interface indirectly.
-It is efficient, but for most situations
-users will want something higher level.
+All the other grammar interfaces use the raw grammar interface indirectly.
+The raw grammar interface is efficient,
+but users will usually want something higher level.
 The documentation for the raw grammar interface
-(as yet unwritten) is at  L<Parse::Marpa::RAW>.
+(as yet unwritten) is L<Parse::Marpa::RAW>.
 
 =head2 The Marpa Demonstration Language
 
@@ -47,30 +47,34 @@ higher level grammar interfaces will
 be equal.
 I call the one that I am delivering with 
 Marpa the B<Marpa Demonstration Language> instead
-of the "Marpa Language" to emphasize that it is not
-intended to have special status.
+of the "Marpa Language" to emphasize it's lack of
+special status.
 Its documentation is at L<Parse::Marpa::LANGUAGE>.
 
 =head2 Your Grammar Interface Here
 
-Users are not only allowed to design their own
-Marpa interfaces, I hope they feel enticed to do so.
+Users are encouraged to design their own
+high-level Marpa interfaces.
 
 =head1 TOKENS AND EARLEMES
 
 As a reminder,
-the standard method of parsing is to first break the text up into tokens.
-Typically tokens are recognized with
-as regular expressions or something similar.
-The actual parsing is done on a sequence of tokens.
-In Earley parsing, there is one "earley set" per token.
+the usual method of parsing first breaks the input text up into tokens.
+Typically tokens are recognized (or "lexed") with
+regular expressions or something similar.
+The actual parsing is then done on the sequence of tokens.
+In conventional parsing, it's required that the token sequence will be deterministic --
+that is, that there'll only be one sequence of tokens and that that sequence can be found
+by the lexer more or less on its own.
+In conventional Earley parsing, there is one "earley set" per token.
 
 Marpa allows ambiguous tokens.  Marpa tokens allows recognition, at a single location,
-of several different tokens of varying length.  Tokens may fall into arbitrary patterns.
-For example, they can overlap.
+of several different tokens of varying length.
+Tokens may occur in the input stream in arbitrary patterns.
+Nothing, for example, prevents them from overlapping.
 
-What is considered a "location" is entirely up to the user.
-There are only two restrictions:
+What is considered a "location" is up to the user, with
+two restrictions:
 
 =over 4
 
@@ -80,71 +84,73 @@ Tokens cannot be zero or negative in length.
 
 =item 2
 
-Tokens must be grouped into "locations" called "earlemes".
+Tokens must be grouped into "locations" called B<earlemes>.
 and must be scanned in order.
 That is, all the tokens at earleme C<N>
-must be recognized before any tokens at the earleme <N+1>.
+must be recognized before any token at earleme C<N+1>.
 
 =back
 
 A parse is said to start at earleme 0, and "earleme N" means the location C<N> earlemes
 after earleme 0.
-(Aside to experts: the implementation uses one earley set for each earleme.)
+(Aside to experts:
+The implementation uses one Earley set for each earleme.)
 I also refer to "distances" in earlemes and lengths in earlemes,
-and my meaning when I do is probably what you'd expect.
+and my meaning is probably what you expect.
 The length from earleme 3 to earleme 6,
 for instance, is 3 earlemes.
 
-The standard model of Earley parsing corresponds to a situation where there is one
-earleme per token.  Marpa's C<Parse::Marpa::Parse::text()> method uses a model where
-there's one earleme per character.  That is,
+The conventional model of Earley parsing corresponds to a B<one-earleme-per-token> model in Marpa.
+Marpa's C<Parse::Marpa::Parse::text()> method uses a model where
+there's B<one earleme per character>.
 C<text()> lexes the input string for the user, 
 and feeds lexed substrings as tokens to Marpa, giving as their earleme length their length
 in characters.
 
-In standard Earley parsing, a "location" without a token means the parse is exhausted.
+In conventional Earley parsing, a "location" without a token means the parse is exhausted.
 In Marpa, tokens can span many earlemes.
 A parse is viable as long as some token
 has been recognized which ends at or after the current earleme.
 Only when there is no token at the current location, and no token reaches to the current
 location or past it, is the parse exhausted.
-Parses using the grammar for the Marpa Demonstration Language typically contain many stretches
+Parses using the grammar for the MDL typically contain many stretches
 of empty earlemes, some quite long.
-(Experts: an "empty earleme" corresponds to an Earley set with no Earley items.)
+(Note to experts: an "empty earleme" corresponds to an Earley set with no Earley items.)
 
 Users of Marpa are not restricted to either the one-token-per-earleme or the one-character-per-earleme
-schemes.
+scheme.
 Input tokens may be fed directly to Marpa with the C<Parse::Marpa::Parse::earleme()> method
 and a user may supply earleme lengths according to any rules he finds useful, subject to
 the two restrictions above.
 
 =head1 THE STEPS OF MARPA PARSING
 
-In parsing a text, Marpa follows a strict sequence, although much of it
-is hidden from the user.
+In parsing a text,
+Marpa follows a strict sequence,
+some of all of which is usually invisible to the user.
 For example, when a parse object is created from a grammar
 which has not been precomputed, the parse object constructor
 will silently perform not just the precomputation of the grammar,
 but also a deep copy of it.
-In fact, if the C<Parse::Marpa::marpa()> routine is used,
-the entire sequence below will be performed automatically
-and none of the methods listed below need be called directly.
+If the C<Parse::Marpa::marpa()> routine is used,
+all the steps will be performed automatically
+and none of the methods listed below them can or should be called directly.
  
-In each step listed, the B<lowest level method> performing it is mentioned.
-Calling these methods in this sequence will rarely be the best approach.
-For example, calling C<Parse::Marpa::precompute()> directly is rarely necessary
-and clutters the code.
+In each step, the method mentioned is the B<lowest level> one available to the user.
+Calling those methods in that sequence is not the easiest approach and will rarely be the best one.
 See the main L<Parse::Marpa> documentation page for
-pointers to the easiest interfaces,
-and ways to exercise greater control when that is desired.
-Also see the detailed documentation for each method for hints as to
-when it is best used.
+pointers to easier interfaces,
+as well as instructions on how to exercise step-by-step control when that is what you want.
+The detailed documentation of each method often has hints
+on how that method is best used.
+
+Here are the steps:
 
 =over 4
 
 =item * Creation of a grammar object
 
-A grammar object is created with C<Parse::Marpa::new()>.
+A grammar object is created with C<Parse::Marpa::new()>,
 although it may called indirectly.
 
 =item * Adding rules to the grammar object
@@ -162,14 +168,18 @@ C<Parse::Marpa::new()> and the C<Parse::Marpa::set()> methods.
 Before a parse object can be created,
 Marpa must do a series of precomputations on the grammar.
 This step rarely needs to be performed explicitly, but when that is
-necessary, the method call is C<Parse::Marpa::precompute>.
+necessary, the method call is C<Parse::Marpa::precompute()>.
 
 =item * Deep copying the grammar
 
 Marpa parse objects work with a copy of the grammar, so that
-multiple parses may go on at once.
-The deep copying is done by writing the grammar out with C<Data::Dumper>,
-then eval'ing the result and tweaking it.
+multiple parses from a single grammar can be performed at the same 
+time without interfering with each other.
+The deep copy is done in two subphases.
+First, the grammar is written out with C<Data::Dumper>.
+Second, the string from the first subphase
+is C<eval>'ed back into a grammar object
+and tweaked.
 
 These two subphases are available to the user as
 C<Parse::Marpa::compile()> and C<Parse::Marpa::decompile()>.
@@ -184,8 +194,8 @@ more details.
 To parse a text, a parse object must be created.
 The constructor C<Parse::Marpa::Parse::new()> is always called
 to do this, whether directly or indirectly.
-Strings and options specifying semantics may have been set in earlier phases,
-but it is only now that the semantics are determined.
+Strings and options describing the semantics may have been set in earlier phases,
+but it is now that the semantics are finalized.
 After this point they cannot change.
 
 =item * Token Input
@@ -195,35 +205,25 @@ and recognition is performed as the input is received.
 Marpa, therefore, will eventually be
 capable of on-line or stream processing.
 
-If Marpa's input is structured in the same way as conventional
-parsers, the input is recognized and ready to be evaluated
-when at the same time a conventional on-line parser would be ready.
-Marpa can deal with ambiguous,
-variable length, and even overlapping tokens,
-and the question of
-when the user can expect these input tokens to be
-recognized and ready to be evaluated as
-part of a parse
-is more complicated than with other parsers.
-See elsewhere in this document, under "Earlemes and Tokens".
-
 Currently input may be specified as text,
-with the C<Parse::Marpa::Parse::text()> method or directly as tokens
+with the C<Parse::Marpa::Parse::text()> method,
+or directly as tokens
 with the C<Parse::Marpa::Parse::earleme()> method.
 
 =item * Initial Parse Evaluation
 
 Once the input is recognized, it can be evaluated.
 The first value is computed with the C<Parse::Marpa::Parse::initial()> method.
-C<initial()'s> return value is to indicate success or failure.
-The value of the parse is accessible with the C<Parse::Marpa::Parse::value()> method.
+C<initial()'s> return value indicates success or failure.
+The actual value of the parse is returned by the C<Parse::Marpa::Parse::value()> method.
 
 =item * Parse Iteration
 
-In Marpa a token sequence can have more than one parse.
-These are iterated through with the
-C<Parse::Marpa::Parse::next()> method
-and values are retrieved with
+From a given grammar and input,
+Marpa might produce more than one parse.
+These are iterated through with the C<Parse::Marpa::Parse::next()> method,
+which returns failure once there are no more parses.
+As the parses are iterated, their values may be retrieved with
 C<Parse::Marpa::Parse::value()> method.
 
 =back

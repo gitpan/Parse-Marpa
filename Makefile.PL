@@ -1,4 +1,4 @@
-require 5.009005;
+require 5.010_000;
 use strict;
 use warnings;
 use ExtUtils::MakeMaker;
@@ -14,6 +14,10 @@ WriteMakefile(
     PM => {
 	'lib/Parse/Marpa/Raw_Source.pm'
 	    => '$(INST_LIB)/Parse/Marpa/Raw_Source.pm',
+	'lib/Parse/Marpa/DIAGNOSTICS.pod'
+	    => '$(INST_LIB)/Parse/Marpa/DIAGNOSTICS.pod',
+	'lib/Parse/Marpa/RAW.pod'
+	    => '$(INST_LIB)/Parse/Marpa/RAW.pod',
 	'lib/Parse/Marpa/LANGUAGE.pod'
 	    => '$(INST_LIB)/Parse/Marpa/LANGUAGE.pod',
 	'lib/Parse/Marpa/CONCEPTS.pod'
@@ -36,7 +40,7 @@ WriteMakefile(
 	    => '$(INST_LIB)/Parse/Marpa/header_Raw_Source.pm',
     },
     EXE_FILES => [
-                           'bootstrap/test.sh',
+                           'bin/marpa',
     ],
     PREREQ_PM => {
         'Test::More' => 0,

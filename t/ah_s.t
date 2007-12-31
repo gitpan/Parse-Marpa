@@ -3,9 +3,8 @@
 # _The Computer Journal_, Vol. 45, No. 6, pp. 620-630,
 # in source form
 
-use 5.009005;
+use 5.010_000;
 use strict;
-use feature ":5.10";
 use warnings;
 use lib "../lib";
 use English;
@@ -104,7 +103,7 @@ ok(!$failure_count, ($total_count-$failure_count) . " of $total_count parse perm
 # vim: expandtab shiftwidth=4:
 
 __DATA__
-semantics are perl5.  version is 0.1.65.  the start symbol is
+semantics are perl5.  version is 0.1.66.  the start symbol is
 S.  the default null value is q{}.  the default action is q{
      my $v_count = scalar @$Parse::Marpa::This::v;
      return "" if $v_count <= 0;

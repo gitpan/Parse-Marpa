@@ -1,6 +1,6 @@
 package Parse::Marpa;
 
-require 5.009005;
+use 5.010_000;
 
 # TO THE (POTENTIAL) READER:
 
@@ -19,7 +19,6 @@ require 5.009005;
 
 # thanks, Jeffrey Kegler
 
-use feature ":5.10";
 use warnings;
 use strict;
 

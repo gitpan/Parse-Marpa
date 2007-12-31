@@ -1,18 +1,4 @@
-# PLEASE DO NOT USE THIS SCRIPT AS AN EXAMPLE
-
-# If you're a savvy Perl programmer, you look in the tests directory
-# for examples.  In general, that's a good idea, but not with this
-# test script.  Why?
-#
-# Marpa parses itself, which is A Very Good Thing.  That means
-# Marpa's user interface relies on itself in circular fashion,
-# and therefore cannot be safely used to test its own
-# basic functionality.
-#
-# This script uses a special, undocumented "internal" interface,
-# which at this point I ask users to consider off-limits.
-
-use 5.009005;
+use 5.010_000;
 # the example grammar in Aycock/Horspool "Practical Earley Parsing",
 # _The Computer Journal_, Vol. 45, No. 6, pp. 620-630,
 # in its "NNF" form

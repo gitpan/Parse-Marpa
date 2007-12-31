@@ -1,8 +1,8 @@
 # Marpa compiling its own specification language
 
+use 5.010_000;
 use strict;
 use warnings;
-use feature ":5.10";
 use English;
 use lib "../lib";
 use Parse::Marpa;
