@@ -19,30 +19,29 @@ my $new_default_null_value;
 my $new_default_lex_prefix;
 my %strings;
 
-# This file was automatically generated using Parse::Marpa 0.001066
+# This file was automatically generated using Parse::Marpa 0.001067
 $new_semantics = 'perl5';
 
- $new_version = '0.001066';
+ $new_version = '0.001067';
 
 $new_start_symbol = "grammar";
-
-$new_preamble .=  q{
-    our $whitespace = qr/(?:[ \t]*(?:\n|(?:\#[^\n]*\n)))*[ \t]*/;
-    our $default_lex_prefix = $whitespace;
-};
 
 $new_default_lex_prefix = qr/(?:[ \t]*(?:\n|(?:\#[^\n]*\n)))*[ \t]*/;
 
 $strings{"concatenate-lines"} =  q{
-    my $v_count = scalar @$Parse::Marpa::This::v;
+    my $v_count = scalar @$Parse::Marpa::Read_Only::v;
     return undef if $v_count <= 0;
-    join("\n", grep { $_ } @$Parse::Marpa::This::v);
+    join("\n", grep { $_ } @$Parse::Marpa::Read_Only::v);
+};
+
+$new_preamble .=  q{
+    our $regex_data = [];
 };
 
 push(@$new_rules, {
     lhs => "grammar",
     rhs => ["paragraphs"],
-    action =>   q{ $Parse::Marpa::This::v->[0] },
+    action =>   q{ $Parse::Marpa::Read_Only::v->[0] },
 ,
 ,
 
@@ -50,7 +49,7 @@ push(@$new_rules, {
 push(@$new_rules, {
     lhs => "grammar",
     rhs => ["paragraphs", "whitespace-lines"],
-    action =>   q{ $Parse::Marpa::This::v->[0] },
+    action =>   q{ $Parse::Marpa::Read_Only::v->[0] },
 ,
 ,
 
@@ -105,12 +104,12 @@ push(@$new_rules, {
     rhs => ["non-structural-production-sentences", "production-sentence", "non-structural-production-sentences", "action-sentence:optional", "non-structural-production-sentences"],
     action => 
     q{
-        my $action = $Parse::Marpa::This::v->[3];
-        my $other_key_value = join(",\n", map { $_ // "" } @{$Parse::Marpa::This::v}[0,2,4]);
+        my $action = $Parse::Marpa::Read_Only::v->[3];
+        my $other_key_value = join(",\n", map { $_ // "" } @{$Parse::Marpa::Read_Only::v}[0,2,4]);
         my $result =
             'push(@$new_rules, '
              . "{\n"
-             . $Parse::Marpa::This::v->[1] . ",\n"
+             . $Parse::Marpa::Read_Only::v->[1] . ",\n"
              . (defined $action ? ($action . ",\n") : "")
              . $other_key_value
              . "\n});"
@@ -141,7 +140,7 @@ push(@$new_rules,
     { lhs => "action-sentence:optional",  rhs => [ "action-sentence" ], 
                      min => 0,
                      max => 1,
-                     action => q{ $Parse::Marpa::This::v->[0] }
+                     action => q{ $Parse::Marpa::Read_Only::v->[0] }
              },
  );
 
@@ -159,13 +158,13 @@ push(@$new_rules, {
     lhs => "non-structural-production-sentence",
     rhs => ["priority:k18", "integer", "period"],
     action => 
-q{ q{ priority => } . $Parse::Marpa::This::v->[1] },
+q{ q{ priority => } . $Parse::Marpa::Read_Only::v->[1] },
 ,
 ,
 
 });
 push(@$new_terminals,
-    ["priority:k18" => [ qr/priority/ ]],
+    ["priority:k18" => { regex => qr/priority/ }],
 );
 
 push(@$new_rules, {
@@ -174,7 +173,7 @@ push(@$new_rules, {
     action => 
 q{
     "    action => "
-    . $Parse::Marpa::This::v->[3]
+    . $Parse::Marpa::Read_Only::v->[3]
 },
 ,
 ,
@@ -186,7 +185,7 @@ push(@$new_rules, {
     action => 
 q{
     "    action => "
-    . $Parse::Marpa::This::v->[0]
+    . $Parse::Marpa::Read_Only::v->[0]
 },
 ,
 ,
@@ -219,7 +218,7 @@ push(@$new_rules, {
 push(@$new_rules, {
     lhs => "definition",
     rhs => ["predefined-setting", "period"],
-    action =>   q{ $Parse::Marpa::This::v->[0] },
+    action =>   q{ $Parse::Marpa::Read_Only::v->[0] },
 ,
 ,
  priority => 1000
@@ -308,7 +307,7 @@ push(@$new_rules, {
     action => 
      q{
          q{$new_semantics = '}
-         . $Parse::Marpa::This::v->[3]
+         . $Parse::Marpa::Read_Only::v->[3]
         . qq{';\n}
 },
 ,
@@ -321,7 +320,7 @@ push(@$new_rules, {
     action => 
 q{
     q{$new_semantics = '}
-    . $Parse::Marpa::This::v->[0]
+    . $Parse::Marpa::Read_Only::v->[0]
     . qq{';\n}
 },
 ,
@@ -329,8 +328,8 @@ q{
 
 });
 push(@$new_terminals,
-    ["semantics:k16" => [ qr/semantics/ ]],
-    ["perl5:k17" => [ qr/perl5/ ]],
+    ["semantics:k16" => { regex => qr/semantics/ }],
+    ["perl5:k17" => { regex => qr/perl5/ }],
 );
 
 push(@$new_rules, {
@@ -339,7 +338,7 @@ push(@$new_rules, {
     action => 
 q{
     q{ $new_version = '}
-    . Parse::Marpa::Source::canonical_version($Parse::Marpa::This::v->[3])
+    . Parse::Marpa::MDL::canonical_version($Parse::Marpa::Read_Only::v->[3])
     . qq{';\n}
 },
 ,
@@ -352,7 +351,7 @@ push(@$new_rules, {
     action => 
 q{
     q{ $new_version = '}
-    . Parse::Marpa::Source::canonical_version($Parse::Marpa::This::v->[0])
+    . Parse::Marpa::MDL::canonical_version($Parse::Marpa::Read_Only::v->[0])
     . qq{';\n}
 },
 ,
@@ -360,8 +359,8 @@ q{
 
 });
 push(@$new_terminals,
-    ["version:k14" => [ qr/version/ ]],
-    ["version%20number:k15" => [ qr/version number/ ]],
+    ["version:k14" => { regex => qr/version/ }],
+    ["version%20number:k15" => { regex => qr/version number/ }],
 );
 
 push(@$new_rules, {
@@ -370,7 +369,7 @@ push(@$new_rules, {
     action => 
 q{
     q{$new_start_symbol = "}
-    . $Parse::Marpa::This::v->[4]
+    . $Parse::Marpa::Read_Only::v->[4]
     . qq{";\n}
 },
 ,
@@ -383,7 +382,7 @@ push(@$new_rules, {
     action => 
 q{
     q{$new_start_symbol = }
-    . $Parse::Marpa::This::v->[0]
+    . $Parse::Marpa::Read_Only::v->[0]
     . qq{;\n}
 },
 ,
@@ -391,8 +390,8 @@ q{
 
 });
 push(@$new_terminals,
-    ["symbol:k12" => [ qr/symbol/ ]],
-    ["start:k13" => [ qr/start/ ]],
+    ["symbol:k12" => { regex => qr/symbol/ }],
+    ["start:k13" => { regex => qr/start/ }],
 );
 
 push(@$new_rules, {
@@ -401,7 +400,7 @@ push(@$new_rules, {
     action => 
 q{
              q{$new_default_lex_prefix = }
-             . $Parse::Marpa::This::v->[0]
+             . $Parse::Marpa::Read_Only::v->[0]
              . qq{;\n}
 },
 ,
@@ -414,7 +413,7 @@ push(@$new_rules, {
     action => 
 q{
     q{$new_default_lex_prefix = }
-    . $Parse::Marpa::This::v->[5]
+    . $Parse::Marpa::Read_Only::v->[5]
     . qq{;\n}
 },
 ,
@@ -422,8 +421,8 @@ q{
 
 });
 push(@$new_terminals,
-    ["prefix:k10" => [ qr/prefix/ ]],
-    ["lex:k11" => [ qr/lex/ ]],
+    ["prefix:k10" => { regex => qr/prefix/ }],
+    ["lex:k11" => { regex => qr/lex/ }],
 );
 
 push(@$new_rules, {
@@ -432,7 +431,7 @@ push(@$new_rules, {
     action => 
 q{
              q{$new_default_null_value = }
-             . $Parse::Marpa::This::v->[0]
+             . $Parse::Marpa::Read_Only::v->[0]
              . qq{;\n}
 },
 ,
@@ -445,7 +444,7 @@ push(@$new_rules, {
     action => 
 q{
     q{$new_default_null_value = }
-    . $Parse::Marpa::This::v->[5]
+    . $Parse::Marpa::Read_Only::v->[5]
     . qq{;\n}
 },
 ,
@@ -453,8 +452,8 @@ q{
 
 });
 push(@$new_terminals,
-    ["value:ke" => [ qr/value/ ]],
-    ["null:kf" => [ qr/null/ ]],
+    ["value:ke" => { regex => qr/value/ }],
+    ["null:kf" => { regex => qr/null/ }],
 );
 
 push(@$new_rules, {
@@ -463,7 +462,7 @@ push(@$new_rules, {
     action => 
 q{
     q{$new_preamble .= }
-    . $Parse::Marpa::This::v->[3]
+    . $Parse::Marpa::Read_Only::v->[3]
     . qq{;\n}
 },
 ,
@@ -476,7 +475,7 @@ push(@$new_rules, {
     action => 
 q{
     q{$new_preamble .= }
-    . $Parse::Marpa::This::v->[0]
+    . $Parse::Marpa::Read_Only::v->[0]
     . qq{;\n}
 },
 ,
@@ -484,8 +483,8 @@ q{
 
 });
 push(@$new_terminals,
-    ["preamble:kc" => [ qr/preamble/ ]],
-    ["a:kd" => [ qr/a/ ]],
+    ["preamble:kc" => { regex => qr/preamble/ }],
+    ["a:kd" => { regex => qr/a/ }],
 );
 
 push(@$new_rules, {
@@ -503,7 +502,7 @@ push(@$new_rules, {
 
 });
 push(@$new_terminals,
-    ["are:kb" => [ qr/are/ ]],
+    ["are:kb" => { regex => qr/are/ }],
 );
 
 push(@$new_rules, {
@@ -512,9 +511,9 @@ push(@$new_rules, {
     action => 
 q{
     '$strings{"'
-    . $Parse::Marpa::This::v->[0]
+    . $Parse::Marpa::Read_Only::v->[0]
     . '"} = '
-    . $Parse::Marpa::This::v->[2]
+    . $Parse::Marpa::Read_Only::v->[2]
     . qq{;\n}
 },
 ,
@@ -527,7 +526,7 @@ push(@$new_rules, {
     action => 
 q{
     q{ $new_default_action = }
-    . $Parse::Marpa::This::v->[0]
+    . $Parse::Marpa::Read_Only::v->[0]
     . qq{;\n}
 },
 ,
@@ -540,7 +539,7 @@ push(@$new_rules, {
     action => 
 q{
     q{ $new_default_action = }
-    . $Parse::Marpa::This::v->[4]
+    . $Parse::Marpa::Read_Only::v->[4]
     . qq{;\n}
 },
 ,
@@ -548,17 +547,17 @@ q{
 
 });
 push(@$new_terminals,
-    ["is:k7" => [ qr/is/ ]],
-    ["action:k8" => [ qr/action/ ]],
-    ["default:k9" => [ qr/default/ ]],
-    ["the:ka" => [ qr/the/ ]],
+    ["is:k7" => { regex => qr/is/ }],
+    ["action:k8" => { regex => qr/action/ }],
+    ["default:k9" => { regex => qr/default/ }],
+    ["the:ka" => { regex => qr/the/ }],
 );
 
 push(@$new_rules, 
     { lhs => "the:ka:optional",  rhs => [ "the:ka" ], 
                      min => 0,
                      max => 1,
-                     action => q{ $Parse::Marpa::This::v->[0] }
+                     action => q{ $Parse::Marpa::Read_Only::v->[0] }
              },
  );
 
@@ -581,7 +580,7 @@ min => 1,
 push(@$new_rules, {
     lhs => "literal-string",
     rhs => ["q-string"],
-    action =>   q{ $Parse::Marpa::This::v->[0] },
+    action =>   q{ $Parse::Marpa::Read_Only::v->[0] },
 ,
 ,
 
@@ -606,13 +605,13 @@ push(@$new_rules, {
     lhs => "production-sentence",
     rhs => ["lhs", "%3a:k6", "rhs", "period"],
     action => 
-q{ join(",\n", @{$Parse::Marpa::This::v}[0,2]) },
+q{ join(",\n", @{$Parse::Marpa::Read_Only::v}[0,2]) },
 ,
 ,
 
 });
 push(@$new_terminals,
-    ["%3a:k6" => [ qr/:/ ]],
+    ["%3a:k6" => { regex => qr/:/ }],
 );
 
 push(@$new_rules, {
@@ -621,7 +620,7 @@ rhs => ["symbol-word"],
 min => 1,
 ,
     action => 
-q{ Parse::Marpa::Source::canonical_symbol_name(join("-", @$Parse::Marpa::This::v)) },
+q{ Parse::Marpa::MDL::canonical_symbol_name(join("-", @$Parse::Marpa::Read_Only::v)) },
 ,
 ,
 
@@ -630,7 +629,7 @@ push(@$new_rules, {
     lhs => "lhs",
     rhs => ["symbol-phrase"],
     action => 
-q{ '    lhs => "' . $Parse::Marpa::This::v->[0] . q{"} },
+q{ '    lhs => "' . $Parse::Marpa::Read_Only::v->[0] . q{"} },
 ,
 ,
 
@@ -642,7 +641,7 @@ separator => "comma",
 min => 0,
 ,
     action => 
-q{ "    rhs => [" . join(", ", @$Parse::Marpa::This::v) . "]" },
+q{ "    rhs => [" . join(", ", @$Parse::Marpa::Read_Only::v) . "]" },
 ,
 ,
 
@@ -653,7 +652,7 @@ push(@$new_rules, {
     action => 
 q{
     q{rhs => ["}
-    . $Parse::Marpa::This::v->[0]
+    . $Parse::Marpa::Read_Only::v->[0]
     . qq{"],\n}
     . qq{min => 1,\n}
 },
@@ -667,7 +666,7 @@ push(@$new_rules, {
     action => 
 q{
     q{rhs => ["}
-    . $Parse::Marpa::This::v->[1]
+    . $Parse::Marpa::Read_Only::v->[1]
     . qq{"],\n}
     . qq{min => 0,\n}
 },
@@ -681,10 +680,10 @@ push(@$new_rules, {
     action => 
 q{
     q{rhs => ["}
-    . $Parse::Marpa::This::v->[2]
+    . $Parse::Marpa::Read_Only::v->[2]
     . qq{"],\n}
     . q{separator => "}
-    . $Parse::Marpa::This::v->[0]
+    . $Parse::Marpa::Read_Only::v->[0]
     . qq{",\n}
     . qq{min => 1,\n}
 },
@@ -698,10 +697,10 @@ push(@$new_rules, {
     action => 
 q{
     q{rhs => ["}
-    . $Parse::Marpa::This::v->[3]
+    . $Parse::Marpa::Read_Only::v->[3]
     . qq{"],\n}
     . q{separator => "}
-    . $Parse::Marpa::This::v->[1]
+    . $Parse::Marpa::Read_Only::v->[1]
     . qq{",\n}
     . qq{min => 0,\n}
 },
@@ -710,8 +709,8 @@ q{
 
 });
 push(@$new_terminals,
-    ["sequence:k4" => [ qr/sequence/ ]],
-    ["separated:k5" => [ qr/separated/ ]],
+    ["sequence:k4" => { regex => qr/sequence/ }],
+    ["separated:k5" => { regex => qr/separated/ }],
 );
 
 push(@$new_rules, {
@@ -734,7 +733,7 @@ push(@$new_rules, {
     lhs => "mandatory-rhs-element",
     rhs => ["rhs-symbol-specifier"],
     action => 
-q{ q{"} . $Parse::Marpa::This::v->[0] . q{"} },
+q{ q{"} . $Parse::Marpa::Read_Only::v->[0] . q{"} },
 ,
 ,
 
@@ -744,7 +743,7 @@ push(@$new_rules, {
     rhs => ["optional:k3", "rhs-symbol-specifier"],
     action => 
 q{
-     my $symbol_phrase = $Parse::Marpa::This::v->[1];
+     my $symbol_phrase = $Parse::Marpa::Read_Only::v->[1];
      my $optional_symbol_phrase = $symbol_phrase . ":optional";
      our %implicit_rules;
      if (not defined $implicit_rules{$optional_symbol_phrase}) {
@@ -757,7 +756,7 @@ q{
              . q{
                      min => 0,
                      max => 1,
-                     action => q{ $Parse::Marpa::This::v->[0] }
+                     action => q{ $Parse::Marpa::Read_Only::v->[0] }
              }
          );
      }
@@ -768,14 +767,14 @@ q{
 
 });
 push(@$new_terminals,
-    ["optional:k3" => [ qr/optional/ ]],
+    ["optional:k3" => { regex => qr/optional/ }],
 );
 
 push(@$new_rules, {
     lhs => "rhs-symbol-specifier",
     rhs => ["symbol-phrase"],
     action => 
-q{ $Parse::Marpa::This::v->[0] },
+q{ $Parse::Marpa::Read_Only::v->[0] },
 ,
 ,
 
@@ -785,16 +784,17 @@ push(@$new_rules, {
     rhs => ["regex"],
     action => 
 q{
-    my $regex = $Parse::Marpa::This::v->[0];
-    my ($symbol, $new) = Parse::Marpa::Source::gen_symbol_from_regex($regex);
+    our $regex_data;
+    my $regex = $Parse::Marpa::Read_Only::v->[0];
+    my ($symbol, $new) = Parse::Marpa::MDL::gen_symbol_from_regex($regex, $regex_data);
     if ($new) {
         our @implicit_terminals;
         push(@implicit_terminals,
             q{"}
             . $symbol
-            . '" => [ '
+            . '" => { regex => '
             . $regex
-            . " ]"
+            . " }"
         );
     }
     $symbol;
@@ -827,17 +827,19 @@ push(@$new_rules, {
     action => 
 q{
     q{push(@$new_terminals, [ "}
-    . $Parse::Marpa::This::v->[0]
-    . q{" => [ }
-    . $Parse::Marpa::This::v->[2]
-    . qq{] ] );\n}
+    . $Parse::Marpa::Read_Only::v->[0]
+    . q{" => }
+    . "{ regex => "
+    . $Parse::Marpa::Read_Only::v->[2]
+    . "}"
+    . qq{ ] );\n}
 },
 ,
 ,
 
 });
 push(@$new_terminals,
-    ["matches:k2" => [ qr/matches/ ]],
+    ["matches:k2" => { regex => qr/matches/ }],
 );
 
 push(@$new_rules, {
@@ -846,9 +848,11 @@ push(@$new_rules, {
     action => 
 q{
     q{push(@$new_terminals, [ "}
-    . $Parse::Marpa::This::v->[1]
+    . $Parse::Marpa::Read_Only::v->[1]
     . q{" => }
-    . $Parse::Marpa::This::v->[3]
+    . "{ action => "
+    . $Parse::Marpa::Read_Only::v->[3]
+    . "}"
     . qq{ ] );\n}
 },
 ,
@@ -856,8 +860,8 @@ q{
 
 });
 push(@$new_terminals,
-    ["using:k0" => [ qr/using/ ]],
-    ["match:k1" => [ qr/match/ ]],
+    ["using:k0" => { regex => qr/using/ }],
+    ["match:k1" => { regex => qr/match/ }],
 );
 
 push(@$new_rules, {
@@ -874,7 +878,7 @@ push(@$new_rules, {
     action => 
 q{
     '$strings{ "'
-    . $Parse::Marpa::This::v->[0]
+    . $Parse::Marpa::Read_Only::v->[0]
     . '" }'
 },
 ,
@@ -890,57 +894,63 @@ min => 1,
 ,
 
 });
-push(@$new_terminals, [ "q-string" =>  "lex_q_quote" ] );
+push(@$new_terminals, [ "q-string" => { action => "lex_q_quote"} ] );
 
-push(@$new_terminals, [ "regex" =>  "lex_regex" ] );
+push(@$new_terminals, [ "regex" => { action => "lex_regex"} ] );
 
-push(@$new_terminals, [ "empty-line" => [ qr/^[ \t]*\n/m] ] );
+push(@$new_terminals, [ "empty-line" => { regex => qr/^[ \t]*\n/m} ] );
 
-push(@$new_terminals, [ "bracketed-comment" => [ qr/\x{5b}[^\x{5d}]*\x{5d}/] ] );
+push(@$new_terminals, [ "bracketed-comment" => { regex => qr/\x{5b}[^\x{5d}]*\x{5d}/} ] );
 
-push(@$new_terminals, [ "single-quoted-string" =>  q{
-    state $prefix_regex = qr/\G(?:[ \t]*(?:\n|(?:\#[^\n]*\n)))*[ \t]*'/o;
+push(@$new_terminals, [ "single-quoted-string" => { action =>  q{
+    my $match_start = pos $$STRING;
+    state $prefix_regex = qr/\G'/o;
     return unless $$STRING =~ /$prefix_regex/g;
     state $regex = qr/\G[^'\0134]*('|\0134')/;
     MATCH: while ($$STRING =~ /$regex/gc) {
         next MATCH unless defined $1;
         if ($1 eq q{'}) {
-            my $length = (pos $$STRING) - $START;
-            return (substr($$STRING, $START, $length), $length);
+            my $end_pos = pos $$STRING;
+            my $match_length = $end_pos - $match_start;
+            my $lex_length = $end_pos - $START;
+            return (substr($$STRING, $match_start, $match_length), $lex_length);
         }
     }
     return;
-} ] );
+}} ] );
 
-push(@$new_terminals, [ "double-quoted-string" =>  q{
-    state $prefix_regex = qr/\G(?:[ \t]*(?:\n|(?:\#[^\n]*\n)))*[ \t]*"/o;
+push(@$new_terminals, [ "double-quoted-string" => { action =>  q{
+    my $match_start = pos $$STRING;
+    state $prefix_regex = qr/\G"/o;
     return unless $$STRING =~ /$prefix_regex/g;
     state $regex = qr/\G[^"\0134]*("|\0134")/;
     MATCH: while ($$STRING =~ /$regex/gc) {
         next MATCH unless defined $1;
         if ($1 eq q{"}) {
-            my $length = (pos $$STRING) - $START;
-            return (substr($$STRING, $START, $length), $length);
+            my $end_pos = pos $$STRING;
+            my $match_length = $end_pos - $match_start;
+            my $lex_length = $end_pos - $START;
+            return (substr($$STRING, $match_start, $match_length), $lex_length);
         }
     }
     return;
-} ] );
+}} ] );
 
-push(@$new_terminals, [ "version-number" => [ qr/(\d+\.)*\d+/] ] );
+push(@$new_terminals, [ "version-number" => { regex => qr/(\d+\.)*\d+/} ] );
 
-push(@$new_terminals, [ "symbol-word" => [ qr/[a-zA-Z_][a-zA-Z0-9_-]*/] ] );
+push(@$new_terminals, [ "symbol-word" => { regex => qr/[a-zA-Z_][a-zA-Z0-9_-]*/} ] );
 
-push(@$new_terminals, [ "period" => [ qr/\./] ] );
+push(@$new_terminals, [ "period" => { regex => qr/\./} ] );
 
-push(@$new_terminals, [ "integer" => [ qr/\d+/] ] );
+push(@$new_terminals, [ "integer" => { regex => qr/\d+/} ] );
 
-push(@$new_terminals, [ "comment-tag" => [ qr/(to\s+do|note|comment)/] ] );
+push(@$new_terminals, [ "comment-tag" => { regex => qr/(to\s+do|note|comment)/} ] );
 
-push(@$new_terminals, [ "comment-word" => [ qr/[\x{21}-\x{2d}\x{2f}-\x{7e}]+/] ] );
+push(@$new_terminals, [ "comment-word" => { regex => qr/[\x{21}-\x{2d}\x{2f}-\x{7e}]+/} ] );
 
-push(@$new_terminals, [ "comma" => [ qr/\,/] ] );
+push(@$new_terminals, [ "comma" => { regex => qr/\,/} ] );
 
-push(@$new_terminals, [ "whitespace-line" => [ qr/^[ \t]*(?:\#[^\n]*)?\n/m] ] );
+push(@$new_terminals, [ "whitespace-line" => { regex => qr/^[ \t]*(?:\#[^\n]*)?\n/m} ] );
 
 
 sub Parse::Marpa::Internal::raw_source_grammar {
@@ -949,6 +959,7 @@ sub Parse::Marpa::Internal::raw_source_grammar {
         start => $new_start_symbol,
         rules => $new_rules,
         terminals => $new_terminals,
+        preamble => $new_preamble,
         version => $new_version,
         warnings => 1,
     );  

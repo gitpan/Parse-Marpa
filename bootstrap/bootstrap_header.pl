@@ -2,6 +2,7 @@ use 5.010_000;
 use strict;
 use warnings;
 use Parse::Marpa;
+use Parse::Marpa::MDL;
 use Carp;
 use English;
 

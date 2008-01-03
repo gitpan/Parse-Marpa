@@ -58,7 +58,7 @@ my $punct = qr'[!"#$%&\x{27}(*+,-./:;<=?\x{5b}^_`{|~@]';
 
 sub lex_q_quote {
     my $string = shift;
-    my $start = (pos $$string) // 0;
+    my $start = shift;
     $$string =~ m/\G\s*qq?($punct)/ogc;
     my $left = $1;
     return unless defined $left;
@@ -109,7 +109,7 @@ sub lex_q_quote {
 
 sub lex_regex {
     my $string = shift;
-    my $lexeme_start = (pos $$string) // 0;
+    my $lexeme_start = shift;
     $$string =~ m{\G\s*}ogc;
     my $value_start = pos $$string;
     $$string =~ m{\G(qr$punct|/)}ogc;

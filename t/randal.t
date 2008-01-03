@@ -9,7 +9,6 @@ use Test::More tests => 5;
 BEGIN {
     use_ok( 'Parse::Marpa' );
 }
-use Parse::Marpa;
 
 my @tests = split(/\n/, <<'EO_TESTS');
 time  / 25 ; # / ; die "this dies!";
@@ -84,24 +83,24 @@ TEST: while (my $test = pop @tests) {
 }
 
 __DATA__
-semantics are perl5.  version is 0.1.66.  the start symbol is perl line.
+semantics are perl5.  version is 0.1.67.  the start symbol is perl line.
 the default lex prefix is qr/\s*/.
 
 perl line: perl statements, optional comment.
 q{
-    my $result = $Parse::Marpa::This::v->[0];
+    my $result = $Parse::Marpa::Read_Only::v->[0];
     $result .= ", comment"
-	if defined $Parse::Marpa::This::v->[1];
+	if defined $Parse::Marpa::Read_Only::v->[1];
     $result
 }.
 
 perl statements: semicolon separated perl statement sequence.
-q{ join(", ", @{$Parse::Marpa::This::v}) }.
+q{ join(", ", @{$Parse::Marpa::Read_Only::v}) }.
 
 perl statement: division. q{ "division" }.
 
 perl statement: function call.
-q{ $Parse::Marpa::This::v->[0] }.
+q{ $Parse::Marpa::Read_Only::v->[0] }.
 
 perl statement: empty statement.  q{ "empty statement" }.
 
@@ -114,10 +113,10 @@ expr: function call.
 expr: number.
 
 function call: unary function name, argument.
-q{ $Parse::Marpa::This::v->[0] . " function call" }.
+q{ $Parse::Marpa::Read_Only::v->[0] . " function call" }.
 
 function call: nullary function name.
-q{ $Parse::Marpa::This::v->[0] . " function call" }.
+q{ $Parse::Marpa::Read_Only::v->[0] . " function call" }.
 
 argument: pattern match.
 

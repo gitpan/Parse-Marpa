@@ -55,16 +55,16 @@ for (my $i = 0; $i <= $#expected; $i++) {
 # a start symbol that appears repeatedly on the RHS.
 
 __DATA__
-semantics are perl5.  version is 0.1.66.
+semantics are perl5.  version is 0.1.67.
 
 the start symbol is E.
 
 E: E, Minus, E.
 q{
     my ($right_string, $right_value)
-        = ($Parse::Marpa::This::v->[2] =~ /^(.*)==(.*)$/);
+        = ($Parse::Marpa::Read_Only::v->[2] =~ /^(.*)==(.*)$/);
     my ($left_string, $left_value)
-        = ($Parse::Marpa::This::v->[0] =~ /^(.*)==(.*)$/);
+        = ($Parse::Marpa::Read_Only::v->[0] =~ /^(.*)==(.*)$/);
     my $value = $left_value - $right_value;
     "(" . $left_string . "-" . $right_string . ")==" . $value;
 }.
@@ -72,27 +72,27 @@ q{
 E: E, Minus Minus.
 q{
     my ($string, $value)
-        = ($Parse::Marpa::This::v->[0] =~ /^(.*)==(.*)$/);
+        = ($Parse::Marpa::Read_Only::v->[0] =~ /^(.*)==(.*)$/);
     "(" . $string . "--" . ")==" . $value--;
 }.
 
 E: Minus Minus, E.
 q{
     my ($string, $value)
-        = ($Parse::Marpa::This::v->[1] =~ /^(.*)==(.*)$/);
+        = ($Parse::Marpa::Read_Only::v->[1] =~ /^(.*)==(.*)$/);
     "(" . "--" . $string . ")==" . --$value;
 }.
 
 E: Minus, E.
 q{
     my ($string, $value)
-        = ($Parse::Marpa::This::v->[1] =~ /^(.*)==(.*)$/);
+        = ($Parse::Marpa::Read_Only::v->[1] =~ /^(.*)==(.*)$/);
     "(" . "-" . $string . ")==" . -$value;
 }.
 
 E: Number.
 q{
-    my $value = $Parse::Marpa::This::v->[0];
+    my $value = $Parse::Marpa::Read_Only::v->[0];
     "$value==$value";
 }.
 
@@ -103,8 +103,8 @@ Minus matches qr/[-]/.
 Minus Minus matches qr/[-][-]/.
 
 the default action is q{
-     my $v_count = scalar @$Parse::Marpa::This::v;
+     my $v_count = scalar @$Parse::Marpa::Read_Only::v;
      return "" if $v_count <= 0;
-     return $Parse::Marpa::This::v->[0] if $v_count == 1;
-     "(" . join(";", @$Parse::Marpa::This::v) . ")";
+     return $Parse::Marpa::Read_Only::v->[0] if $v_count == 1;
+     "(" . join(";", @$Parse::Marpa::Read_Only::v) . ")";
 }.

@@ -5,6 +5,7 @@ sub Parse::Marpa::Internal::raw_source_grammar {
         start => $new_start_symbol,
         rules => $new_rules,
         terminals => $new_terminals,
+        preamble => $new_preamble,
         version => $new_version,
         warnings => 1,
     );  

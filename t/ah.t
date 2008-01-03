@@ -26,7 +26,7 @@ my $g = new Parse::Marpa(
 
 $g->set(
     terminals => [
-        [ "a" => ["a"] ],
+        [ "a" => { regex => "a" } ],
     ],
 );
 

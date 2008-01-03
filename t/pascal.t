@@ -25,7 +25,7 @@ sub ah_extended {
             [ "E" ],
         ],
         terminals => [
-            [ "a" => [qr/a/] ],
+            [ "a" => { regex => qr/a/ } ],
         ],
         volatile => 1,
         # no warnings for $n equals zero
@@ -34,7 +34,7 @@ sub ah_extended {
 
     my $parse = new Parse::Marpa::Parse($g);
 
-    my $a = $g->get_canonical_symbol("a");
+    my $a = $g->get_symbol("a");
     for (0 .. $n) { $parse->earleme([$a, "a", 1]); }
 
     my @parse_counts;

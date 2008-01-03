@@ -27,8 +27,8 @@ my $g = new Parse::Marpa(
 
 my $parse = new Parse::Marpa::Parse($g);
 
-my $op = $g->get_symbol("Op");
-my $number = $g->get_symbol("Number");
+my $op = Parse::Marpa::MDL::get_symbol($g, "Op");
+my $number = Parse::Marpa::MDL::get_symbol($g, "Number");
 $parse->earleme([$number, 2, 1]);
 $parse->earleme([$op, "-", 1]);
 $parse->earleme([$number, 0, 1]);
@@ -66,17 +66,17 @@ PARSE: for my $i (0 .. 10) {
 # vim: expandtab shiftwidth=4:
 
 __DATA__
-semantics are perl5.  version is 0.1.66.
+semantics are perl5.  version is 0.1.67.
 
 start symbol is E.
 
 	E: E, Op, E.
 q{
             my ($right_string, $right_value)
-                = ($Parse::Marpa::This::v->[2] =~ /^(.*)==(.*)$/);
+                = ($Parse::Marpa::Read_Only::v->[2] =~ /^(.*)==(.*)$/);
             my ($left_string, $left_value)
-                = ($Parse::Marpa::This::v->[0] =~ /^(.*)==(.*)$/);
-            my $op = $Parse::Marpa::This::v->[1];
+                = ($Parse::Marpa::Read_Only::v->[0] =~ /^(.*)==(.*)$/);
+            my $op = $Parse::Marpa::Read_Only::v->[1];
             my $value;
             if ($op eq "+") {
                $value = $left_value + $right_value;
@@ -92,7 +92,7 @@ q{
 
 E: Number.
 q{
-           my $v0 = pop @$Parse::Marpa::This::v;
+           my $v0 = pop @$Parse::Marpa::Read_Only::v;
            $v0 . "==" . $v0;
 }.
 
@@ -101,8 +101,8 @@ Number matches qr/\d+/.
 Op matches qr/[-+*]/.
  
 the default action is q{
-         my $v_count = scalar @$Parse::Marpa::This::v;
+         my $v_count = scalar @$Parse::Marpa::Read_Only::v;
          return "" if $v_count <= 0;
-         return $Parse::Marpa::This::v->[0] if $v_count == 1;
-         "(" . join(";", @$Parse::Marpa::This::v) . ")";
+         return $Parse::Marpa::Read_Only::v->[0] if $v_count == 1;
+         "(" . join(";", @$Parse::Marpa::Read_Only::v) . ")";
     }.

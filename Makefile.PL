@@ -26,6 +26,8 @@ WriteMakefile(
 	    => '$(INST_LIB)/Parse/Marpa/ALGORITHM.pod',
 	'lib/Parse/Marpa/Lex.pm'
 	    => '$(INST_LIB)/Parse/Marpa/Lex.pm',
+	'lib/Parse/Marpa/MDL.pm'
+	    => '$(INST_LIB)/Parse/Marpa/MDL.pm',
 	'lib/Parse/Marpa.pm'
 	    => '$(INST_LIB)/Parse/Marpa.pm',
 	'lib/Parse/Marpa/trailer_Raw_Source.pm'

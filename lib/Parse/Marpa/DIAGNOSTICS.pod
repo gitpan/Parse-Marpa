@@ -2,8 +2,158 @@
 
 Parse::Marpa::DIAGNOSTICS - Marpa's Diagnostics
 
-=head1 THIS DOCUMENT IS NOT YET WRITTEN
+=head1 THIS DOCUMENT IS UNDER CONSTRUCTION AND INCOMPLETE
 
-    THIS DOCUMENT IS NOT YET WRITTEN
+    THIS DOCUMENT IS UNDER CONSTRUCTION AND INCOMPLETE
 
 =head1 OVERVIEW
+
+This document covers Marpa methods and method options primarily useful
+for debugging grammars and parses.
+
+=head1 DIAGNOSTIC OPTIONS
+
+These are options to the
+C<Parse::Marpa::new()>,
+C<Parse::Marpa::set()>,
+and C<Parse::Marpa::Parse::new()>
+methods.
+
+=over 4
+
+=item academic
+
+The academic option is only useful for testing the early stages of Marpa,
+up to the creation of NFA's in the precomputation phase.
+For this, CHAF rewriting must be turned off, which means the Marpa parse
+engine cannot actually go on to parse these.
+
+=item trace_actions
+
+=item trace_completions
+
+=item trace_evaluation_choices
+
+=item trace_iteration_changes
+
+=item trace_iteration_searches
+
+=item trace_iterations
+
+=item trace_lex
+
+=item trace_lex_matches
+
+=item trace_lex_tries
+
+=item trace_predefineds
+
+=item trace_priorities
+
+=item trace_rules
+
+=item trace_strings
+
+=item trace_values
+
+=back
+
+=head1 DIAGNOSTIC METHODS FOR GRAMMAR OBJECTS
+
+=over 4
+
+=item Parse::Marpa::inaccessible_symbols
+
+=item Parse::Marpa::show_NFA
+
+=item Parse::Marpa::show_SDFA
+
+=item Parse::Marpa::show_accessible_symbols
+
+=item Parse::Marpa::show_location(I<message>, I<text>, I<offset>)
+
+I<message> must be a string,
+I<text> a B<reference> to a string,
+and I<offset>, a character offset within that string.
+C<show_location()> returns a multi-line string with a header
+line containing I<message>,
+the line from I<text> containing I<offset>,
+and a "pointer" line.
+The pointer line uses the
+ASCII "caret" symbol to point to the exact offset.
+
+=item Parse::Marpa::show_nullable_symbols
+
+=item Parse::Marpa::show_nulling_symbols
+
+=item Parse::Marpa::show_problems
+
+=item Parse::Marpa::show_productive_symbols
+
+=item Parse::Marpa::show_rules
+
+=item Parse::Marpa::show_source_grammar_status
+
+=item Parse::Marpa::show_symbols
+
+=item Parse::Marpa::unproductive_symbols
+
+=back
+
+=head1 DIAGNOSTIC METHODS FOR PARSE OBJECTS
+
+=over 4
+
+=item Parse::Marpa::Parse::show
+
+=item Parse::Marpa::Parse::show_status
+
+=item C<Parse::Marpa::Parse::find_complete_rule(I<parse>, I<start_earleme>, I<_symbol>, I<end_earleme>>
+
+The C<Parse::Marpa::Parse::find_complete_rule()> method takes a parse object as its one required argument.
+Arguments which specify a I<start_earleme>, I<symbol> and I<end_earleme> are optional.
+If the start earleme is not specified, it defaults to earleme 0.
+If the end earleme is not specified,
+it defaults to "default parse end earleme", that is,
+whatever would be the default earleme for the end of a parse.
+If an end earleme argument after the default parse end earleme is specified,
+it is ignored and the default parse end earleme is used.
+The symbol argument, if specified, must be the name of the symbol to the raw interface.
+
+C<find_complete_rule()> looks for parses of complete rules.
+Only parses which start at the start earleme are considered.
+It looks first for any which end at the end earleme, then iterates back, looking for
+shorter and shorter parses, until it reaches the start earleme and is looking for null parses.
+The parses are always for complete rules, but can be subparses in the sense that they are parses
+from symbols other than the grammar's start symbol.
+Complete parses for rules with any symbol on the left hand side are considered,
+unless a start symbol was specified as an argument, in which case only parses of that symbol are considered.
+
+The return value is an array. 
+The first element of the array is the earleme at which the complete parse ends.
+The second element is a pointer to an array of the names of the symbols
+which could be left hand sides of the complete rule.
+Symbol names will be raw interface names.
+If you are using a high-level grammar interface,
+these names may differ from the ones in your source.
+
+There may be more than one because, unlike a conventional Earley parser,
+Marpa works in terms of LR(0) states, and not directly with the rules of the grammar.
+A single LR(0) state,
+may contain several different complete rules,
+some in turn having different left hand sides.
+If a symbol argument was specified,
+it will be in the list of symbols in the return value.
+
+(Note on what might seem like a contradiction to experts:
+if there is more than one LHS for a complete parse in an LR(0) state.
+that of course means that the B<grammar> is not LR(0).
+Marpa does B<not> do LR(0) B<parsing>.
+Marpa uses LR(0) states to guide Earley parsing,
+and Earley parsing is not restricted to LR(0) grammars.)
+
+I<find_complete_rule()> is an experimental start on interfaces for online mode, error recovery,
+and advanced wizardry with grammars.  The infrastructure to use the information it provides is not
+yet in place.  It is even more especially subject to change than the rest of this alpha release.
+
+=back

@@ -25,9 +25,9 @@ my $g = new Parse::Marpa(
 
 $g->set(
     terminals => [
-        [ "a" => [qr/a/] ],
-        [ "b" => [qr/b/] ],
-        [ "c" => [qr/c/] ],
+        [ "a" => { regex => qr/a/ } ],
+        [ "b" => { regex => qr/b/ } ],
+        [ "c" => { regex => qr/c/ } ],
     ],
 );
 

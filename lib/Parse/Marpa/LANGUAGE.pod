@@ -298,9 +298,9 @@ containing Perl 5 code.
 Here's an example of a string definition:
 
     concatenate lines is q{
-        my $v_count = scalar @$Parse::Marpa::This::v;
+        my $v_count = scalar @$Parse::Marpa::Read_only::v;
         return undef if $v_count <= 0;
-        join("\n", grep { $_ } @$Parse::Marpa::This::v);
+        join("\n", grep { $_ } @$Parse::Marpa::Read_only::v);
     }.
 
 =head2 Default Action Definition
@@ -502,7 +502,7 @@ and C<optional X sequence> to C<X*>.
 
 The value of the child symbols in a sequence production is available
 to semantic actions in the
-array referenced by C<$Parse::Marpa::This::v>.
+array referenced by C<$Parse::Marpa::Read_only::v>.
 Unlike conventional
 productions, in sequence productions
 you don't know in advance the number of right hand side symbols or their
@@ -513,8 +513,8 @@ on the entire array.
 You can also obtain a count of the symbols on the right side
 and the index of the last symbol in the usual way,
 that is,
-with C<scalar @{$Parse::Marpa::This::v}>
-and C<$#$Parse::Marpa::This::v>.
+with C<scalar @{$Parse::Marpa::Read_only::v}>
+and C<$#$Parse::Marpa::Read_only::v>.
 Sequence productions work best where the semantics really are those of a sequence
 of items with similar semantics.
 
@@ -549,7 +549,7 @@ For example, in C<self.marpa>:
     optional /the/, /action/, /is/, action specifier, period.
     q{
 	"    action => "
-	. $Parse::Marpa::This::v->[3]
+	. $Parse::Marpa::Read_only::v->[3]
     }.
 
 the last four lines are an action sentence.  You can also be more verbose.
@@ -557,7 +557,7 @@ the last four lines are an action sentence.  You can also be more verbose.
     action sentence: action specifier, period.
     the action is q{
 	"    action => "
-	. $Parse::Marpa::This::v->[0]
+	. $Parse::Marpa::Read_only::v->[0]
     }.
 
 As a reminder, strings are delimited as MDL strings, not as Perl 5 code, even
@@ -567,18 +567,12 @@ do so in an MDL string.
 
 The last value computed in the action will be the value returned by the
 production.
-Values from child productions are available through C<$Parse::Marpa::This::v>,
+Values from child productions are available through C<$Parse::Marpa::Read_only::v>,
 a reference to an array of them.
 The array contains the value for the symbols of the right hand side, in order.
 In both the examples above, a string is prepended to the value of the
 C<action specifier>,
 and that becomes the value of C<action sentence> in any parent production.
-
-The direct availability of C<$Parse::Marpa::This::v> is temporary.
-A set of convenient macros will soon be provided.
-Once the macros are available, access to C<$Parse::Marpa::This::v> will
-(not very conveniently, I have to admit)
-be removed.
 
 All actions start with
 C<use integer> and C<use strict> in effect.
@@ -593,7 +587,7 @@ preamble definitions.
 A priority sentence is the keyword C<priority> followed by an integer value, which
 may be negative.  The default priority is 0.
 
-    definition: predefined setting, period.  q{ $Parse::Marpa::This::v->[0] }.  priority 1000.
+    definition: predefined setting, period.  q{ $Parse::Marpa::Read_Only::v->[0] }.  priority 1000.
 
 In the example above,
 the rule that produces a C<predefined setting> from a C<definition> is given a priority of 1000.

@@ -24,16 +24,16 @@ my $g = new Parse::Marpa(
     default_null_value => "",
     default_action =>
 <<'EOCODE'
-     my $v_count = scalar @$Parse::Marpa::This::v;
+     my $v_count = scalar @$Parse::Marpa::Read_Only::v;
      return "" if $v_count <= 0;
-     return $Parse::Marpa::This::v->[0] if $v_count == 1;
-     "(" . join(";", @$Parse::Marpa::This::v) . ")";
+     return $Parse::Marpa::Read_Only::v->[0] if $v_count == 1;
+     "(" . join(";", @$Parse::Marpa::Read_Only::v) . ")";
 EOCODE
 );
 
 $g->set(
     terminals => [
-        [ "a" => ["a"] ],
+        [ "a" => { regex => "a" } ],
     ],
 );
 
@@ -244,95 +244,95 @@ my $parse = new Parse::Marpa::Parse($g);
 
 my $set0_new = <<'EOS';
 Earley Set 0
-0:St10,0
-0:St3,0
+St10@0-0
+St3@0-0
 EOS
 
 my $set1_at_0 = <<'EOS';
 Earley Set 1
-1:St7,0
-  token choice 0 [p=0:St3,0; t=a]
+St7@0-1
+  token choice 0 [p=St3@0-0; t=a]
 EOS
 
 my $set1_at_1 = <<'EOS';
-1:St12,0
-  link choice 0 [p=0:St3,0; c=1:St7,0]
-1:St1,1
-1:St11,0
-  link choice 0 [p=0:St10,0; c=1:St12,0] [p=0:St10,0; c=1:St14,0]
-1:St14,0
-  link choice 0 [p=0:St3,0; c=1:St12,0] [p=0:St3,0; c=1:St6,0]
-1:St6,0
-  link choice 0 [p=0:St3,0; c=1:St12,0]
+St12@0-1
+  link choice 0 [p=St3@0-0; c=St7@0-1]
+St1@1-1
+St11@0-1
+  link choice 0 [p=St10@0-0; c=St12@0-1] [p=St10@0-0; c=St14@0-1]
+St14@0-1
+  link choice 0 [p=St3@0-0; c=St12@0-1] [p=St3@0-0; c=St6@0-1]
+St6@0-1
+  link choice 0 [p=St3@0-0; c=St12@0-1]
 EOS
 
 my $set2_at_1 = <<'EOS';
 Earley Set 2
-2:St7,1
-  token choice 0 [p=1:St1,1; t=a]
+St7@1-2
+  token choice 0 [p=St1@1-1; t=a]
 EOS
 
 my $set2_at_2 = <<'EOS';
-2:St9,0
-  link choice 0 [p=1:St12,0; c=2:St7,1]
-2:St4,1
-  link choice 0 [p=1:St1,1; c=2:St7,1]
-2:St2,2
-2:St6,0
-  link choice 0 [p=0:St3,0; c=2:St9,0]
-2:St13,0
-  link choice 0 [p=1:St12,0; c=2:St4,1] [p=1:St12,0; c=2:St6,1]
-2:St5,0
-  link choice 0 [p=1:St12,0; c=2:St4,1]
-2:St6,1
-  link choice 0 [p=1:St1,1; c=2:St4,1]
-2:St14,0
-  link choice 0 [p=0:St3,0; c=2:St6,0] [p=0:St3,0; c=2:St5,0]
-2:St11,0
-  link choice 0 [p=0:St10,0; c=2:St13,0] [p=0:St10,0; c=2:St14,0]
+St9@0-2
+  link choice 0 [p=St12@0-1; c=St7@1-2]
+St4@1-2
+  link choice 0 [p=St1@1-1; c=St7@1-2]
+St2@2-2
+St6@0-2
+  link choice 0 [p=St3@0-0; c=St9@0-2]
+St13@0-2
+  link choice 0 [p=St12@0-1; c=St4@1-2] [p=St12@0-1; c=St6@1-2]
+St5@0-2
+  link choice 0 [p=St12@0-1; c=St4@1-2]
+St6@1-2
+  link choice 0 [p=St1@1-1; c=St4@1-2]
+St14@0-2
+  link choice 0 [p=St3@0-0; c=St6@0-2] [p=St3@0-0; c=St5@0-2]
+St11@0-2
+  link choice 0 [p=St10@0-0; c=St13@0-2] [p=St10@0-0; c=St14@0-2]
 EOS
 
 my $set3_at_2 = <<'EOS';
 Earley Set 3
-3:St7,2
-  token choice 0 [p=2:St2,2; t=a]
+St7@2-3
+  token choice 0 [p=St2@2-2; t=a]
 EOS
 
 my $set3_at_3 = <<'EOS';
-3:St9,1
-  link choice 0 [p=2:St4,1; c=3:St7,2]
-3:St8,2
-  link choice 0 [p=2:St2,2; c=3:St7,2]
-3:St0,3
-3:St5,0
-  link choice 0 [p=1:St12,0; c=3:St9,1]
-3:St6,1
-  link choice 0 [p=1:St1,1; c=3:St9,1]
-3:St5,1
-  link choice 0 [p=2:St4,1; c=3:St8,2]
-3:St14,0
-  link choice 0 [p=0:St3,0; c=3:St5,0]
-3:St13,0
-  link choice 0 [p=1:St12,0; c=3:St6,1] [p=1:St12,0; c=3:St5,1]
-3:St11,0
-  link choice 0 [p=0:St10,0; c=3:St14,0] [p=0:St10,0; c=3:St13,0]
+St9@1-3
+  link choice 0 [p=St4@1-2; c=St7@2-3]
+St8@2-3
+  link choice 0 [p=St2@2-2; c=St7@2-3]
+St0@3-3
+St5@0-3
+  link choice 0 [p=St12@0-1; c=St9@1-3]
+St6@1-3
+  link choice 0 [p=St1@1-1; c=St9@1-3]
+St5@1-3
+  link choice 0 [p=St4@1-2; c=St8@2-3]
+St14@0-3
+  link choice 0 [p=St3@0-0; c=St5@0-3]
+St13@0-3
+  link choice 0 [p=St12@0-1; c=St6@1-3] [p=St12@0-1; c=St5@1-3]
+St11@0-3
+  link choice 0 [p=St10@0-0; c=St14@0-3] [p=St10@0-0; c=St13@0-3]
 EOS
 
 my $set4_at_3 = <<'EOS';
 Earley Set 4
-4:St7,3
-  token choice 0 [p=3:St0,3; t=a]
+St7@3-4
+  token choice 0 [p=St0@3-3; t=a]
 EOS
 
 my $set4_at_4 = <<'EOS';
-4:St9,2
-  link choice 0 [p=3:St8,2; c=4:St7,3]
-4:St5,1
-  link choice 0 [p=2:St4,1; c=4:St9,2]
-4:St13,0
-  link choice 0 [p=1:St12,0; c=4:St5,1]
-4:St11,0
-  link choice 0 [p=0:St10,0; c=4:St13,0]
+St9@2-4
+  link choice 0 [p=St8@2-3; c=St7@3-4]
+St5@1-4
+  link choice 0 [p=St4@1-2; c=St9@2-4]
+St13@0-4
+  link choice 0 [p=St12@0-1; c=St5@1-4]
+St11@0-4
+  link choice 0 [p=St10@0-0; c=St13@0-4]
 EOS
 
 my $sets_new = $set0_new;
@@ -346,7 +346,7 @@ is( $parse->show_status(1),
     "Current Earley Set: 0; Furthest: 0\n" .  $sets_new,
     "Aycock/Horspool Parse Status before parse" );
 
-my $a = $g->get_canonical_symbol("a");
+my $a = $g->get_symbol("a");
 $parse->earleme([$a, "a", 1]);
 
 is( $parse->show_status(1),

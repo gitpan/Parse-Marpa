@@ -1,5 +1,5 @@
 #!/usr/local/ActivePerl-5.10/bin/perl
-require 5.010_000;
+use 5.010_000;
 
 use Carp;
 use Getopt::Long;
