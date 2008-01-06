@@ -26,7 +26,7 @@ $g->set( source => \$source);
 
 $g->precompute();
 
-my $parse = new Parse::Marpa::Parse($g);
+my $parse = new Parse::Marpa::Parse(grammar => $g);
 
 my $lc_a = Parse::Marpa::MDL::get_symbol($g, "lowercase a");
 $parse->earleme([$lc_a, "lowercase a", 1]);
@@ -103,7 +103,7 @@ ok(!$failure_count, ($total_count-$failure_count) . " of $total_count parse perm
 # vim: expandtab shiftwidth=4:
 
 __DATA__
-semantics are perl5.  version is 0.1.67.  the start symbol is
+semantics are perl5.  version is 0.1.68.  the start symbol is
 S.  the default null value is q{}.  the default action is q{
      my $v_count = scalar @$Parse::Marpa::Read_Only::v;
      return "" if $v_count <= 0;

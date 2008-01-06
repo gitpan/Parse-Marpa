@@ -240,7 +240,7 @@ St14: 8
 S ::= A[] S[0:1] .
 EOS
 
-my $parse = new Parse::Marpa::Parse($g);
+my $parse = new Parse::Marpa::Parse(grammar => $g);
 
 my $set0_new = <<'EOS';
 Earley Set 0

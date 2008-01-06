@@ -25,16 +25,19 @@ Speaking of which ...
 =head1 GRAMMAR INTERFACES
 
 A grammar is specified to Marpa through a B<grammar interface>,
-which may itself be described by Marpa grammar.
+which may itself be described by a Marpa grammar.
 Right now there are only two grammar interfaces:
 the B<Marpa Demonstration Language>
 and the B<raw grammar interface>.
 
 =head2 The Raw Grammar Interface
 
-The B<raw grammar interface> is a set of options to the constructor for
-Marpa grammar objects, C<Parse::Marpa::new()>.
-All the other grammar interfaces use the raw grammar interface indirectly.
+The B<raw grammar interface> is a set of options available
+through the constructor for
+Marpa grammar objects, C<Parse::Marpa::new()>
+as well as the C<Parse::Marpa::set()> method.
+The other grammar interfaces also use the raw grammar interface,
+but indirectly.
 The raw grammar interface is efficient,
 but users will usually want something higher level.
 The documentation for the raw grammar interface
@@ -59,35 +62,36 @@ high-level Marpa interfaces.
 =head1 TOKENS AND EARLEMES
 
 As a reminder,
-the usual method of parsing first breaks the input text up into tokens.
-Typically tokens are recognized (or "lexed") with
-regular expressions or something similar.
+in parsing a input text,
+it is standard to proceed by
+first breaking that input text up into tokens.
+Typically regular expressions or something similar is used for that purpose.
 The actual parsing is then done on the sequence of tokens.
-In conventional parsing, it's required that the token sequence will be deterministic --
-that is, that there'll only be one sequence of tokens and that that sequence can be found
+In conventional parsing, it's required that the token sequence be deterministic --
+that is, that there be only one sequence of tokens and that that sequence can be found
 by the lexer more or less on its own.
-In conventional Earley parsing, there is one "earley set" per token.
 
-Marpa allows ambiguous tokens.  Marpa tokens allows recognition, at a single location,
-of several different tokens of varying length.
-Tokens may occur in the input stream in arbitrary patterns.
-Nothing, for example, prevents them from overlapping.
+Marpa allows ambiguous tokens.
+Specifically, Marpa tokens allows recognition, at a single location,
+of several different tokens which may vary in length.
+What is considered a "location" is up to the user, and
+how these tokens relate locations is almost completely up to the user.
+Nothing, for example, prevents tokens from overlapping each other.
 
-What is considered a "location" is up to the user, with
-two restrictions:
+From here on, I'll call the "locations" earlemes.
+Here are only two restrictions:
 
 =over 4
 
 =item 1
 
-Tokens cannot be zero or negative in length.
+Tokens must be scanned in earleme order.
+That is, all the tokens at earleme C<N>
+must be recognized before any token at earleme C<N+1>.
 
 =item 2
 
-Tokens must be grouped into "locations" called B<earlemes>.
-and must be scanned in order.
-That is, all the tokens at earleme C<N>
-must be recognized before any token at earleme C<N+1>.
+Tokens cannot be zero or negative in earleme length.
 
 =back
 
@@ -95,26 +99,34 @@ A parse is said to start at earleme 0, and "earleme N" means the location C<N> e
 after earleme 0.
 (Aside to experts:
 The implementation uses one Earley set for each earleme.)
-I also refer to "distances" in earlemes and lengths in earlemes,
-and my meaning is probably what you expect.
+"Length" in earlemes means what you probably expect.
 The length from earleme 3 to earleme 6,
 for instance, is 3 earlemes.
 
-The conventional model of Earley parsing corresponds to a B<one-earleme-per-token> model in Marpa.
+The conventional parsing model of dividing text into tokens before parsing
+corresponds to a B<one-earleme-per-token> model in Marpa.
 Marpa's C<Parse::Marpa::Parse::text()> method uses a model where
 there's B<one earleme per character>.
-C<text()> lexes the input string for the user, 
-and feeds lexed substrings as tokens to Marpa, giving as their earleme length their length
-in characters.
 
-In conventional Earley parsing, a "location" without a token means the parse is exhausted.
-In Marpa, tokens can span many earlemes.
-A parse is viable as long as some token
+C<Parse::Marpa::Parse::text()> is the most commonly used routine for input
+to Marpa.
+It lexes the input string for the user, using regexes or lexing actions supplied
+by the user.
+The tokens it recognizes are fed to Marpa.
+The earleme length of each token is
+set using the tokens's earleme length.
+(If a token has a "lex prefix", this is included in the length.)
+
+In conventional Earley parsing,
+any "location" without a token means the parse is exhausted.
+This is not the case in Marpa.
+Because tokens can span many earlemes,
+A parse remains viable as long as some token
 has been recognized which ends at or after the current earleme.
 Only when there is no token at the current location, and no token reaches to the current
 location or past it, is the parse exhausted.
 Parses using the grammar for the MDL typically contain many stretches
-of empty earlemes, some quite long.
+of empty earlemes, and some can be quite long.
 (Note to experts: an "empty earleme" corresponds to an Earley set with no Earley items.)
 
 Users of Marpa are not restricted to either the one-token-per-earleme or the one-character-per-earleme
@@ -127,17 +139,18 @@ the two restrictions above.
 
 In parsing a text,
 Marpa follows a strict sequence,
-some of all of which is usually invisible to the user.
+some or all of which is usually invisible to the user.
 For example, when a parse object is created from a grammar
 which has not been precomputed, the parse object constructor
 will silently perform not just the precomputation of the grammar,
 but also a deep copy of it.
 If the C<Parse::Marpa::marpa()> routine is used,
-all the steps will be performed automatically
-and none of the methods listed below them can or should be called directly.
+lower level methods to perform all the steps
+will be called for you as necessary.
  
-In each step, the method mentioned is the B<lowest level> one available to the user.
-Calling those methods in that sequence is not the easiest approach and will rarely be the best one.
+With the steps below, I've documented the low level methods which perform them.
+These low level methods are all available to the user, but
+using them is never the easiest and rarely the best approach.
 See the main L<Parse::Marpa> documentation page for
 pointers to easier interfaces,
 as well as instructions on how to exercise step-by-step control when that is what you want.
@@ -178,33 +191,31 @@ time without interfering with each other.
 The deep copy is done in two subphases.
 First, the grammar is written out with C<Data::Dumper>.
 Second, the string from the first subphase
-is C<eval>'ed back into a grammar object
-and tweaked.
+is C<eval>'ed and then tweaked back
+into a properly set-up grammar object.
 
-These two subphases are available to the user as
+The two subphases are available to the user as
 C<Parse::Marpa::compile()> and C<Parse::Marpa::decompile()>.
 The result of C<compile()> is a string, which may be written into a file.
 A subsequent Marpa process may read this file and continue the parse.
 See the descriptions of
 C<Parse::Marpa::compile()> and C<Parse::Marpa::decompile()> for
-more details.
+details.
 
 =item * Creating the parse object
 
 To parse a text, a parse object must be created.
-The constructor C<Parse::Marpa::Parse::new()> is always called
-to do this, whether directly or indirectly.
+The constructor C<Parse::Marpa::Parse::new()> is called
+to do this, either directly or indirectly.
 Strings and options describing the semantics may have been set in earlier phases,
 but it is now that the semantics are finalized.
-After this point they cannot change.
 
 =item * Token Input
 
 A series of tokens is input to the parse object,
 and recognition is performed as the input is received.
-Marpa, therefore, will eventually be
-capable of on-line or stream processing.
-
+Marpa will eventually be
+capable of online, or stream, processing.
 Currently input may be specified as text,
 with the C<Parse::Marpa::Parse::text()> method,
 or directly as tokens
@@ -221,9 +232,199 @@ The actual value of the parse is returned by the C<Parse::Marpa::Parse::value()>
 
 From a given grammar and input,
 Marpa might produce more than one parse.
-These are iterated through with the C<Parse::Marpa::Parse::next()> method,
+Parses are iterated through with the C<Parse::Marpa::Parse::next()> method,
 which returns failure once there are no more parses.
 As the parses are iterated, their values may be retrieved with
 C<Parse::Marpa::Parse::value()> method.
 
 =back
+
+=head1 SEMANTICS
+
+In Marpa,
+a user specifies a parse's semantics with semantic actions.
+The user can specify lexing actions (or lexers), rule actions and a preamble.
+Rule actions behave differently for empty rules
+(that is, rules with no symbols on the right hand side)
+and non-empty rules.
+A empty rule action is also called a null action.
+An action for a non-empty rules is sometimes called a proper rule action.
+
+All semantic actions for a parse object run in a namespace special to
+that parse object and set aside for the purpose.
+The preamble is run before any other semantic action,
+and can be used to initialize that namespace.
+
+The semantics are specified while the grammar is being built,
+and when a parse object is created.
+They are finalized a parse object creation time,
+and cannot be changed after that.
+
+=head1 NULL VALUES
+
+A "null value" is a symbol's value when it matches the empty string in a parse.
+By default, it's a Perl undefined, which usually is what makes sense.
+If it's not, default_null_value is a predefined, and can be reset.
+
+A symbol can match the empty string directly, if it is on the left hand side of an empty rule.
+It can also match indirectly, through a series of other rules, only some of which need to be empty rules.
+
+Each symbol can have its own special "null value" defined for it.
+A symbol's null value is calculated from the null action specified for the empty
+rule which has that symbol as its left hand side.
+For example, in MDL, the following says that whenever C<A> matches the empty
+string, it should evaluate to an string.
+
+    A: . q{ 'Oops!  Where did I go!' }.
+
+Null actions are different from the proper rule actions in two very important ways.
+First, null actions are run at or before parse creation time,
+so that they have a fixed value by the time a parse is evaluated.
+This is different from proper rule actions.
+During the creation of the parse object, proper rule actions are compiled B<into closures>,
+not calculated as fixed values.
+Proper rule closures are run during parse evaluation,
+whenever a node needs to have its value recalculated.
+
+I treat null actions differently for efficiency.
+They have no child values, and therefore usually no dependency on inputs.
+That means a fixed value is usually what is wanted.
+If you want to calculate a null value using a closure run at parse evaluation time,
+the null action returns be a reference to a closure as it fixed value.
+The parent rules with that nullable symbol on their right hand side
+can then be set up to run that closure.
+
+There is a second difference between null actions and proper rule actions.
+Null values really are properties of the symbol, not of the rule.
+Proper rule actions are properties of the rule,
+and are only invoked in a parse when that rule is in the derivation.
+A null value is used whenever the corresponding symbol is the "highest null value"
+in a derivation,
+whether or not that happened directly through that symbol's empty rule.
+
+For instance, suppose a grammar has these rules
+
+    S: A, Z. # call me the start rule, or rule 0
+
+    A: . q{!}. # call me rule 1
+
+    A: B, C. q{"I'm sometime null and sometimes not"} # call me rule 2
+
+    B: . q{'No B'}. # call me rule 3
+
+    C: . q{'No C'}. # call me rule 4
+
+    C: Z.  # call me rule 5
+
+    Z: /Z/. q{'Zorro was here'}. # call me rule 6
+
+If both C<B> and C<C> match the empty string, then so will the symbol C<A>.
+Since C<A> matches the empty string, and is the "highest null symbol",
+its null value, the string "C<!>", which is computed from the action for "rule 1",
+is the value of the derivation.
+
+But "rule 1" is not actually in the derivation:
+
+      A -> B C   (rule 2)
+      -> C       (rule 3)
+      ->         (rule 4)
+
+Additionally, in the above derivation C<B> and C<C> also have null values,
+and rule 2 has a proper rule action.
+None of these play any role in the result.
+
+An informal way of explaining how Marpa thinks in these matters,
+is this:
+
+=over 4
+
+=item * Rules which produce nothing don't count.
+
+=item * Rules which produce something do count.
+
+=item * A symbol counts when it appears in a rule that counts.
+
+=item * A symbol does not count when it appears in a rule that does not count.
+
+=back
+
+In evaluating a derivation, Marpa uses the semantics of rules and symbols which "count",
+and ignores those rules and symbols which "don't count."
+The value of an empty string, for Marpa, is always the null value of the "highest null symbol".
+The "highest null symbols" will always appear in rules which "count",
+or speaking more carefully, in non-empty rules.
+
+There's one special case, which is a successful parse
+of the empty string, or a "null parse".
+In a "null parse", the entire grammar "results in nothing".
+The value of a null parse is null value of the start symbol.
+
+If indirect nulling is important in your grammar,
+once you settle on the rules for that semantics you can figure out how
+they apply to each symbol when it is a "highest null symbol".
+Then you can put those semantics into the symbol's null actions.
+
+=head1 VOLATILE AND NON-VOLATILE SEMANTICS
+
+By default, Marpa marks all its parses volatile,
+which is always a safe choice.
+Non-volatile parses, however, can be optimized by
+memoizing node values as they are calculated.
+If multiple parses are evaluated in a parse with expensive rule actions,
+the boost in efficiency from node value memoization could be major.
+
+Both grammars and parses can be marked volatile.
+A parse inherits the volatility marking of the grammar it is created from,
+if there was one.
+
+It is up to the the user to make sure the semantics of an Marpa object
+is safe for memoization if she decides to
+decides to mark the object non-volatile.
+Node memoization follows the same principles as function memoization.
+Parses with ordinary, textbook semantics typically are non-volatile.
+But many things can make a parse volatile.
+
+A parse is non-volatile,
+and node values can be memoized,
+only if all rule actions produce the same results
+whenever they have the same child node values as inputs;
+and only if none of the rule actions have side effects.
+Output of any kind is among the things that make a parse volatile,
+since it actually is a side effect.
+If your rule action logs a message every time it is invoked,
+memoization is likely to cause missing log messages.
+
+This is not a complete definition of the safe conditions for memoization.
+If you're not sure whether your grammar is volatile or not,
+accept Marpa's default behavior, which is to mark a parse as volatile.
+It is also always safe to mark a grammar or a parse volatile yourself.
+
+Marpa will sometimes mark grammars volatile on its own.
+Marpa often optimizes the evaluation of sequence productions
+by passing a reference to an array among the nodes of the sequence.
+This elminates the need to repeatedly copy the array of sequence values
+as it is built.
+That's a big saving,
+but the reference to the array is shared data,
+and the changes to it are side effects.
+Because of this Marpa marks the grammar volatile.
+
+You may ask why Marpa gives optimization of sequences priority
+over memoization of node values.
+Node value memoization has no payoff unless multiple parses are evaluated
+from a single parse object, which is not the usual case.
+Optimization of sequence evaluation almost always pays off nicely.
+
+Once an object has been marked volatile, whether by Marpa itself
+or the user, Marpa throws an exception if there is attempt to mark it non-volatile.
+Resetting a grammar to non-volatile will almost always be an oversight,
+and one that would be very hard to debug.
+The inconvenience of not allowing the user to change his mind seemed minor
+by comparison.
+
+It's possible that adding the ability to 
+label only particular rules volatile might be helpful.
+But it also may be best to keep the interface simple.
+If a grammar writer is really looking for speed,
+she can let the grammar default to volatile,
+and use side effects and her own, targeted memoizations.

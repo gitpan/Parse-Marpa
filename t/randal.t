@@ -35,7 +35,7 @@ $g->set( source => \$source);
 $g->precompute();
 
 TEST: while (my $test = pop @tests) {
-    my $parse = new Parse::Marpa::Parse($g);
+    my $parse = new Parse::Marpa::Parse(grammar => $g);
     $parse->text(\$test);
     $parse->initial();
     my @parses;
@@ -83,7 +83,7 @@ TEST: while (my $test = pop @tests) {
 }
 
 __DATA__
-semantics are perl5.  version is 0.1.67.  the start symbol is perl line.
+semantics are perl5.  version is 0.1.68.  the start symbol is perl line.
 the default lex prefix is qr/\s*/.
 
 perl line: perl statements, optional comment.

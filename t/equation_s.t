@@ -25,7 +25,7 @@ my $g = new Parse::Marpa(
     source => \$source,
 );
 
-my $parse = new Parse::Marpa::Parse($g);
+my $parse = new Parse::Marpa::Parse(grammar => $g);
 
 my $op = Parse::Marpa::MDL::get_symbol($g, "Op");
 my $number = Parse::Marpa::MDL::get_symbol($g, "Number");
@@ -66,7 +66,7 @@ PARSE: for my $i (0 .. 10) {
 # vim: expandtab shiftwidth=4:
 
 __DATA__
-semantics are perl5.  version is 0.1.67.
+semantics are perl5.  version is 0.1.68.
 
 start symbol is E.
 
