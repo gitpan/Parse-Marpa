@@ -14,6 +14,10 @@ WriteMakefile(
     PM => {
 	'lib/Parse/Marpa/Raw_Source.pm'
 	    => '$(INST_LIB)/Parse/Marpa/Raw_Source.pm',
+	'lib/Parse/Marpa/ALGORITHM.pod'
+	    => '$(INST_LIB)/Parse/Marpa/ALGORITHM.pod',
+	'lib/Parse/Marpa/BIBLIOGRAPHY.pod'
+	    => '$(INST_LIB)/Parse/Marpa/BIBLIOGRAPHY.pod',
 	'lib/Parse/Marpa/DIAGNOSTICS.pod'
 	    => '$(INST_LIB)/Parse/Marpa/DIAGNOSTICS.pod',
 	'lib/Parse/Marpa/INTERNALS.pod'
@@ -24,8 +28,6 @@ WriteMakefile(
 	    => '$(INST_LIB)/Parse/Marpa/LANGUAGE.pod',
 	'lib/Parse/Marpa/CONCEPTS.pod'
 	    => '$(INST_LIB)/Parse/Marpa/CONCEPTS.pod',
-	'lib/Parse/Marpa/ALGORITHM.pod'
-	    => '$(INST_LIB)/Parse/Marpa/ALGORITHM.pod',
 	'lib/Parse/Marpa/Lex.pm'
 	    => '$(INST_LIB)/Parse/Marpa/Lex.pm',
 	'lib/Parse/Marpa/MDL.pm'

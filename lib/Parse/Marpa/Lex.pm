@@ -174,6 +174,70 @@ sub lex_regex {
 
 1;    # End of Parse::Marpa
 
+=head1 NAME
+
+Parse::Marpa::Lex.pm -- Utility Methods for Lexing
+
+=head1 OVERVIEW
+
+These routines are used internally by MDL to implement lexing of C<q-> and C<qq->quoted strings,
+and regexes.
+They are documented here to make them available for general use.
+
+=head1 SYNOPSIS
+
+    my ($regex, $token_length) = Parse::Marpa::Lex::lex_regex(\$string, $lexeme_start)
+
+    my ($string, $token_length) = Parse::Marpa::Lex::lex_q_quote(\$string, $lexeme_start)
+
+=head1 DESCRIPTION
+
+=over 4
+
+=item Parse::Marpa::Lex::lex_regex(C<$string_ref>, I<start_earleme>)
+
+Takes as its first argument a string reference of the string containing a regex.
+The regex must be in the position pointed to by C<pos $$string>.
+
+I<start_earleme> must contain the start earleme of the regex for lexing purposes.
+In many cases (such as the removal of leading whitespace), it's useful to discard
+prefixes of the actual lexeme.
+If prior to the call to C<lex_regex()> a prefix was removed, I<start_earleme>
+should be the location where the prefix started.
+If no prefix was removed, I<start_earleme> should be the same as C<pos $$string>.
+
+How C<lex_regex()> delimits a regex is described in L<the MDL document|Parse::Marpa::LANGUAGE>.
+C<lex_regex()> returns the null array on failure.
+On success, returns an array of two elements.
+The first element is a string containing the regex.
+The second is its length for lexing purposes, including the length of
+any discarded prefix.
+
+=item Parse::Marpa::Lex::lex_q_quote(C<$string_ref>, I<start_earleme>)
+
+Takes as its first argument a string reference of the string containing a C<q->quoted string.
+(For brevity in this description "C<q->quoted string" will mean both C<q-> and C<qq->quoted
+strings.)
+The C<q->quoted string must be in the position pointed to by C<pos $$string>.
+
+I<start_earleme> must contain the start earleme of the C<q->quoted string for lexing purposes.
+In many cases (such as the removal of leading whitespace), it's useful to discard
+prefixes of the actual lexeme.
+If prior to the call to C<lex_q_quote()> a prefix was removed, I<start_earleme>
+should be the location where the prefix started.
+If no prefix was removed, I<start_earleme> should be the same as C<pos $$string>.
+
+How C<lex_q_quote()> delimits a C<q->quoted string is described in L<the MDL document|Parse::Marpa::LANGUAGE>.
+C<lex_q_quote()> returns the null array on failure.
+On success, returns an array of two elements.
+The first element is a string containing the C<q->quoted string.
+The second is its length for lexing purposes, including the length of
+any discarded prefix.
+
+=back
+
+=cut
+
 # Local Variables:
 #   mode: cperl
 #   cperl-indent-level: 4

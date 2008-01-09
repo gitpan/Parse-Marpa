@@ -2,18 +2,18 @@
 
 Parse::Marpa::CONCEPTS - Concepts helpful for Using Marpa
 
-=head1 BEWARE: THIS DOCUMENT IS UNDER CONSTRUCTION AND VERY INCOMPLETE
+=head1 BEWARE: THIS DOCUMENT IS UNDER CONSTRUCTION
 
-    THIS DOCUMENT IS UNDER CONSTRUCTION AND VERY INCOMPLETE
+    THIS DOCUMENT IS UNDER CONSTRUCTION
 
 =head1 OVERVIEW
 
 This document is about
 concepts for putting Marpa to work in your applications.
-It's not about the mathematics or theory.
-The theory behind Marpa is documented L<elsewhere|Parse::Marpa::ALGORITHM>.
+The math and theory are dealt with
+L<elsewhere|Parse::Marpa::ALGORITHM>.
 
-It's also not a tutorial on grammars or BNF.  For that consult
+It's not a tutorial on grammars or BNF.  For that consult
 a modern textbook, such as Grune and Jacobs I<Parsing Techniques -
 Second Edition>, or Wikipedia.  In Wikipedia, the article on
 I<Backus-Naur form> is a good place to start.
@@ -41,7 +41,7 @@ but indirectly.
 The raw grammar interface is efficient,
 but users will usually want something higher level.
 The documentation for the raw grammar interface
-(as yet unwritten) is L<Parse::Marpa::RAW>.
+is L<Parse::Marpa::RAW>.
 
 =head2 The Marpa Demonstration Language
 
@@ -74,8 +74,8 @@ by the lexer more or less on its own.
 Marpa allows ambiguous tokens.
 Specifically, Marpa tokens allows recognition, at a single location,
 of several different tokens which may vary in length.
-What is considered a "location" is up to the user, and
-how these tokens relate locations is almost completely up to the user.
+How a "location" is defined and
+how locations relate to each other is almost completely up to the user.
 Nothing, for example, prevents tokens from overlapping each other.
 
 From here on, I'll call the "locations" earlemes.
@@ -97,7 +97,7 @@ Tokens cannot be zero or negative in earleme length.
 
 A parse is said to start at earleme 0, and "earleme N" means the location C<N> earlemes
 after earleme 0.
-(Aside to experts:
+(Note for experts:
 The implementation uses one Earley set for each earleme.)
 "Length" in earlemes means what you probably expect.
 The length from earleme 3 to earleme 6,
@@ -120,7 +120,7 @@ set using the tokens's earleme length.
 In conventional Earley parsing,
 any "location" without a token means the parse is exhausted.
 This is not the case in Marpa.
-Because tokens can span many earlemes,
+Because tokens can span many earlemes.
 A parse remains viable as long as some token
 has been recognized which ends at or after the current earleme.
 Only when there is no token at the current location, and no token reaches to the current
@@ -149,13 +149,11 @@ lower level methods to perform all the steps
 will be called for you as necessary.
  
 With the steps below, I've documented the low level methods which perform them.
-These low level methods are all available to the user, but
+These low level methods are available to the user, but
 using them is never the easiest and rarely the best approach.
 See the main L<Parse::Marpa> documentation page for
 pointers to easier interfaces,
 as well as instructions on how to exercise step-by-step control when that is what you want.
-The detailed documentation of each method often has hints
-on how that method is best used.
 
 Here are the steps:
 
@@ -243,62 +241,62 @@ C<Parse::Marpa::Parse::value()> method.
 
 In Marpa,
 a user specifies a parse's semantics with semantic actions.
-The user can specify lexing actions (or lexers), rule actions and a preamble.
-Rule actions behave differently for empty rules
-(that is, rules with no symbols on the right hand side)
-and non-empty rules.
-A empty rule action is also called a null action.
-An action for a non-empty rules is sometimes called a proper rule action.
-
-All semantic actions for a parse object run in a namespace special to
-that parse object and set aside for the purpose.
+The user can specify lex actions (or lexers),
+null symbol values,
+rule actions,
+and a preamble.
+Lex actions, rule actions and the preamble run
+a special namespace set aside for that purpose.
 The preamble is run before any other semantic action,
-and can be used to initialize that namespace.
+and can be used to initialize the namespace.
 
-The semantics are specified while the grammar is being built,
-and when a parse object is created.
-They are finalized a parse object creation time,
-and cannot be changed after that.
+Semantics can be specified while the grammar is being built,
+and when the parse object is created.
+They are finalized at parse object creation time.
 
 =head1 NULL VALUES
 
 A "null value" is a symbol's value when it matches the empty string in a parse.
 By default, it's a Perl undefined, which usually is what makes sense.
-If it's not, default_null_value is a predefined, and can be reset.
+If you want something else,
+the default null value is a predefined (C<default_null_value>) and can be reset.
 
 A symbol can match the empty string directly, if it is on the left hand side of an empty rule.
 It can also match indirectly, through a series of other rules, only some of which need to be empty rules.
 
-Each symbol can have its own special "null value" defined for it.
-A symbol's null value is calculated from the null action specified for the empty
-rule which has that symbol as its left hand side.
+Each symbol can have its own null symbol value.
+The null symbol value for any symbol is calculated using the action
+specified for the empty rule which has that symbol as its left hand side.
+The null symbol action is B<not> a rule action.
+It's a property of the symbol, and applies whenever the symbol is nulled,
+even when the symbol's empty rule is not involved.
+
 For example, in MDL, the following says that whenever C<A> matches the empty
 string, it should evaluate to an string.
 
     A: . q{ 'Oops!  Where did I go!' }.
 
-Null actions are different from the proper rule actions in two very important ways.
-First, null actions are run at or before parse creation time,
+Null actions are different from the proper rule actions in another important way.
+Null actions are run at or before parse creation time,
 so that they have a fixed value by the time a parse is evaluated.
-This is different from proper rule actions.
-During the creation of the parse object, proper rule actions are compiled B<into closures>,
+This is different from rule actions.
+During the creation of the parse object,
+rule actions are compiled B<into closures>,
 not calculated as fixed values.
-Proper rule closures are run during parse evaluation,
-whenever a node needs to have its value recalculated.
+These rule closures are run during parse evaluation,
+whenever a node for that rule needs its value recalculated.
 
 I treat null actions differently for efficiency.
-They have no child values, and therefore usually no dependency on inputs.
-That means a fixed value is usually what is wanted.
+They have no child values, and therefore usually no dependency on inputs,
+so a fixed value is usually what is wanted.
 If you want to calculate a null value using a closure run at parse evaluation time,
-the null action returns be a reference to a closure as it fixed value.
+the null action can return a reference to a closure.
 The parent rules with that nullable symbol on their right hand side
-can then be set up to run that closure.
+can then be set up so they run that closure.
 
-There is a second difference between null actions and proper rule actions.
-Null values really are properties of the symbol, not of the rule.
-Proper rule actions are properties of the rule,
-and are only invoked in a parse when that rule is in the derivation.
-A null value is used whenever the corresponding symbol is the "highest null value"
+As mentioned,
+null values really are properties of the symbol, not of the rule.
+A null value is used whenever the corresponding symbol is a "highest null value"
 in a derivation,
 whether or not that happened directly through that symbol's empty rule.
 
@@ -318,60 +316,89 @@ For instance, suppose a grammar has these rules
 
     Z: /Z/. q{'Zorro was here'}. # call me rule 6
 
-If both C<B> and C<C> match the empty string, then so will the symbol C<A>.
-Since C<A> matches the empty string, and is the "highest null symbol",
-its null value, the string "C<!>", which is computed from the action for "rule 1",
+If the input is the string "C<Z>",
+both C<B> and C<C> will match the empty string.
+So will the symbol C<A>.
+C<A> matches the empty string.
+Since C<A> produces both C<B> and C<C> in the derivation,
+and since the rule that produces C<A> is not an empty rule,
+C<A> is a "highest null symbol",
+Therefore, C<A>'s
+null value,
+the string "C<!>",
+which is computed from the action for "rule 1",
 is the value of the derivation.
 
-But "rule 1" is not actually in the derivation:
+Note carefully several things about this example.
+First, "rule 1" is not actually in the derivation of C<A>:
 
       A -> B C   (rule 2)
       -> C       (rule 3)
       ->         (rule 4)
 
-Additionally, in the above derivation C<B> and C<C> also have null values,
-and rule 2 has a proper rule action.
-None of these play any role in the result.
+Second, in the above derivation, C<B> and C<C> also have null values,
+which play no role in the result.
+Also, rule 2 has a proper rule action,
+and it plays no role in the result either.
 
-An informal way of explaining how Marpa thinks in these matters,
-is this:
+Here's an informally worded set of principles to explain Marpa's thinking in these matters:
 
 =over 4
 
-=item * Rules which produce nothing don't count.
+=item 1
 
-=item * Rules which produce something do count.
+Rules which produce nothing don't count.
 
-=item * A symbol counts when it appears in a rule that counts.
+=item 2
 
-=item * A symbol does not count when it appears in a rule that does not count.
+Rules which produce something do count.
+
+=item 3
+
+A symbol counts when it appears in a rule that counts.
+
+=item 4
+
+A symbol does not count when it appears in a rule that does not count.
+
+=item 5
+
+Regardless of rules 1 through 4, the start symbol always counts.
 
 =back
 
 In evaluating a derivation, Marpa uses the semantics of rules and symbols which "count",
 and ignores those rules and symbols which "don't count."
-The value of an empty string, for Marpa, is always the null value of the "highest null symbol".
-The "highest null symbols" will always appear in rules which "count",
-or speaking more carefully, in non-empty rules.
+The value of an empty string, for Marpa, is always the null value of a "highest null symbol".
+A "highest null symbol" will always appear in a rule which "counts",
+or speaking more carefully, in a non-empty rule.
 
-There's one special case, which is a successful parse
-of the empty string, or a "null parse".
+There's one special case:
+If a grammar successfully parses the empty string, that's called a "null parse".
 In a "null parse", the entire grammar "results in nothing".
+Null parses are the reason for Principle 5, above.
 The value of a null parse is null value of the start symbol.
 
-If indirect nulling is important in your grammar,
-once you settle on the rules for that semantics you can figure out how
-they apply to each symbol when it is a "highest null symbol".
-Then you can put those semantics into the symbol's null actions.
+If you consider some of the rules and symbols that Marpa believes "don't count"
+are important in your grammar.
+Marpa null semantics probably can accommodate your ideas.
+First, determine how your null semantics apply to every nullable symbol whenever it is
+a "highest null symbol".
+Then put those semantics into the symbol's null actions.
+If fixing the null value at parse creation time is not possible in your semantics,
+have your null actions return a reference to a closure and run that
+closure in a parent node.
 
-=head1 VOLATILE AND NON-VOLATILE SEMANTICS
+=head1 VOLATILITY AND PARSES
 
+If you accept Marpa's default behavior, you can safely
+ignore the issue of parse volatility.
 By default, Marpa marks all its parses volatile,
-which is always a safe choice.
+and that is always a safe choice.
 Non-volatile parses, however, can be optimized by
 memoizing node values as they are calculated.
 If multiple parses are evaluated in a parse with expensive rule actions,
-the boost in efficiency from node value memoization could be major.
+the boost in efficiency from node value memoization can be major.
 
 Both grammars and parses can be marked volatile.
 A parse inherits the volatility marking of the grammar it is created from,
@@ -394,9 +421,11 @@ since it actually is a side effect.
 If your rule action logs a message every time it is invoked,
 memoization is likely to cause missing log messages.
 
-This is not a complete definition of the safe conditions for memoization.
+Formally, your actions are safe for memoization if they are referentially transparent,
+that is,
+if replacing your actions with the value they return does not change the semantics of your program.
 If you're not sure whether your grammar is volatile or not,
-accept Marpa's default behavior, which is to mark a parse as volatile.
+accept Marpa's default behavior.
 It is also always safe to mark a grammar or a parse volatile yourself.
 
 Marpa will sometimes mark grammars volatile on its own.
@@ -406,7 +435,8 @@ This elminates the need to repeatedly copy the array of sequence values
 as it is built.
 That's a big saving,
 but the reference to the array is shared data,
-and the changes to it are side effects.
+and to it are side effects.
+
 Because of this Marpa marks the grammar volatile.
 
 You may ask why Marpa gives optimization of sequences priority
@@ -419,7 +449,7 @@ Once an object has been marked volatile, whether by Marpa itself
 or the user, Marpa throws an exception if there is attempt to mark it non-volatile.
 Resetting a grammar to non-volatile will almost always be an oversight,
 and one that would be very hard to debug.
-The inconvenience of not allowing the user to change his mind seemed minor
+The inconvenience of not allowing the user to change his mind seems minor
 by comparison.
 
 It's possible that adding the ability to 

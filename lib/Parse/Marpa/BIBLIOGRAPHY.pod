@@ -1,0 +1,17 @@
+=head1 NAME
+
+Parse::Marpa::BIBLIOGRAPHY - A Marpa Bibliography
+
+=head1 WIKIPEDIA ON BNF
+
+Wikipedia's article on Backus Naur form is
+L<http://en.wikipedia.org/wiki/Backus-Naur_form>.
+It's a great place to start if you don't know the
+basics of grammars and parsing.
+
+As it points out, 
+it might better be called Panini-Backus Form.
+The grammarian Panini
+gave a precise description of Sanskirt
+more than 23 centuries earlier in India
+using a similar notation.

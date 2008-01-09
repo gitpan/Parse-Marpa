@@ -2,8 +2,301 @@
 
 Parse::Marpa::INTERNALS - Marpa Internals
 
-=head1 THIS DOCUMENT IS NOT YET WRITTEN
+=head1 THIS DOCUMENT IS UNDER CONSTRUCTION AND INCOMPLETE
 
-    THIS DOCUMENT IS NOT YET WRITTEN
+    THIS DOCUMENT IS UNDER CONSTRUCTION AND INCOMPLETE
 
 =head1 OVERVIEW
+
+This document describes the aspects of Marpa which are usually hidden
+from the user, but which can be useful in tracing problems in grammars.
+Even if you know Marpa's internals very well,
+it's best to make your first attempts at debugging without diving
+into the details of Earley items, etc., etc.
+But every once in a while,
+there's an issue that requires the "gun and camera" approach.
+
+This document assumes the reader has a general knowledge of parser
+and at least one other parser generator.
+Knowledge of Earley parsing is not absolutely necessary,
+but would definitely make the reading easier.
+
+=head1 THE EARLEY ALGORITHM
+
+To speak carefully, Earley's algorithm does not actually parse it's input.
+It is a recognizer, not a parser.
+It builts a series of Earley sets.
+If an "Earley item" of the correct form in in the right place in these sets,
+you know your input was in the language described by the grammar.
+
+Once the recognition phase is done, and the Earley sets have been built,
+the parse can be found in them.
+This is not a trivial process -- Jay Earley's 1970 article apparently gets it wrong
+(see Grune & Jacobs, I<Parsing Techniques>, p. 578.
+
+In Marpa, recognition is done and the Earley sets are built as the input comes into
+the parse.
+The first parse is found by C<Parse::Marpa::Parse::initial()>,
+and subsequent parses are found by C<Parse::Marpa::Parse::next()>.
+
+=head1 EARLEY SETS AND EARLEY ITEMS
+
+For each Marpa "earleme", there's an Earley set.
+An Earley set is a set of Earley items.
+Here's a representation of an Earley item, as you might see it in
+debugging output from Marpa: C<S5@6-7>.
+What C<S5@6-7> says is that SDFA state 5 (that the "C<S5>" part) starts at earleme
+6 and ends at earleme 7.
+The number of the end earleme is the same as the earley set that contains the item.
+
+(Note to experts:
+Those familiar with Earley parsing will note that the above looks very different from
+a traditional Earley item.
+The SDFA states are new with Aycock and Horspool,
+the start earleme is traditionally and confusing called the "parent",
+and the end earleme corresponds in traditional nomenclature to the earley set of the item.)
+
+=head1 SDFA STATES
+
+Mentions of SDFA's (Semi-deterministic Finite Automata)
+and NFA's (Non-deterministic Finite Automata) will be frequent.
+All you need to know about NFA's, unless you are a Marpa developer,
+is that the SDFA's are built from them, and for the developers
+convenience NFA state number sometimes appear in the diagnostics outputs.
+About SDFA's, it will be useful to know a bit more.
+
+Let's start with an example of another Earley item:
+
+    S1@2-2
+
+This states that SDFA state 1 starts at earleme 2 and ends at earleme 2.
+We can get a description of the SDFA states from the C<show_SDFA()> method.
+Here what it says about SDFA state 1:
+
+    S1: 1,5
+    e ::= . e op e
+    e ::= . number
+     <e> => S3 (2)
+     <number> => S4 (6)
+
+The two numbers after the "C<S1:>" label on the first line 
+are the numbers of the NFA states that were combined into this SDFA state.
+The next two lines are "LR(0) items" -- rules with a dot added to indicate
+position.
+
+The last two lines are transitions.
+The first state that on seeing an C<e>, the transition is to SDFA state 3;
+and the second states than on seeing a C<number>, the transition is to SDFA state 4.
+(The numbers in parentheses are NFA states.)
+
+Marpa uses SDFA states to track the parse.
+Every SDFA state has one or more rules, with a position marker.
+Those familiar with LR parsing will recognize these as LR(0) items.
+
+I'll refer to LR(0) items often below.
+It's important to not confuse Earley items with the LR(0) they are built from.
+In traditional Earley parsing, each Earley item contained one and only one LR(0) item,
+which made the internals simpler, but much less efficient.
+Based on Aycock and Horspool's ideas, Marpa combines them LR(0) items into SDFA states.
+
+Each SDFA state is a statement about possible parses.
+The presence of an SDFA state in an Earley set means that those parses are possible at that earleme.
+The position of the end earleme is represented in the LR(0) items by a dot.
+The position of the start earleme is represented in the LR(0) items by start of the rules.
+
+In S1 (SDFA state 1), the dots in all the LR(0) items are at the beginning of the rule.
+This means the start and end earlemes must be the same, and from the "C<2-2>"
+in description of the Earley item C<S1@2-2>,
+you can see that this is the case.
+
+=head1 HOW EARLEY SETS ARE BUILT
+
+New items come onto the Earley sets in three ways: scanning, completion and prediction.
+
+=head2 Scanning
+
+Scanning adds Earley items as the result of finding tokens.
+Suppose the Earley item S1@2-2 (mentioned above) is present at earleme 2.
+Marpa knows to instruct the lexer to look for a C<number> because
+there is a transiton from S1 to S4 on C<number>.
+
+If the lexer finds a C<number> with a length (in earlemes) of one at earleme 2,
+a new Earley item S4@2-3 is added at earleme 3.
+Here (again from C<show_SDFA()>) is the description of SDFA state 4.
+
+    S4: 6
+    e ::= number .
+
+We can see that there only one LR(0) item in SDFA state 4,
+and that has the dot pointer at its end.
+A rule with the dot pointer at the end in an LR(0) item is called
+a B<completed rule>.
+
+Marpa calls the item which was looking for the scanned symbol
+the B<predecessor> of the item added by the scan.
+In this example, S1@2-2 is the predecessor of S4@2-3.
+Any item which is added to an Earley set based on an SDFA state transtion
+of a predecessor,
+is called that predecessor's B<successor>.
+In this example, S4@2-3 is the successor of S1@2-2.
+
+=head3 Examination of a scanned item
+
+Here's what S4@2-3 looks like in the Earley sets, after a successful
+scan of the input C<"2+2">.
+
+    S4@2-3  predecessor: S1@2-2  effect: S6@0-3
+      pointer: number; lhs: e
+      value: 2
+      token choice 0 [p=S1@2-2; t=2]
+      rule choice 0 [ 1: e -> number ]
+
+In the first line we see that, as mentioned, S1@2-2 is the predecessor of S4@2-3.
+It has no successor.  What the "effect" item is will be explained below.
+C<pointer> is the name of the symbol before the dot pointer in the current choice of
+rule (remember there may be more than one rule in an Earley item) and C<lhs> is the
+symbol on the left hand side of the current rule.
+If Earley item has had a value computed, that is also shown.  In this case, it has
+and the value, which came from the token, is "2".
+
+The last two lines are very significant.
+They show the choices Marpa is making.
+This parse is not ambiguous.
+In this Earley item,
+there is only one possible token and only one choice of rule,
+so there are no real choices.
+
+Each token choice may have a different predecessor so token choices are shown as a C<p=>I<predecessor>,
+C<t=>I<token> pair, separated by a semi-colon and inside square brackets.
+In the above example, the token choice
+C<[p=S1@2-2; t=2]>
+indicates that the token has a value of "2", and its
+predecessor was S1@2-2.
+Rule choices are also shown in brackets.
+The rule is preceded by its I<rule number> and a colon.
+
+=head1 THE MDL GRAMMAR FOR THE EXAMPLE
+
+Here's the MDL grammar for the example:
+
+    semantics are perl5.  version is 0.1.69.
+
+    start symbol is E.
+
+	    E: E, Op, E.
+    q{
+		my ($right_string, $right_value)
+		    = ($Parse::Marpa::Read_Only::v->[2] =~ /^(.*)==(.*)$/);
+		my ($left_string, $left_value)
+		    = ($Parse::Marpa::Read_Only::v->[0] =~ /^(.*)==(.*)$/);
+		my $op = $Parse::Marpa::Read_Only::v->[1];
+		my $value;
+		if ($op eq "+") {
+		   $value = $left_value + $right_value;
+		} elsif ($op eq "*") {
+		   $value = $left_value * $right_value;
+		} elsif ($op eq "-") {
+		   $value = $left_value - $right_value;
+		} else {
+		   croak("Unknown op: $op");
+		}
+		"(" . $left_string . $op . $right_string . ")==" . $value;
+    }.
+
+    E: Number.
+    q{
+	       my $v0 = pop @$Parse::Marpa::Read_Only::v;
+	       $v0 . "==" . $v0;
+    }.
+
+    Number matches qr/\d+/.
+
+    Op matches qr/[-+*]/.
+     
+    the default action is q{
+	     my $v_count = scalar @$Parse::Marpa::Read_Only::v;
+	     return "" if $v_count <= 0;
+	     return $Parse::Marpa::Read_Only::v->[0] if $v_count == 1;
+	     "(" . join(";", @$Parse::Marpa::Read_Only::v) . ")";
+	}.
+
+=head1 THE C<show_SDFA()> OUTPUT USED IN THE EXAMPLE
+
+    S0: 7
+    e['] ::= . e
+     empty => S1 (1,5)
+     <e> => S2 (8)
+    S1: 1,5
+    e ::= . e op e
+    e ::= . number
+     <e> => S3 (2)
+     <number> => S4 (6)
+    S2: 8
+    e['] ::= e .
+    S3: 2
+    e ::= e . op e
+     <op> => S5 (3)
+    S4: 6
+    e ::= number .
+    S5: 3
+    e ::= e op . e
+     empty => S1 (1,5)
+     <e> => S6 (4)
+    S6: 4
+    e ::= e op e .
+
+=head1 THE C<show_status()> OUTPUT USED IN THE EXAMPLE
+
+These are the Earley sets produced when the input text is "C<2+2>".
+
+    Current Earley Set: 4; Furthest: 3
+    Earley Set 0
+    S0@0-0  successor: S2@0-3
+    S1@0-0  successor: S4@0-1
+    Earley Set 1
+    S4@0-1  predecessor: S1@0-0  effect: S3@0-1
+      pointer: number; lhs: e
+      value: 2
+      token choice 0 [p=S1@0-0; t=2]
+      rule choice 0 [ 1: e -> number ]
+    S2@0-1
+      link choice 0 [p=S0@0-0; c=S4@0-1]
+    S3@0-1  predecessor: S1@0-0  successor: S5@0-2
+      pointer: e
+      value: 2==2
+      link choice 0 [p=S1@0-0; c=S4@0-1]
+      rule choice 0 [ 0: e -> e op e ]
+    Earley Set 2
+    S5@0-2  predecessor: S3@0-1  successor: S6@0-3
+      pointer: op
+      value: +
+      token choice 0 [p=S3@0-1; t=+]
+      rule choice 0 [ 0: e -> e op e ]
+    S1@2-2  successor: S4@2-3
+    Earley Set 3
+    S4@2-3  predecessor: S1@2-2  effect: S6@0-3
+      pointer: number; lhs: e
+      value: 2
+      token choice 0 [p=S1@2-2; t=2]
+      rule choice 0 [ 1: e -> number ]
+    S6@0-3  predecessor: S5@0-2  effect: S2@0-3
+      pointer: e; lhs: e
+      value: 2==2
+      link choice 0 [p=S5@0-2; c=S4@2-3]
+      rule choice 0 [ 0: e -> e op e ]
+    S3@2-3
+      link choice 0 [p=S1@2-2; c=S4@2-3]
+    S2@0-3  predecessor: S0@0-0
+      pointer: e; lhs: e[']
+      value: (2+2)==4
+      link choice 0 [p=S0@0-0; c=S6@0-3]
+      rule choice 0 [ 2: e['] -> e ]
+    S3@0-3
+      link choice 0 [p=S1@0-0; c=S6@0-3]
+
+=head1 MATERIAL NOT YET PROPERLY INCORPORATED IN THIS DOCUMENT
+
+Explain links.
+
+Reread DIAGNOSTICS doc while writing this one.
+Give some explanation of all terms used in it.

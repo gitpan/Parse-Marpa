@@ -13,6 +13,7 @@ bootstrap/bootstrap_trailer.pl
 bootstrap/self.marpa
 lib/Parse/Marpa.pm
 lib/Parse/Marpa/ALGORITHM.pod
+lib/Parse/Marpa/BIBLIOGRAPHY.pod
 lib/Parse/Marpa/CONCEPTS.pod
 lib/Parse/Marpa/DIAGNOSTICS.pod
 lib/Parse/Marpa/INTERNALS.pod
