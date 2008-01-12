@@ -23,6 +23,7 @@ my $show_problems;
 my $show_symbols;
 my $show_derivation;
 my $show_status;
+my $all_parses;
 my %options;
 
 given ($command) {
@@ -48,6 +49,7 @@ given ($command) {
 	    "show_symbols" => \$show_symbols,
 	    "show_status" => \$show_status,
 	    "show_derivation" => \$show_derivation,
+	    "all_parses" => \$all_parses,
 	    "option=s" => \%options,
 	);
 	do_parse();
@@ -160,23 +162,29 @@ sub do_parse {
         croak("No parse")
     }
 
-    my $value = $parse->value();
-    if (not defined $value) {
-	say 'Marpa returned a "Marpa No Value"';
-	return;
-    }
-    if (not defined $$value) {
-	say 'Marpa returned an undefined';
-	return;
-    }
-    say $$value;
+    PARSE: while (1) {
 
-    if ($show_status) {
-        print $parse->show_status();
-    }
+	my $value = $parse->value();
+	if (not defined $value) {
+	    say 'Marpa returned a "Marpa No Value"';
+	    return;
+	}
 
-    if ($show_derivation) {
-        print $parse->show();
-    }
+	given ($$value) {
+	    when (undef) { say 'Marpa returned an undefined' }
+	    default { say $$value }
+	}
+
+	if ($show_status) {
+	    print $parse->show_status();
+	}
+
+	if ($show_derivation) {
+	    print $parse->show();
+	}
+
+	last PARSE unless $all_parses and $parse->next();
+
+    } # while (1)
 
 }

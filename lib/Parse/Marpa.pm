@@ -10,7 +10,7 @@ use strict;
 use Parse::Marpa::MDL;
 
 BEGIN {
-    our $VERSION = '0.001_069';
+    our $VERSION = '0.001_070';
     our $STRING_VERSION = $VERSION;
     $VERSION = eval $VERSION;
 }
@@ -1789,13 +1789,13 @@ sub add_rules_from_hash {
     }
 
     # create the sequence symbol
-    my $sequence_name = $rhs_name . "[Seq][$min-*]";
+    my $sequence_name = $rhs_name . "[Seq:$min-*]";
     if (defined $separator_name) {
         my $punctuation_free_separator_name = $separator_name;
         $punctuation_free_separator_name =~ s/[^[:alnum:]]/_/g;
         $sequence_name .= "[Sep:" . $punctuation_free_separator_name . "]"
     }
-    my $unique_name_piece = sprintf("[x%x]", @{$grammar->[ Parse::Marpa::Internal::Grammar::SYMBOLS ]});
+    my $unique_name_piece = sprintf("[x%x]", scalar @{$grammar->[ Parse::Marpa::Internal::Grammar::SYMBOLS ]});
     $sequence_name .= $unique_name_piece;
     my $sequence = assign_symbol( $grammar, $sequence_name );
 
@@ -5612,7 +5612,6 @@ This includes
 left-recursive grammars,
 right-recursive grammars,
 grammars with empty productions,
-grammars with cycles,
 and ambiguous grammars.
 
 =item *
@@ -6341,6 +6340,25 @@ To get an idea for what's been well tested,
 look in the C<t>, or test, directory of the distribution.
 Any feature not tested there can be assumed
 to have been only lightly exercized.
+
+=head2 Doesn't Always Deal Correctly with Cycles in Grammars
+
+A cycle is a symbol which ultimately derives itself in a grammar.
+If an C<A> produces an C<A>, that's a one-step cycle.
+If an C<A> produces an C<B>, and a C<B> can produce an C<A>, that's also a cycle.
+Cycles can be arbitrarily long.
+Arguably, all cycles are pathological.
+
+I didn't ban cycles, on the idea I shouldn't ban anything without a reason and I didn't
+have one.
+Now, as I'm moving toward alpha, I discover that in some cases grammars with cycles go
+into loops at parse evaluation time.
+(This shouldn't have surprised me, but that's what alpha is for.)
+
+Right Marpa doesn't correctly implement cycles, and doesn't detect them at any
+point.  One or the other has to happen before going beta.
+
+Workaround: Don't put any cycles in your grammars.
 
 =head2 Options Code Poorly Organized and Probably Buggy
 

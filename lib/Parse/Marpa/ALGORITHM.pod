@@ -5,24 +5,13 @@ Parse::Marpa::ALGORITHM - The Marpa Algorithm
 =head1 OVERVIEW
 
 Marpa is based on and derived from
-the parser described in John Aycock and R.
-Nigel Horspool's "Practical Earley Parsing", I<The Computer Journal>,
-Vol. 45, No. 6, 2002, pp. 620-630.  This combines LR(0)
+the parser
+L<described by John Aycock and R.  Nigel Horspool|Parse::Marpa::Bibliography/"Aycock and Horspool 2002">.
+This combines LR(0)
 precomputation
-with Earley's general parsing algorithm.
-Jay Earley's most accessible paper
-is "An efficient context-free parsing algorithm",
-I<Communications of the Association for Computing Machinery>,
-13:2:94-102, 1970.
-
-The Aycock and Horspool paper is on the web
-(L<http://www.cs.uvic.ca/~nigelh/Publications/PracticalEarleyParsing.pdf>),
-unlike Earley's, and
-it summarizes Earley's very nicely.
-It is B<not>, however, easy reading.
-I have been following
-this particular topic on and off for years.
-Nonetheless I found the Aycock and Horspool paper very difficult going.
+with the general parsing algorithm
+L<described by Jay
+Earley in 1970|Parse::Marpa::BIBLIOGRAPHY/"Earley 1970">.
 
 Someday I'd like to describe the whole algorithm,
 including the core contributions of Aycock, Horspool and Earley,
@@ -152,21 +141,21 @@ in practice the multiplier is much smaller.
 
 =head1 ITERATING PARSES IN THE HORSPOOL-AYCOCK-EARLEY ITEMS
 
-Aycock and Horspool detail how a rightmost parse is evaluated from
+Aycock and Horspool detail how a rightmost parse is derived from
 their version of the Earley sets.
 They suggest that in the case of multiple parses,
-that their Earley sets can be iterated through,
-pointing out where in their algorithm the decision points fall.
+their Earley sets can be iterated through,
+and point out where in their algorithm the decision points occur.
 But they give no algorithm for doing the iteration.
 Marpa's solution is new, as far as I know.
 
 =head1 PRECEDENCE PARSING AND EARLEY PARSING
 
 In coming up with the scheme for iterating parses,
-I saw that the ordering of certain lists in the Earley sets controlled
+I saw that the ordering of certain lists in data structures in the Earley sets controlled
 the order of the parses.
-I realized that the order of those lists could be changed to anything useful.
-For example, the order might be based on priorities assigned to the rules of the grammar.
+I realized that the order of those lists could be changed to anything useful,
+and that, in fact, the order might be based on priorities assigned to the rules of the grammar.
 These, in turn, could force the most desirable parse, instead of the rightmost,
 to be first in parsing order.
 

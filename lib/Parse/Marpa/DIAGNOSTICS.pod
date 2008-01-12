@@ -12,7 +12,7 @@ This document covers Marpa methods and method options primarily useful
 for debugging grammars and parses.
 With each trace
 and each diagnostic method there is often an indication of the degree of
-knowledge of Marpa's internal workings needed to use their output.
+knowledge of Marpa's internal workings needed to use the output.
 There's a guide to Marpa internals in the
 L<internals document|Parse::Marpa::INTERNALS>.
 
@@ -23,37 +23,39 @@ the place where the parse was exhausted
 and an inspection of the input and the grammar
 often offers enough to spot the problem.
 
-If you don't have Marpa's C<warnings> option turned on (it's on by default),
-you probably should give it a glance.
+If you don't already have Marpa's C<warnings> option turned on (they're on by default),
+you probably should.
 
-If it doesn't the next thing I turn on is usually C<trace_lex>.
+If that doesn't help, the next thing I turn on is usually C<trace_lex>.
 This tells you which tokens the lexer is looking for and which ones it thinks it found.
-If the problem is in lexing, this tells you the whole story.
-Even if it's in the grammar,
-because Marpa uses predictive lexing,
-that is,
-it uses the grammar to predict what terminals should be next,
-what the lexer is looking for is a good clue to what the parse is doing.
+If the problem is in lexing, C<trace_lex> tells you the whole story.
+Even if the problem is in the grammar,
+because Marpa uses predictive lexing
+(in other words, Marpa uses the grammar to predict what terminals to look for next),
+what the lexer is looking for can be a good clue to what the parse is doing.
 
 If you run the C<show()> method on the parse object after
 the parse is done (that is, after C<initial()> or C<next()>),
 it shows the parse derivation in a more or less conventional format.
 Next to each rule is the SDFA state involved,
-and this allows you to to first dip into the internals.
+and this is a first glimpse into the internals.
 
 Before going into the internals,
-you might want to consider another deskcheck of your grammar.
-But if you really feel you must try to pull the problem out of the Earley
-sets, run C<show_SDFA()> on the grammar and C<show_status()> on the parse object.
-You may also find a listing of the rules (C<show_rules()>) and the symbols (C<show_symbols()>)
-handy for reference.
-The L<internals document|Parse::Marpa::INTERNALS>
-has example outputs from these methods and outlines how they are read.
+you should do a quick deskcheck of your grammar.
+Look at the output of
+C<show_rules()> and C<show_symbols()> to see if there's anything not right.
 
-I hope in the future to offer routines that pull grammar debugging information from
-the Earley sets and present it in a way that suggests the status of the parse without
-exposing the user to Marpa's internals.
-C<find_complete_rule()> is a start on the infrastructure for that.
+Depending on where in the process you're having problems, you might want to
+turn on some of the more helpful traces.
+C<trace_actions> will show you the actions as they are being finalized.
+C<trace_evaluation_choices> shows where in an ambiguous parse Marpa makes its choices,
+and what choices it makes.
+C<trace_iteration_changes> and C<trace_rules> traces the initialization of, and changes in, node values.
+
+To do the real "into the Earley sets with gun and camera" stuff,
+run C<show_SDFA()> on the grammar and C<show_status()> on the parse object.
+The L<internals document|Parse::Marpa::INTERNALS>
+has example outputs from these methods and outlines how to read them.
 
 =head1 DIAGNOSTIC OPTIONS
 
@@ -68,11 +70,11 @@ All trace output goes to the trace file handle.
 
 =item academic
 
-The academic option is only useful for testing the early stages of Marpa,
-up to the creation of SDFA's in the precomputation phase.
-In order to accurately duplicate example in textbooks,
-CHAF rewriting must be turned off in academic mode.
-This means no actual parsing can be done with the resulting grammar.
+The academic option turns off all grammar rewriting.
+This makes the resulting grammar useless for an actual parse.
+The purpose is to see if Marpa can 
+accurately duplicate examples from textbooks.
+This is handy for testing Marpa's deepest internals.
 
 =item trace_actions
 
@@ -147,7 +149,7 @@ Useful, but you may prefer the C<show_rules()> method.
 Doesn't require knowledge of Marpa internals.
 
 Remember, if you are adding rules via the C<source> method option,
-that other method options take effect B<after> the processing of the 
+the other method options take effect B<after> the processing of the 
 C<source> option.
 As a practical matter, that means that if you must
 don't set C<trace_rules> in a method call prior to the one with the C<source> option,
@@ -233,10 +235,11 @@ Marpa does not immediately throw an exception for many of these because the user
 usually will want to fix several at a time.
 If there were no problems, returns a string saying so.
 
-This returned string is the same that Marpa uses in throwing an
-exception if the user attempts to compile
-a grammar with problems
-or to create a parse from it.
+This returned string is the same that Marpa includes
+in
+exceptions thrown when the user attempts to compile,
+or to create a parse from,
+a grammar with problems.
 
 =item Parse::Marpa::show_productive_symbols(I<grammar>)
 
@@ -251,7 +254,7 @@ but otherwise not very useful.
 
 Returns a string listing the rules, each commented as to whether it
 was nullable, nulling, unproductive, inaccessible, empty or not useful.
-If a rule had a non-zero priority, that is also indicated.
+If a rule had a non-zero priority, that is also shown.
 Often useful and much of the information requires no knowledge of
 the Marpa internals to interpret.
 
@@ -280,9 +283,9 @@ turning on the warnings option.
 
 =item Parse::Marpa::Parse::show(I<parse>)
 
-Takes a parse object as its argument and "shows it,"
+Takes a parse object as its argument and "shows the parse,"
 that is,
-shows the last derivation of the last parse made from a parse object.
+shows the derivation of the last parse made from a parse object.
 Very useful.  Basic use requires no Marpa internals.
 It also reports the Earley item with SDFA state at each line of the derivation,
 and so can be a good starting point for investigations
@@ -293,12 +296,12 @@ using the Marpa internals.
 This is the central tool when debugging a parse
 using the Marpa internals.
 Takes a parse object as its argument and
-lists every Earley item for all the Earley sets.
+returns a multi-line string
+listing every Earley item in every Earley sets.
 For each Earley item,
-any current successor, predecessor, effect, cause, pointer or value is listed.
-For each item there is also
-a listing of all its links and rules,
-which indicates which link or rule is the current choice.
+any current successor, predecessor, effect, cause, pointer or value is shown.
+Also shown are lists of all the links and rules in each Earley item,
+indicating which link or rule is the current choice.
 
 For extremely detailed investigation of a parse, this, the output of C<trace_lex>
 and a listing of the SDFA states (see C<show_SDFA()>) should be just about
@@ -313,7 +316,7 @@ If the end earleme is not specified,
 its default wll be the default parse end earleme,
 that is, the default location
 that C<Parse::Marpa::Parse::initial()> would use for the end of parsing.
-The symbol argument, if specified, must be the name of the symbol to the raw interface.
+The symbol argument, if specified, must be the raw interface name of a symbol.
 
 The end earleme argument must be at or before the default parse end earleme.
 If you specify an end earleme after the default parse end earleme,
@@ -324,20 +327,22 @@ that is, rules whose right hand side has been completely matched.
 Only parses which start at the start earleme are considered.
 
 C<find_complete_rule()> looks first for any parses which end at the end earleme.
-If it finds not, it iterates back, looking for shorter and shorter parses.
-It does not stop until it reaches the start earleme and is looking for null parses.
+If it finds none,
+it looks for shorter and shorter parses
+until it reaches the start earleme and is looking at null parses.
 
-While the parses are always for complete rules,
+While the parses C<find_complete_rule()> find are always for complete rules,
 they can be subparses in the sense that they are not parses from the grammar's start symbol.
 Complete parses starting from any symbol are considered,
 unless a start symbol was specified as an argument.
 In that case only parses starting from that symbol are considered.
 
-On failure, a zero length array is returned.
+On failure to find a rule matching the criteria,
+a zero length array is returned.
 On success, the return value is an array of two elements.
 The first element of the array is the earleme at which the complete parse ends.
-The second element is a pointer to an array of symbol names,
-all of which are start symbols for parses in the span from start earleme to end earleme.
+The second element is a pointer to an array of symbol names
+which are start symbols of parses in the span from start earleme to end earleme.
 Symbol names will be raw interface names.
 
 Multiple start symbols may be returned, because 
@@ -345,7 +350,7 @@ several different rules may have been completed in the span from start
 earleme to end earleme,
 and some of these rules may have different left hand sides.
 If a start symbol argument was specified,
-it will be one in the list of symbols in the return value.
+it will be one of the list of symbols in the return value.
 
 I<find_complete_rule()> is an start on improved diagnostics and interfaces for online mode
 and advanced wizardry with grammars.
