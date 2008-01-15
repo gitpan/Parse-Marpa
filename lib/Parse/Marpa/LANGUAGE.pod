@@ -24,7 +24,7 @@ If so, Marpa was written to empower you.
 
 =head1 SELF-PARSING
 
-Not all parsers can parse languages describing their own grammar.
+Not all parsers can parse a language that describes their input grammars.
 Marpa can.
 In fact, Marpa's parser starts as the MDL file C<self.marpa>, and
 the parser in Marpa
@@ -111,9 +111,8 @@ and if "optional" were lower case in this example,
 the Marpa's preferred parse would result in the above sentence
 being interpreted as a rule which states
 that a C<rhs element> can consist either of itself or nothing.
-(Circular unit rules and null rules are both legal in Marpa,
-and so is combining them in this way.
-Which is B<not> to say it's a good idea.)
+(Cycles are not allowed in Marpa, so this MDL would cause Marpa to
+fail with an error message.)
 
 However, since "Optional" begins with a capital letter, it must
 be a user name or part of one.
@@ -144,7 +143,7 @@ overloading and ambiguity as anyone using an LALR parser could be.
 =head2 Literal Strings
 
 Literal strings can be single quoted, double quoted, C<q>-quoted or C<qq>-quoted.
-The syntax is much the same in Perl 5.
+The syntax is much the same as in Perl 5.
 MDL recognizes backslashes,
 and will not terminate a single- or double-quoted string at a
 delimiting quote when it is preceded by a backslash.
@@ -185,7 +184,7 @@ specified that string directly to Perl 5.
 
 =head2 Literal Regexes
 
-Literal regexes may are delimited either by slashes, or by C<qr>-quoting.
+Literal regexes are delimited either by slashes, or by C<qr>-quoting.
 For example, the definition sentence
 
     the default lex prefix is qr/(?:[ \t]*(?:\n|(?:\#[^\n]*\n)))*[ \t]*/.
@@ -243,13 +242,20 @@ predefineds or user-specified.
 
 The syntax for all definition sentences obeys the above rules,
 except as specifically noted otherwise.
+Each definition takes its own set of values,
+as described below.
+
+Many definitions takes strings as their value.
+Where that's the case,
+the string may be specified either by name
+or as a literal string.
 
 =head2 Semantics Definition
 
 The semantics definition is not optional.
 Marpa is ultimately targeted to Perl 6,
 and that is considered its "default" semantics,
-though it's not currently available.
+even though it's not currently available.
 Currently, the only available semantics is C<perl5>.
 
 All MDL source requires a line explicitly stating
@@ -281,9 +287,8 @@ Marpa will fail.
 
 =head2 String Definitions
 
-Strings are used in Marpa for several important purposes.
-Many of the definitions require strings.
-Rule and lex actions are strings with Perl 5 code in them.
+Strings are important in Marpa.
+In Marpa, semantic actions are specified by strings with Perl 5 code in them.
 
 Here's an example of a string definition:
 
@@ -304,17 +309,14 @@ Here's the specification of a default action from an earlier version:
 
 In this case, the string specifier is C<concatenate lines>, the string name
 defined above.
-In any definition which takes a string as its value,
-the string may be specified either by name
-or as a literal string.
 
 =head2 Default Null Value Definition
 
 A "null value" is the value returned when a symbol matches the empty string.
 Whenever an empty rule is explicitly specified to Marpa,
 and an action is given for it,
-that action becomes not only the action for that rule,
-but the null value of the symbol on the left hand side of that rule.
+that action is used to calculate
+the null value of the symbol on the left hand side of that rule.
 The null value of a symbol is its value whenever it is nulled,
 whether directly as a result of its own empty rule,
 or indirectly through a series of other rules.
@@ -336,7 +338,7 @@ a "prefix", another pattern which is to be checked for
 and discarded before the main pattern.
 A common use for lex prefixes is the elimination of leading whitespace.
 
-The raw interface allows this pattern to be set separately for each terminal,
+The raw interface allows a separate lex prefix to be set for each terminal,
 and this ability will be added to the MDL.
 By default, there is no lex prefix for a terminal.
 (Saying the same thing more pedantically,
@@ -357,17 +359,15 @@ actions are run.
 Preamble definition sentences may be used for this purpose.
 Values in the preamble definitions are strings.
 
-The preamble definition differs slightly from other definitions.
-In most definitions, any new value overwrites the old one.
-If there is more than one preamble definiton, the values are concatenated.
+If there is more than one preamble definition in MDL, the values are concatenated.
+This differ from most definitions in MDL, where any new value overwrites the old one.
 Also, the article to be used before the name of the predefined it must be
 C<a> and not C<the>.  As with other definitions, the article may be omitted.
-Here's a simplified version of the C<self.marpa> preamble:
+This is the C<self.marpa> preamble:
 
     a preamble is q{
-	our %strings;
+	our $regex_data = [];
     }.
-
 
 =head1 PRODUCTION PARAGRAPHS
 
@@ -384,9 +384,10 @@ simplified from C<self.marpa>:
 A production paragraph is characterized by a production sentence.  This
 is followed by an optional
 action sentence.
-Before and after these may be other "non structural production sentences" -- sentences
+Before and after these may be "non structural production sentences" -- sentences
 which can go anywhere in the paragraph.
-The "non structural" sentences are comment sentences and priority sentences.
+Comment sentences and priority sentences are
+"non structural" sentences.
 
 =head2 Production Sentence
 
@@ -433,9 +434,9 @@ been defined as a string.
 Marpa doesn't allow you to make a symbol optional, if it is nullable.
 A symbol is nullable if it can produce the empty string.
 In effect, a nullable symbol already is optional.
-Also making it optional with the C<optional> keyword
+Making it optional again with the C<optional> keyword
 does the same thing twice
-and causes Marpa to spin a lot of useless wheels internally.
+and would cause a lot of useless wheels inside Marpa.
 
 =head3 Sequence Sentences
 
@@ -458,7 +459,7 @@ hand side, and it must be the only thing on the right hand side.
 This restriction of sequences to sequence productions and of
 sequence productions to a single sequence
 is not the result of any limit of the Marpa parse engine.
-It would not be hard to allow sequences and optional sequences on the right hand
+It would not be hard to allow many sequences and optional sequences on the right hand
 side of any BNF production.
 What's hard is figuring out how to conveniently specify their semantics.
 As the right hand side of a production grows more complex,
@@ -494,8 +495,7 @@ array referenced by C<$Parse::Marpa::Read_Only::v>,
 just as in a BNF sentence.
 Unlike in a BNF sentence,
 in a sequence sentence
-you don't know in advance the number of right hand side symbols or their
-indices in the array.
+you don't know in advance the number of right hand side symbols.
 
 You can deal with the semantics of sequence sentences
 by using operations like C<join> or C<map> which work
@@ -510,7 +510,7 @@ of semantically equivalent items.
 Sequences can always be written as BNF.
 In fact, most parser generators don't have explicit sequence constructors.
 If your semantics don't work conveniently as sequence semantics,
-you may wish to rewrite your sequence as BNF.
+you may wish to write your sequence out in BNF.
 
 Having nullable symbols (symbols which might match an empty string) in a sequence
 is not a good idea, and Marpa throws an exception if you try it.
@@ -563,7 +563,7 @@ The last value computed in the action will be the value returned by the
 production.
 Values from child productions are available through C<$Parse::Marpa::Read_only::v>,
 a reference to an array of them.
-The array contains the value for the symbols of the right hand side, in order.
+The array contains the values of the symbols on the right hand side, in order.
 In both the examples above, a string is prepended to the value of the
 C<action specifier>,
 and that becomes the value of C<action sentence> in any parent production.
@@ -572,7 +572,7 @@ All actions start with
 C<use integer> and C<use strict> in effect.
 All Perl 5 warnings are also in effect except those in the "recursion" category.
 The code is run in a special namespace special to each parse object,
-but common to all the user code run within it.
+but common to all the user code run within the parse object.
 Globals in that namespace may be initialized in
 preamble definitions.
 
@@ -596,7 +596,7 @@ The priority setting in the above example directly affects the parsing of this s
 
 This sentence has two parses in C<self.marpa>.
 It could be parsed as a string definition,
-defining the string named C<a-preamble>.
+one defining the string named C<a-preamble>.
 But C<a> and C<preamble> could also be recognized as MDL keywords,
 and in that case the sentence is a setting for Marpa's C<preamble> predefined,
 and the literal string would be concatenated to the current value of the preamble.
@@ -621,8 +621,8 @@ the setting's definition will be the first parse.
 Only if a definition sentence cannot be interpreted as a setting,
 will the string definition become the first parse.
 In MDL, as in most applications,
-only one parse is used,
-so that the first parse is the only parse.
+only one parse is used.
+The first parse is the only parse.
 
 =head2 Comment Sentences
 
@@ -702,7 +702,8 @@ This means the terminal paragraph for the C<regex> terminal can be very simple:
 
     match regex using "lex_regex".
 
-The comment in the example before last notes that the code in that literal string could be replaced
+The comment in the example before last mentions
+that the code in that literal string could be replaced
 using an internal routine.
 Doing so would make C<self.marpa> simpler.
 Internalizing the closures used by MDL makes sense from a number of points of
@@ -722,7 +723,7 @@ To write a lex action you'll need to know that stuff.
 C<$STRING> is a reference because the strings Marpa lexes will often be entire files,
 and may be very long.
 Copying the string and chopping it up as each token is lexed would be costly.
-So Marpa uses the same mechanism used by regexes with the C<g> modifier
+So Marpa uses the same mechanism used by Perl 5 regexes with the C<g> modifier
 to track and move the position for matches.
 
 In writing a lexing closure, keep the following in mind:
@@ -733,12 +734,12 @@ In writing a lexing closure, keep the following in mind:
 fail in almost every case.
 
 =item * Always match from the current setting of C<pos $STRING>,
-which is also accessible with C<\G> anchoring.
+which is accessible with C<\G> anchoring.
 
 =item * C<$STRING> is a reference, and for efficiency should be used that way.
-The string may be many megabytes long.  Avoid any construct that copies it,
-unless you feel sure your grammar will only be used in applications for which the efficiency hit
-will be acceptable.
+The string may be many megabytes long.  Don't use any construct that copies it,
+unless you feel sure it's OK to limit use of your grammar to applications where efficiency is
+not an issue.
 
 =item * Don't change C<$$STRING>, or C<$STRING>.  Please.
 
@@ -781,7 +782,7 @@ The code in the above example shows things being done correctly.
 
 MDL symbol names behave differently from those in the raw interface.
 MDL symbol names are allowed to vary in capitalization and separation,
-while every slight variatiion of capitalization or separation produces a new,
+while every slight variation of capitalization or separation produces a new,
 unique raw interface name.
 MDL symbol names have a "canonical form", which MDL uses with
 the raw interface.
@@ -804,4 +805,4 @@ C<My symbol> and C<MY_SYMBOL> is, in canonical form, C<my-symbol>.
 
 Given an MDL symbol name as its one argument,
 C<Parse::Marpa::MDL::get_symbol()> will return the symbol's "cookie".
-Symbol cookies are needed if you plan to use the C<Parse::Marpa::Parse::earleme()> method.
+Symbol cookies are needed to use the C<Parse::Marpa::Parse::earleme()> method.

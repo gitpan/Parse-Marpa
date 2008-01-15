@@ -19,10 +19,10 @@ my $new_default_null_value;
 my $new_default_lex_prefix;
 my %strings;
 
-# This file was automatically generated using Parse::Marpa 0.00107
+# This file was automatically generated using Parse::Marpa 0.001071
 $new_semantics = 'perl5';
 
- $new_version = '0.001070';
+ $new_version = '0.001071';
 
 $new_start_symbol = "grammar";
 
@@ -39,24 +39,24 @@ $new_preamble .=  q{
 };
 
 push(@$new_rules, {
-    lhs => "grammar",
-    rhs => ["paragraphs"],
+    lhs => "grammar"
+,    rhs => ["paragraphs"],
     action =>   q{ $Parse::Marpa::Read_Only::v->[0] },
 ,
 ,
 
 });
 push(@$new_rules, {
-    lhs => "grammar",
-    rhs => ["paragraphs", "whitespace-lines"],
+    lhs => "grammar"
+,    rhs => ["paragraphs", "whitespace-lines"],
     action =>   q{ $Parse::Marpa::Read_Only::v->[0] },
 ,
 ,
 
 });
 push(@$new_rules, {
-    lhs => "paragraphs",
-rhs => ["paragraph"],
+    lhs => "paragraphs"
+,rhs => ["paragraph"],
 separator => "empty-line",
 min => 1,
 ,
@@ -66,32 +66,32 @@ min => 1,
 
 });
 push(@$new_rules, {
-    lhs => "paragraph",
-    rhs => ["definition-paragraph"],
+    lhs => "paragraph"
+,    rhs => ["definition-paragraph"],
     action => $strings{ "concatenate-lines" },
 ,
 ,
 
 });
 push(@$new_rules, {
-    lhs => "paragraph",
-    rhs => ["production-paragraph"],
+    lhs => "paragraph"
+,    rhs => ["production-paragraph"],
     action => $strings{ "concatenate-lines" },
 ,
 ,
 
 });
 push(@$new_rules, {
-    lhs => "paragraph",
-    rhs => ["terminal-paragraph"],
+    lhs => "paragraph"
+,    rhs => ["terminal-paragraph"],
     action => $strings{ "concatenate-lines" },
 ,
 ,
 
 });
 push(@$new_rules, {
-    lhs => "definition-paragraph",
-rhs => ["definition"],
+    lhs => "definition-paragraph"
+,rhs => ["definition"],
 min => 1,
 ,
     action => $strings{ "concatenate-lines" },
@@ -100,8 +100,8 @@ min => 1,
 
 });
 push(@$new_rules, {
-    lhs => "production-paragraph",
-    rhs => ["non-structural-production-sentences", "production-sentence", "non-structural-production-sentences", "action-sentence:optional", "non-structural-production-sentences"],
+    lhs => "production-paragraph"
+,    rhs => ["non-structural-production-sentences", "production-sentence", "non-structural-production-sentences", "action-sentence:optional", "non-structural-production-sentences"],
     action => 
     q{
         my $action = $Parse::Marpa::Read_Only::v->[3];
@@ -145,8 +145,8 @@ push(@$new_rules,
  );
 
 push(@$new_rules, {
-    lhs => "non-structural-production-sentences",
-rhs => ["non-structural-production-sentence"],
+    lhs => "non-structural-production-sentences"
+,rhs => ["non-structural-production-sentence"],
 min => 0,
 ,
     action => $strings{ "concatenate-lines" },
@@ -155,8 +155,8 @@ min => 0,
 
 });
 push(@$new_rules, {
-    lhs => "non-structural-production-sentence",
-    rhs => ["priority:k18", "integer", "period"],
+    lhs => "non-structural-production-sentence"
+,    rhs => ["priority:k18", "integer", "period"],
     action => 
 q{ q{ priority => } . $Parse::Marpa::Read_Only::v->[1] },
 ,
@@ -168,8 +168,8 @@ push(@$new_terminals,
 );
 
 push(@$new_rules, {
-    lhs => "action-sentence",
-    rhs => ["the:ka:optional", "action:k8", "is:k7", "action-specifier", "period"],
+    lhs => "action-sentence"
+,    rhs => ["the:ka:optional", "action:k8", "is:k7", "action-specifier", "period"],
     action => 
 q{
     "    action => "
@@ -180,8 +180,8 @@ q{
 
 });
 push(@$new_rules, {
-    lhs => "action-sentence",
-    rhs => ["action-specifier", "period"],
+    lhs => "action-sentence"
+,    rhs => ["action-specifier", "period"],
     action => 
 q{
     "    action => "
@@ -192,118 +192,118 @@ q{
 
 });
 push(@$new_rules, {
-    lhs => "action-specifier",
-    rhs => ["string-specifier"],
+    lhs => "action-specifier"
+,    rhs => ["string-specifier"],
     action => $strings{ "concatenate-lines" },
 ,
 ,
 
 });
 push(@$new_rules, {
-    lhs => "non-structural-production-sentence",
-    rhs => ["comment-sentence"],
+    lhs => "non-structural-production-sentence"
+,    rhs => ["comment-sentence"],
     action => $strings{ "concatenate-lines" },
 ,
 ,
 
 });
 push(@$new_rules, {
-    lhs => "non-structural-terminal-sentence",
-    rhs => ["comment-sentence"],
+    lhs => "non-structural-terminal-sentence"
+,    rhs => ["comment-sentence"],
     action => $strings{ "concatenate-lines" },
 ,
 ,
 
 });
 push(@$new_rules, {
-    lhs => "definition",
-    rhs => ["predefined-setting", "period"],
+    lhs => "definition"
+,    rhs => ["predefined-setting", "period"],
     action =>   q{ $Parse::Marpa::Read_Only::v->[0] },
 ,
 ,
  priority => 1000
 });
 push(@$new_rules, {
-    lhs => "definition",
-    rhs => ["comment-sentence"],
+    lhs => "definition"
+,    rhs => ["comment-sentence"],
 ,
 ,
 
 });
 push(@$new_rules, {
-    lhs => "definition",
-    rhs => ["bracketed-comment"],
+    lhs => "definition"
+,    rhs => ["bracketed-comment"],
 ,
 ,
 
 });
 push(@$new_rules, {
-    lhs => "definition",
-    rhs => ["string-definition"],
+    lhs => "definition"
+,    rhs => ["string-definition"],
     action => $strings{ "concatenate-lines" },
 ,
 ,
 
 });
 push(@$new_rules, {
-    lhs => "predefined-setting",
-    rhs => ["default-action-setting"],
+    lhs => "predefined-setting"
+,    rhs => ["default-action-setting"],
     action => $strings{ "concatenate-lines" },
 ,
 ,
 
 });
 push(@$new_rules, {
-    lhs => "predefined-setting",
-    rhs => ["default-null-value-setting"],
+    lhs => "predefined-setting"
+,    rhs => ["default-null-value-setting"],
     action => $strings{ "concatenate-lines" },
 ,
 ,
 
 });
 push(@$new_rules, {
-    lhs => "predefined-setting",
-    rhs => ["preamble-setting"],
+    lhs => "predefined-setting"
+,    rhs => ["preamble-setting"],
     action => $strings{ "concatenate-lines" },
 ,
 ,
 
 });
 push(@$new_rules, {
-    lhs => "predefined-setting",
-    rhs => ["semantics-setting"],
+    lhs => "predefined-setting"
+,    rhs => ["semantics-setting"],
     action => $strings{ "concatenate-lines" },
 ,
 ,
 
 });
 push(@$new_rules, {
-    lhs => "predefined-setting",
-    rhs => ["version-setting"],
+    lhs => "predefined-setting"
+,    rhs => ["version-setting"],
     action => $strings{ "concatenate-lines" },
 ,
 ,
 
 });
 push(@$new_rules, {
-    lhs => "predefined-setting",
-    rhs => ["start-symbol-setting"],
+    lhs => "predefined-setting"
+,    rhs => ["start-symbol-setting"],
     action => $strings{ "concatenate-lines" },
 ,
 ,
 
 });
 push(@$new_rules, {
-    lhs => "predefined-setting",
-    rhs => ["default-lex-prefix-setting"],
+    lhs => "predefined-setting"
+,    rhs => ["default-lex-prefix-setting"],
     action => $strings{ "concatenate-lines" },
 ,
 ,
 
 });
 push(@$new_rules, {
-    lhs => "semantics-setting",
-    rhs => ["the:ka:optional", "semantics:k16", "copula", "perl5:k17"],
+    lhs => "semantics-setting"
+,    rhs => ["the:ka:optional", "semantics:k16", "copula", "perl5:k17"],
     action => 
      q{
          q{$new_semantics = '}
@@ -315,8 +315,8 @@ push(@$new_rules, {
 
 });
 push(@$new_rules, {
-    lhs => "semantics-setting",
-    rhs => ["perl5:k17", "copula", "the:ka:optional", "semantics:k16"],
+    lhs => "semantics-setting"
+,    rhs => ["perl5:k17", "copula", "the:ka:optional", "semantics:k16"],
     action => 
 q{
     q{$new_semantics = '}
@@ -333,8 +333,8 @@ push(@$new_terminals,
 );
 
 push(@$new_rules, {
-    lhs => "version-setting",
-    rhs => ["the:ka:optional", "version:k14", "copula", "version-number"],
+    lhs => "version-setting"
+,    rhs => ["the:ka:optional", "version:k14", "copula", "version-number"],
     action => 
 q{
     q{ $new_version = '}
@@ -346,8 +346,8 @@ q{
 
 });
 push(@$new_rules, {
-    lhs => "version-setting",
-    rhs => ["version%20number:k15", "copula", "the:ka:optional", "version:k14"],
+    lhs => "version-setting"
+,    rhs => ["version%20number:k15", "copula", "the:ka:optional", "version:k14"],
     action => 
 q{
     q{ $new_version = '}
@@ -364,8 +364,8 @@ push(@$new_terminals,
 );
 
 push(@$new_rules, {
-    lhs => "start-symbol-setting",
-    rhs => ["the:ka:optional", "start:k13", "symbol:k12", "copula", "symbol-phrase"],
+    lhs => "start-symbol-setting"
+,    rhs => ["the:ka:optional", "start:k13", "symbol:k12", "copula", "symbol-phrase"],
     action => 
 q{
     q{$new_start_symbol = "}
@@ -377,8 +377,8 @@ q{
 
 });
 push(@$new_rules, {
-    lhs => "start-symbol-setting",
-    rhs => ["symbol-phrase", "copula", "the:ka:optional", "start:k13", "symbol:k12"],
+    lhs => "start-symbol-setting"
+,    rhs => ["symbol-phrase", "copula", "the:ka:optional", "start:k13", "symbol:k12"],
     action => 
 q{
     q{$new_start_symbol = }
@@ -395,8 +395,8 @@ push(@$new_terminals,
 );
 
 push(@$new_rules, {
-    lhs => "default-lex-prefix-setting",
-    rhs => ["regex", "copula", "the:ka:optional", "default:k9", "lex:k11", "prefix:k10"],
+    lhs => "default-lex-prefix-setting"
+,    rhs => ["regex", "copula", "the:ka:optional", "default:k9", "lex:k11", "prefix:k10"],
     action => 
 q{
              q{$new_default_lex_prefix = }
@@ -408,8 +408,8 @@ q{
 
 });
 push(@$new_rules, {
-    lhs => "default-lex-prefix-setting",
-    rhs => ["the:ka:optional", "default:k9", "lex:k11", "prefix:k10", "copula", "regex"],
+    lhs => "default-lex-prefix-setting"
+,    rhs => ["the:ka:optional", "default:k9", "lex:k11", "prefix:k10", "copula", "regex"],
     action => 
 q{
     q{$new_default_lex_prefix = }
@@ -426,8 +426,8 @@ push(@$new_terminals,
 );
 
 push(@$new_rules, {
-    lhs => "default-null-value-setting",
-    rhs => ["string-specifier", "copula", "the:ka:optional", "default:k9", "null:kf", "value:ke"],
+    lhs => "default-null-value-setting"
+,    rhs => ["string-specifier", "copula", "the:ka:optional", "default:k9", "null:kf", "value:ke"],
     action => 
 q{
              q{$new_default_null_value = }
@@ -439,8 +439,8 @@ q{
 
 });
 push(@$new_rules, {
-    lhs => "default-null-value-setting",
-    rhs => ["the:ka:optional", "default:k9", "null:kf", "value:ke", "copula", "string-specifier"],
+    lhs => "default-null-value-setting"
+,    rhs => ["the:ka:optional", "default:k9", "null:kf", "value:ke", "copula", "string-specifier"],
     action => 
 q{
     q{$new_default_null_value = }
@@ -457,8 +457,8 @@ push(@$new_terminals,
 );
 
 push(@$new_rules, {
-    lhs => "preamble-setting",
-    rhs => ["a:kd", "preamble:kc", "is:k7", "string-specifier"],
+    lhs => "preamble-setting"
+,    rhs => ["a:kd", "preamble:kc", "is:k7", "string-specifier"],
     action => 
 q{
     q{$new_preamble .= }
@@ -470,8 +470,8 @@ q{
 
 });
 push(@$new_rules, {
-    lhs => "preamble-setting",
-    rhs => ["string-specifier", "is:k7", "a:kd", "preamble:kc"],
+    lhs => "preamble-setting"
+,    rhs => ["string-specifier", "is:k7", "a:kd", "preamble:kc"],
     action => 
 q{
     q{$new_preamble .= }
@@ -488,15 +488,15 @@ push(@$new_terminals,
 );
 
 push(@$new_rules, {
-    lhs => "copula",
-    rhs => ["is:k7"],
+    lhs => "copula"
+,    rhs => ["is:k7"],
 ,
 ,
 
 });
 push(@$new_rules, {
-    lhs => "copula",
-    rhs => ["are:kb"],
+    lhs => "copula"
+,    rhs => ["are:kb"],
 ,
 ,
 
@@ -506,8 +506,8 @@ push(@$new_terminals,
 );
 
 push(@$new_rules, {
-    lhs => "string-definition",
-    rhs => ["symbol-phrase", "is:k7", "string-specifier", "period"],
+    lhs => "string-definition"
+,    rhs => ["symbol-phrase", "is:k7", "string-specifier", "period"],
     action => 
 q{
     '$strings{"'
@@ -521,8 +521,8 @@ q{
 
 });
 push(@$new_rules, {
-    lhs => "default-action-setting",
-    rhs => ["action-specifier", "is:k7", "the:ka:optional", "default:k9", "action:k8"],
+    lhs => "default-action-setting"
+,    rhs => ["action-specifier", "is:k7", "the:ka:optional", "default:k9", "action:k8"],
     action => 
 q{
     q{ $new_default_action = }
@@ -534,8 +534,8 @@ q{
 
 });
 push(@$new_rules, {
-    lhs => "default-action-setting",
-    rhs => ["the:ka:optional", "default:k9", "action:k8", "is:k7", "action-specifier"],
+    lhs => "default-action-setting"
+,    rhs => ["the:ka:optional", "default:k9", "action:k8", "is:k7", "action-specifier"],
     action => 
 q{
     q{ $new_default_action = }
@@ -562,15 +562,15 @@ push(@$new_rules,
  );
 
 push(@$new_rules, {
-    lhs => "comment-sentence",
-    rhs => ["comment-tag", "%3a:k6", "comment-words", "period"],
+    lhs => "comment-sentence"
+,    rhs => ["comment-tag", "%3a:k6", "comment-words", "period"],
 ,
 ,
 
 });
 push(@$new_rules, {
-    lhs => "comment-words",
-rhs => ["comment-word"],
+    lhs => "comment-words"
+,rhs => ["comment-word"],
 min => 1,
 ,
 ,
@@ -578,34 +578,38 @@ min => 1,
 
 });
 push(@$new_rules, {
-    lhs => "literal-string",
-    rhs => ["q-string"],
+    lhs => "literal-string"
+,    rhs => ["q-string"],
     action =>   q{ $Parse::Marpa::Read_Only::v->[0] },
 ,
 ,
 
 });
 push(@$new_rules, {
-    lhs => "literal-string",
-    rhs => ["double-quoted-string"],
+    lhs => "literal-string"
+,    rhs => ["double-quoted-string"],
     action => $strings{ "concatenate-lines" },
 ,
 ,
 
 });
 push(@$new_rules, {
-    lhs => "literal-string",
-    rhs => ["single-quoted-string"],
+    lhs => "literal-string"
+,    rhs => ["single-quoted-string"],
     action => $strings{ "concatenate-lines" },
 ,
 ,
 
 });
 push(@$new_rules, {
-    lhs => "production-sentence",
-    rhs => ["lhs", "%3a:k6", "rhs", "period"],
+    lhs => "production-sentence"
+,    rhs => ["lhs", "%3a:k6", "rhs", "period"],
     action => 
-q{ join(",\n", @{$Parse::Marpa::Read_Only::v}[0,2]) },
+q{
+    $Parse::Marpa::Read_Only::v->[0]
+    . "\n,"
+    . $Parse::Marpa::Read_Only::v->[2]
+},
 ,
 ,
 
@@ -615,8 +619,8 @@ push(@$new_terminals,
 );
 
 push(@$new_rules, {
-    lhs => "symbol-phrase",
-rhs => ["symbol-word"],
+    lhs => "symbol-phrase"
+,rhs => ["symbol-word"],
 min => 1,
 ,
     action => 
@@ -626,8 +630,8 @@ q{ Parse::Marpa::MDL::canonical_symbol_name(join("-", @$Parse::Marpa::Read_Only:
 
 });
 push(@$new_rules, {
-    lhs => "lhs",
-    rhs => ["symbol-phrase"],
+    lhs => "lhs"
+,    rhs => ["symbol-phrase"],
     action => 
 q{ '    lhs => "' . $Parse::Marpa::Read_Only::v->[0] . q{"} },
 ,
@@ -635,10 +639,19 @@ q{ '    lhs => "' . $Parse::Marpa::Read_Only::v->[0] . q{"} },
 
 });
 push(@$new_rules, {
-    lhs => "rhs",
-rhs => ["rhs-element"],
+    lhs => "rhs"
+,    rhs => [],
+    action => 
+q{ "    rhs => []" },
+,
+,
+
+});
+push(@$new_rules, {
+    lhs => "rhs"
+,rhs => ["rhs-element"],
 separator => "comma",
-min => 0,
+min => 1,
 ,
     action => 
 q{ "    rhs => [" . join(", ", @$Parse::Marpa::Read_Only::v) . "]" },
@@ -647,8 +660,8 @@ q{ "    rhs => [" . join(", ", @$Parse::Marpa::Read_Only::v) . "]" },
 
 });
 push(@$new_rules, {
-    lhs => "rhs",
-    rhs => ["symbol-phrase", "sequence:k4"],
+    lhs => "rhs"
+,    rhs => ["symbol-phrase", "sequence:k4"],
     action => 
 q{
     q{rhs => ["}
@@ -661,8 +674,8 @@ q{
 
 });
 push(@$new_rules, {
-    lhs => "rhs",
-    rhs => ["optional:k3", "symbol-phrase", "sequence:k4"],
+    lhs => "rhs"
+,    rhs => ["optional:k3", "symbol-phrase", "sequence:k4"],
     action => 
 q{
     q{rhs => ["}
@@ -675,8 +688,8 @@ q{
 
 });
 push(@$new_rules, {
-    lhs => "rhs",
-    rhs => ["symbol-phrase", "separated:k5", "symbol-phrase", "sequence:k4"],
+    lhs => "rhs"
+,    rhs => ["symbol-phrase", "separated:k5", "symbol-phrase", "sequence:k4"],
     action => 
 q{
     q{rhs => ["}
@@ -692,8 +705,8 @@ q{
 
 });
 push(@$new_rules, {
-    lhs => "rhs",
-    rhs => ["optional:k3", "symbol-phrase", "separated:k5", "symbol-phrase", "sequence:k4"],
+    lhs => "rhs"
+,    rhs => ["optional:k3", "symbol-phrase", "separated:k5", "symbol-phrase", "sequence:k4"],
     action => 
 q{
     q{rhs => ["}
@@ -714,24 +727,24 @@ push(@$new_terminals,
 );
 
 push(@$new_rules, {
-    lhs => "rhs-element",
-    rhs => ["mandatory-rhs-element"],
+    lhs => "rhs-element"
+,    rhs => ["mandatory-rhs-element"],
     action => $strings{ "concatenate-lines" },
 ,
 ,
 
 });
 push(@$new_rules, {
-    lhs => "rhs-element",
-    rhs => ["optional-rhs-element"],
+    lhs => "rhs-element"
+,    rhs => ["optional-rhs-element"],
     action => $strings{ "concatenate-lines" },
 ,
 ,
 
 });
 push(@$new_rules, {
-    lhs => "mandatory-rhs-element",
-    rhs => ["rhs-symbol-specifier"],
+    lhs => "mandatory-rhs-element"
+,    rhs => ["rhs-symbol-specifier"],
     action => 
 q{ q{"} . $Parse::Marpa::Read_Only::v->[0] . q{"} },
 ,
@@ -739,8 +752,8 @@ q{ q{"} . $Parse::Marpa::Read_Only::v->[0] . q{"} },
 
 });
 push(@$new_rules, {
-    lhs => "optional-rhs-element",
-    rhs => ["optional:k3", "rhs-symbol-specifier"],
+    lhs => "optional-rhs-element"
+,    rhs => ["optional:k3", "rhs-symbol-specifier"],
     action => 
 q{
      my $symbol_phrase = $Parse::Marpa::Read_Only::v->[1];
@@ -771,8 +784,8 @@ push(@$new_terminals,
 );
 
 push(@$new_rules, {
-    lhs => "rhs-symbol-specifier",
-    rhs => ["symbol-phrase"],
+    lhs => "rhs-symbol-specifier"
+,    rhs => ["symbol-phrase"],
     action => 
 q{ $Parse::Marpa::Read_Only::v->[0] },
 ,
@@ -780,8 +793,8 @@ q{ $Parse::Marpa::Read_Only::v->[0] },
 
 });
 push(@$new_rules, {
-    lhs => "rhs-symbol-specifier",
-    rhs => ["regex"],
+    lhs => "rhs-symbol-specifier"
+,    rhs => ["regex"],
     action => 
 q{
     our $regex_data;
@@ -804,16 +817,16 @@ q{
 
 });
 push(@$new_rules, {
-    lhs => "terminal-paragraph",
-    rhs => ["non-structural-terminal-sentences", "terminal-sentence", "non-structural-terminal-sentences"],
+    lhs => "terminal-paragraph"
+,    rhs => ["non-structural-terminal-sentences", "terminal-sentence", "non-structural-terminal-sentences"],
     action => $strings{ "concatenate-lines" },
 ,
 ,
 
 });
 push(@$new_rules, {
-    lhs => "non-structural-terminal-sentences",
-rhs => ["non-structural-terminal-sentence"],
+    lhs => "non-structural-terminal-sentences"
+,rhs => ["non-structural-terminal-sentence"],
 min => 0,
 ,
     action => $strings{ "concatenate-lines" },
@@ -822,8 +835,8 @@ min => 0,
 
 });
 push(@$new_rules, {
-    lhs => "terminal-sentence",
-    rhs => ["symbol-phrase", "matches:k2", "regex", "period"],
+    lhs => "terminal-sentence"
+,    rhs => ["symbol-phrase", "matches:k2", "regex", "period"],
     action => 
 q{
     q{push(@$new_terminals, [ "}
@@ -843,8 +856,8 @@ push(@$new_terminals,
 );
 
 push(@$new_rules, {
-    lhs => "terminal-sentence",
-    rhs => ["match:k1", "symbol-phrase", "using:k0", "string-specifier", "period"],
+    lhs => "terminal-sentence"
+,    rhs => ["match:k1", "symbol-phrase", "using:k0", "string-specifier", "period"],
     action => 
 q{
     q{push(@$new_terminals, [ "}
@@ -865,16 +878,16 @@ push(@$new_terminals,
 );
 
 push(@$new_rules, {
-    lhs => "string-specifier",
-    rhs => ["literal-string"],
+    lhs => "string-specifier"
+,    rhs => ["literal-string"],
     action => $strings{ "concatenate-lines" },
 ,
 ,
 
 });
 push(@$new_rules, {
-    lhs => "string-specifier",
-    rhs => ["symbol-phrase"],
+    lhs => "string-specifier"
+,    rhs => ["symbol-phrase"],
     action => 
 q{
     '$strings{ "'
@@ -886,8 +899,8 @@ q{
 
 });
 push(@$new_rules, {
-    lhs => "whitespace-lines",
-rhs => ["whitespace-line"],
+    lhs => "whitespace-lines"
+,rhs => ["whitespace-line"],
 min => 1,
 ,
 ,

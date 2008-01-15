@@ -2,10 +2,6 @@
 
 Parse::Marpa::DIAGNOSTICS - Marpa's Diagnostics
 
-=head1 THIS DOCUMENT IS UNDER CONSTRUCTION
-
-    THIS DOCUMENT IS UNDER CONSTRUCTION
-
 =head1 OVERVIEW
 
 This document covers Marpa methods and method options primarily useful
@@ -31,8 +27,8 @@ This tells you which tokens the lexer is looking for and which ones it thinks it
 If the problem is in lexing, C<trace_lex> tells you the whole story.
 Even if the problem is in the grammar,
 because Marpa uses predictive lexing
-(in other words, Marpa uses the grammar to predict what terminals to look for next),
-what the lexer is looking for can be a good clue to what the parse is doing.
+(in other words, because Marpa uses the grammar to predict what terminals to look for next),
+which tokens the lexer is looking for is a clue to what the recognizer is doing.
 
 If you run the C<show()> method on the parse object after
 the parse is done (that is, after C<initial()> or C<next()>),
@@ -40,19 +36,18 @@ it shows the parse derivation in a more or less conventional format.
 Next to each rule is the SDFA state involved,
 and this is a first glimpse into the internals.
 
-Before going into the internals,
-you should do a quick deskcheck of your grammar.
-Look at the output of
-C<show_rules()> and C<show_symbols()> to see if there's anything not right.
-
+Before going deep into the internals,
+you should look at the output of
+C<show_rules()> and C<show_symbols()> to see if anything is
+clearly not right or not what you expected.
 Depending on where in the process you're having problems, you might want to
 turn on some of the more helpful traces.
 C<trace_actions> will show you the actions as they are being finalized.
-C<trace_evaluation_choices> shows where in an ambiguous parse Marpa makes its choices,
-and what choices it makes.
+In an ambiguous parse,
+C<trace_evaluation_choices> shows the choices Marpa is making.
 C<trace_iteration_changes> and C<trace_rules> traces the initialization of, and changes in, node values.
 
-To do the real "into the Earley sets with gun and camera" stuff,
+For the real "into the Earley sets with gun and camera" stuff,
 run C<show_SDFA()> on the grammar and C<show_status()> on the parse object.
 The L<internals document|Parse::Marpa::INTERNALS>
 has example outputs from these methods and outlines how to read them.
@@ -83,7 +78,7 @@ Little or no knowledge of Marpa internals required.
 
 =item trace_completions
 
-Traces each earley set as it is completed.
+Traces each Earley set as it is completed.
 I find it better to wait until parse evaluation time,
 when there's more information
 and then use C<Parse::Marpa::Parse::show_status()>.
@@ -91,8 +86,8 @@ Requires knowledge of Marpa internals.
 
 =item trace_evaluation_choices
 
-When Marpa has a choice among more than one rule, link or token,
-this option traces the choices Marpa makes.
+This option traces the choices Marpa make.
+when Marpa has a choice among more than one rule, link or token.
 Choices only occur if the grammar is ambiguous.
 Knowledge of Marpa internals probably needed.
 
@@ -121,8 +116,8 @@ C<trace_lex_matches> and
 C<trace_lex_tries>.
 Very useful, and can be interpreted with limited knowledge of Marpa internals.
 Because Marpa uses predictive lexing,
-this can give you an idea of not how lexing is working,
-but also of what of what the parse engine is looking for.
+this can give you an idea of how lexing is working,
+but also of what the parse engine is looking for.
 Often the first thing I turn on when I'm debugging a grammar.
 
 =item trace_lex_matches
@@ -231,7 +226,8 @@ but otherwise not very useful.
 =item Parse::Marpa::show_problems(I<grammar>)
 
 Returns a string describing the problems a grammar had in the precomputation phase.
-Marpa does not immediately throw an exception for many of these because the user
+Marpa does not immediately throw an exception for many of the
+precomputation problems because the user
 usually will want to fix several at a time.
 If there were no problems, returns a string saying so.
 
@@ -262,8 +258,8 @@ the Marpa internals to interpret.
 
 Returns a string listing the symbols, along with whether they were
 nulling, nullable, unproductive or inaccessible.
-Also shown is a lists of rules with that symbol on the left hand side,
-and another list of rules which have that symbol anywhere on the right hand side.
+Also shown is a list of rules with that symbol on the left hand side,
+and a list of rules which have that symbol anywhere on the right hand side.
 Often useful and much of the information requires no knowledge of
 the Marpa internals to interpret.
 
@@ -287,14 +283,12 @@ Takes a parse object as its argument and "shows the parse,"
 that is,
 shows the derivation of the last parse made from a parse object.
 Very useful.  Basic use requires no Marpa internals.
-It also reports the Earley item with SDFA state at each line of the derivation,
-and so can be a good starting point for investigations
-using the Marpa internals.
+It also reports the Earley item and SDFA state at each line of the derivation.
 
 =item Parse::Marpa::Parse::show_status(I<parse>)
 
-This is the central tool when debugging a parse
-using the Marpa internals.
+This is the central tool for debugging a parse
+using Marpa internals.
 Takes a parse object as its argument and
 returns a multi-line string
 listing every Earley item in every Earley sets.
@@ -303,9 +297,10 @@ any current successor, predecessor, effect, cause, pointer or value is shown.
 Also shown are lists of all the links and rules in each Earley item,
 indicating which link or rule is the current choice.
 
-For extremely detailed investigation of a parse, this, the output of C<trace_lex>
-and a listing of the SDFA states (see C<show_SDFA()>) should be just about
-everything you need.
+For detailed investigation of a parse, this, the output of C<trace_lex>
+and listings of the symbols, the rules,
+and the SDFA states (see C<show_SDFA()>),
+will usually be everything you need.
 
 =item Parse::Marpa::Parse::find_complete_rule(I<parse>, I<start_earleme>, I<_symbol>, I<end_earleme>)
 
@@ -352,14 +347,21 @@ and some of these rules may have different left hand sides.
 If a start symbol argument was specified,
 it will be one of the list of symbols in the return value.
 
-I<find_complete_rule()> is an start on improved diagnostics and interfaces for online mode
-and advanced wizardry with grammars.
-It is very much subject to change.
 In the case where no start symbol is specified,
 C<find_complete_rule()> is probably useless.
 It returns only information from the first Earley item which matches other criteria.
 Other Earley items may contain complete rules for the same span,
 but their left hand sides may not be included in the return value's list
 of start symbols.
+
+I<find_complete_rule()> was an experiment
+in methods for improved diagnostics, online mode,
+and advanced wizardry with grammars.
+It is probably going to be replaced.
+The replacement method or methods should, given an end earleme or a range of end earlemes,
+be able to return all completed and expected symbols.
+Information about their start and end earleme should be available with the completed
+symbols.
+For the expected symbols, the earleme at which they were expected should given.
 
 =back

@@ -1,4 +1,4 @@
-semantics are perl5.  version is 0.1.70.  the start symbol is
+semantics are perl5.  version is 0.1.71.  the start symbol is
 grammar.
 
 the default lex prefix is qr/(?:[ \t]*(?:\n|(?:\#[^\n]*\n)))*[ \t]*/.
@@ -250,7 +250,11 @@ literal string: double quoted string.  concatenate_lines.
 literal string: single quoted string.  concatenate_lines.
 
 production sentence: lhs, /:/, rhs, period.
-q{ join(",\n", @{$Parse::Marpa::Read_Only::v}[0,2]) }.
+q{
+    $Parse::Marpa::Read_Only::v->[0]
+    . "\n,"
+    . $Parse::Marpa::Read_Only::v->[2]
+}.
 
 symbol phrase: symbol word sequence.
 q{ Parse::Marpa::MDL::canonical_symbol_name(join("-", @$Parse::Marpa::Read_Only::v)) }.
@@ -258,7 +262,10 @@ q{ Parse::Marpa::MDL::canonical_symbol_name(join("-", @$Parse::Marpa::Read_Only:
 lhs: symbol phrase.
 q{ '    lhs => "' . $Parse::Marpa::Read_Only::v->[0] . q{"} }.
 
-rhs: optional comma separated rhs element sequence.
+rhs: .
+q{ "    rhs => []" }.
+
+rhs: comma separated rhs element sequence.
 q{ "    rhs => [" . join(", ", @$Parse::Marpa::Read_Only::v) . "]" }.
 
 rhs: symbol phrase, /sequence/.

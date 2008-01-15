@@ -49,6 +49,7 @@ given ($command) {
 	    "show_symbols" => \$show_symbols,
 	    "show_status" => \$show_status,
 	    "show_derivation" => \$show_derivation,
+	    "source_option=s" => \%source_options,
 	    "all_parses" => \$all_parses,
 	    "option=s" => \%options,
 	);
@@ -84,8 +85,13 @@ sub do_parse {
 	open(GRAMMAR, "<", $grammar_file);
 	my $grammar_source; { local($RS) = undef; $grammar_source = <GRAMMAR>; }
 	eval {
-	    $grammar = new Parse::Marpa(%options);
-	    $grammar->set(source => \$grammar_source);
+	    $grammar = new Parse::Marpa(
+		%options,
+	    );
+	    $grammar->set(
+		source => \$grammar_source,
+		source_options => \%source_options,
+	    );
 	};
 	if ($@) {
 	    die("Parse of $grammar_file failed:\n", $@);

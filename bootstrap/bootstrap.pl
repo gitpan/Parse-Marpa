@@ -353,9 +353,14 @@ my $rules = [
     {
 	lhs => "production sentence",
 	rhs => [ "lhs", "colon", "rhs", "period" ],
-	# tell perl NNN counter is in special package
+        # join(",\n", @{$Parse::Marpa::Read_Only::v}[0,2])
 	action => q{
-	    join(",\n", @{$Parse::Marpa::Read_Only::v}[0,2])
+	    $Parse::Marpa::Read_Only::v->[0]
+            .  ",\n"
+            . (
+                $Parse::Marpa::Read_Only::v->[2] //
+                "rhs => []"
+            )
 	},
     },
     {
@@ -368,6 +373,11 @@ my $rules = [
         lhs => "lhs",
 	rhs => [ "symbol phrase" ],
 	action => q{ '    lhs => "' . $Parse::Marpa::Read_Only::v->[0] . q{"} },
+    },
+    {
+        lhs => "rhs",
+	rhs => [ ],
+	action => q{ "    rhs => []" },
     },
     {
         lhs => "rhs",
