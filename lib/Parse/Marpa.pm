@@ -10,7 +10,7 @@ use strict;
 use Parse::Marpa::MDL;
 
 BEGIN {
-    our $VERSION = '0.001_071';
+    our $VERSION = '0.200_000';
     our $STRING_VERSION = $VERSION;
     $VERSION = eval $VERSION;
 }
@@ -23,30 +23,30 @@ Together with Some Thoughts about Coding Style in General
 This is not my idea of a good, general Perl style.  But a single
 coding style is not applicable in all cases.  The same coding style
 quite adequate in a throw-away script would be terrible in code
-intended to for a critical production enviromment and maintainance
-by a large, diversed staff.  The style of this module stems from
+intended for a critical production enviromment or maintainance
+by a large, diversed staff.  The style of this module matches
 its purpose, its likely future, and the likely resources for
 maintaining it.
 
 An important, but very non-standard, aim of this code is easy
 translation into time-efficient C.  This is because parsers run
-inside tight loops.  In particular the rap against Earley's has
+inside tight loops.  The rap against Earley's in particular has
 always been speed.  Readability is not a good reason to write a
 module that will never be used because it's too slow.
 
 So I've written very C-ish Perl -- lots of references, avoidance
-of hashes in the internals, no internal OO, etc.  I don't usually
-write Perl this way.  I don't think it's usually a good idea to
-write Perl this way.  But as the lawyers say, circumstances make
-cases.
+of hashes in the internals, no internal OO, etc., etc.  I don't
+usually write Perl this way.  I don't think it's usually a good
+idea to write Perl this way.  But as the lawyers say, circumstances
+make cases.
 
 C conversion is important because one of two things are going to
 happen to Marpa: it turns out to be so slow it's difficult to use,
 or it does not.  If Marpa is slow, the next thing to try is conversion
 to C.  If it's fast, Marpa will be highly useful, and there will
-almost certainly be demand for a yet faster version -- in C.
+almost certainly be demand for an even faster version -- in C++ or C.
 
-Damian Conway's _Perl Best Practices_.  is the best starting point
+Damian Conway's _Perl Best Practices_ is the best starting point
 for thinking about Perl style, whether you agree with him or not.
 I've made many exceptions due to necessity, as described above.
 Many more I've no doubt made out of ignorance.  A few other exceptions
@@ -56,9 +56,8 @@ An example of a deliberate exception I've made to Damian's guidelines:
 I don't append "_ref" to the name references -- almost every variable
 name in the below is a reference.  This may not be easy code to
 read, but I can't believe having 90% of the variable names end in
-"_ref" is going to make it any easier.  And, as Damian notes, his
-own CPAN modules don't follow his guidelines all that closely,
-either.
+"_ref" is going to make it any easier.  As Damian notes, his own
+CPAN modules don't follow his guidelines all that closely.
 
 =end Apology:
 
@@ -131,9 +130,6 @@ use constant USEFUL          => 8;     # use this rule in NFA?
 use constant ACTION          => 9;     # action for this rule
 use constant CLOSURE         => 10;    # closure for evaluating this rule
 use constant ORIGINAL_RULE   => 11;    # for a rewritten rule, the original
-
-# use constant ORDER                    => 12;   # the order in which rules are to
-# be tried -- not necessarily unique
 use constant HAS_CHAF_LHS => 13;       # has CHAF internal symbol as lhs?
 use constant HAS_CHAF_RHS => 14;       # has CHAF internal symbol on rhs?
 use constant PRIORITY     => 15;       # rule priority
@@ -172,7 +168,7 @@ use constant NAME            => 1;    # namespace special to this grammar
                                       # guaranteed unique after decompilation
 use constant RULES           => 2;    # array of rule refs
 use constant SYMBOLS         => 3;    # array of symbol refs
-use constant RULE_HASH       => 4;    # hash by name of symbol refs
+use constant RULE_HASH       => 4;    # hash by name of rule refs
 use constant SYMBOL_HASH     => 5;    # hash by name of symbol refs
 use constant START           => 6;    # ref to start symbol
 use constant NFA             => 7;    # array of states
@@ -186,7 +182,7 @@ use constant DEFAULT_NULL_VALUE => 12; # default value for nulling symbols
 use constant DEFAULT_ACTION     => 13; # action for rules without one
 use constant DEFAULT_LEX_PREFIX => 14; # default prefix for lexing
 use constant DEFAULT_LEX_SUFFIX => 15; # default suffix for lexing
-use constant AMBIGUOUS_LEX      => 16; # lex ambiguously? (the default)
+use constant AMBIGUOUS_LEX      => 16; # lex ambiguously?
 use constant TRACE_RULES        => 17;
 use constant TRACE_FILE_HANDLE  => 18;
 use constant LOCATION_CALLBACK  => 19; # default callback for showing location
@@ -407,9 +403,9 @@ use Carp;
 use Data::Dumper;
 use Parse::Marpa::Lex;
 
-# returns failure if no parses
-# on success, returns first parse in scalar context,
-# all of them in list context
+# Returns failure if no parses.
+# On success, returns first parse in scalar context,
+# all of them in list context.
 sub Parse::Marpa::marpa {
     my $grammar = shift;
     my $text = shift;
@@ -500,7 +496,7 @@ sub Parse::Marpa::show_source_grammar_status {
     $status;
 }
 
-# some day use to make locator more efficient on repeated calls
+# For use some day to make locator() more efficient on repeated calls
 sub binary_search {
     my ($target, $data) = @_;  
     my ($lower, $upper) = (0, $#$data); 
@@ -554,10 +550,10 @@ sub die_with_parse_failure {
     croak(Parse::Marpa::show_location("Parse failed", $source, $earleme));
 }
 
-# The following fails unless "use Parse::Marpa::Raw_Source" is 
-# specified by the user.  This is an bootstrapping routine, not having
-# the "use" in this code saves a few cycles in the normal case and forcing
-# the user to be specific about the fact he's doing bootstrapping
+# The following method fails if "use Parse::Marpa::Raw_Source" is not
+# specified by the user.  This is an undocumented bootstrapping routine,
+# not having the "use" in this code saves a few cycles in the normal case.
+# Also, forcing the user to be specific about the fact he's doing bootstrapping,
 # seems like a good idea in itself.
 
 sub Parse::Marpa::create_compiled_source_grammar {
@@ -881,9 +877,7 @@ extra "information" would only get in the way.
 The downside is that in a few uncommon cases, a user relying entirely
 on the Marpa warnings to clean up his grammar will have to go through
 more than a single pass of the diagnostics.  I think even those
-users unlucky enough to hit upon such cases may prefer simpler
-diagnostics, and in any case, simpler diagnostics are clearly best
-for the most common problems.
+users will prefer simpler diagnostics, and I'm sure most users will.
 
 =end Implementation:
 
@@ -1355,22 +1349,6 @@ sub Parse::Marpa::get_symbol {
     defined $symbol_hash ? $symbol_hash->{$name} : undef;
 }
 
-=begin Implementation
-
-Symbol keys are names, with internal symbols beginning with a
-underscore.  For the most part we use the raw names, but we need
-to avoid conflict between internal names and user defined names.
-To do this, we prepend another underscore to the name of any user
-symbol which begins with an underscore.
-
-Therefore, all keys not ending in an underscore, or ending with "__"
-are available for user-defined symbols.  All those symbols ending with
-one underscore, but not two, are reserved for internal uses
-
-=end Implementation
-
-=cut
-
 sub add_terminal {
     my $grammar  = shift;
     my $name     = shift;
@@ -1534,16 +1512,12 @@ sub add_rule {
         Parse::Marpa::Internal::Rule::PRODUCTIVE,
         Parse::Marpa::Internal::Rule::NULLING,
         Parse::Marpa::Internal::Rule::ACTION,
-
-        # Parse::Marpa::Internal::Rule::ORDER,
         Parse::Marpa::Internal::Rule::PRIORITY,
     ] = (
         $rule_count, "rule $rule_count",
         $lhs,        $rhs,
         $nulling, $nulling, $nulling,
         $action,
-
-        # $rule_count,
         $priority,
     );
 
@@ -1785,7 +1759,7 @@ sub add_rules_from_hash {
     my $lhs = assign_user_symbol( $grammar, $lhs_name );
 
     # Don't allow the user to duplicate a rule
-    # I'm pretty general here -- I consider a sequence rule a duplicate is rhs, lhs
+    # I'm pretty general here -- I consider a sequence rule a duplicate if rhs, lhs
     # and separator are the same.  I may want to get more fancy, but save that
     # for later.
     {
@@ -2004,7 +1978,6 @@ sub accessible {
                     if defined $rule
                         ->[Parse::Marpa::Internal::Rule::ACCESSIBLE];
 
-                # assume nullable until we hit an unmarked or unreachable symbol
                 $rule->[Parse::Marpa::Internal::Rule::ACCESSIBLE] = 1;
                 $work_to_do++;
                 push( @$rule_work_set, $rule );
@@ -2041,8 +2014,8 @@ sub productive {
         Parse::Marpa::Internal::Grammar::SYMBOLS
     ];
 
-    # if a symbol's nullability could not be determined, it was unreachable
-    # all nullable symbols are reachable
+    # If a symbol's nullability could not be determined, it was unproductive.
+    # All nullable symbols are productive.
     for my $symbol (@$symbols) {
         if ( not defined $_->[Parse::Marpa::Internal::Symbol::NULLABLE] ) {
             $_->[Parse::Marpa::Internal::Symbol::PRODUCTIVE] = 0;
@@ -2052,8 +2025,8 @@ sub productive {
         }
     }
 
-    # if a rule's nullability could not be determined, it was unreachable
-    # all nullable rules are reachable
+    # If a rule's nullability could not be determined, it was unproductive.
+    # All nullable rules are productive.
     for my $rule (@$rules) {
         if ( not defined $rule->[Parse::Marpa::Internal::Rule::NULLABLE] ) {
             $_->[Parse::Marpa::Internal::Symbol::PRODUCTIVE] = 0;
@@ -2102,41 +2075,41 @@ sub productive {
                 $work_symbol->[Parse::Marpa::Internal::Symbol::RHS];
             PRODUCING_RULE: for my $rule (@$rules_producing) {
 
-                # no work to do -- this rule already has nullability marked
+                # no work to do -- this rule already has productive status marked
                 next PRODUCING_RULE
                     if defined $rule
                         ->[Parse::Marpa::Internal::Rule::PRODUCTIVE];
 
-                # assume nullable until we hit an unmarked or unreachable symbol
-                my $rule_reachable = 1;
+                # assume productive until we hit an unmarked or unproductive symbol
+                my $rule_productive = 1;
 
                 # are all symbols on the RHS of this rule bottom marked?
                 RHS_SYMBOL:
                 for my $rhs_symbol (
                     @{ $rule->[Parse::Marpa::Internal::Rule::RHS] } )
                 {
-                    my $reachable = $rhs_symbol
+                    my $productive = $rhs_symbol
                         ->[Parse::Marpa::Internal::Symbol::PRODUCTIVE];
 
                     # unmarked symbol, change the assumption for rule to undef,
-                    # but keep scanning for unreachable
+                    # but keep scanning for unproductive
                     # symbol, which will override everything else
-                    if ( not defined $reachable ) {
-                        $rule_reachable = undef;
+                    if ( not defined $productive ) {
+                        $rule_productive = undef;
                         next RHS_SYMBOL;
                     }
 
-                    # any unreachable RHS symbol means the rule is unreachable
-                    if ( $reachable == 0 ) {
-                        $rule_reachable = 0;
+                    # any unproductive RHS symbol means the rule is unproductive
+                    if ( $productive == 0 ) {
+                        $rule_productive = 0;
                         last RHS_SYMBOL;
                     }
                 }
 
-                # if this pass found the rule reachable or unreachable, mark the rule
-                if ( defined $rule_reachable ) {
+                # if this pass found the rule productive or unproductive, mark the rule
+                if ( defined $rule_productive ) {
                     $rule->[Parse::Marpa::Internal::Rule::PRODUCTIVE] =
-                        $rule_reachable;
+                        $rule_productive;
                     $work_to_do++;
                     $rule_work_set
                         ->[ $rule->[Parse::Marpa::Internal::Rule::ID] ] = 1;
@@ -2153,40 +2126,40 @@ sub productive {
             $rule_work_set->[$rule_id] = 0;
             my $lhs_symbol = $work_rule->[Parse::Marpa::Internal::Rule::LHS];
 
-            # no work to do -- this symbol already has reachability marked
+            # no work to do -- this symbol already has productive status marked
             next RULE
                 if defined $lhs_symbol
                     ->[Parse::Marpa::Internal::Symbol::PRODUCTIVE];
 
-            # assume unreachable until we hit an unmarked or non-nullable symbol
-            my $symbol_reachable = 0;
+            # assume unproductive until we hit an unmarked or non-nullable symbol
+            my $symbol_productive = 0;
 
             LHS_RULE:
             for my $rule (
                 @{ $lhs_symbol->[Parse::Marpa::Internal::Symbol::LHS] } )
             {
 
-                my $reachable =
+                my $productive =
                     $rule->[Parse::Marpa::Internal::Rule::PRODUCTIVE];
 
                 # unmarked symbol, change the assumption for rule to undef, but keep scanning for nullable
                 # rule, which will override everything else
-                if ( not defined $reachable ) {
-                    $symbol_reachable = undef;
+                if ( not defined $productive ) {
+                    $symbol_productive = undef;
                     next LHS_RULE;
                 }
 
-                # any reachable rule means the LHS is reachable
-                if ( $reachable == 1 ) {
-                    $symbol_reachable = 1;
+                # any productive rule means the LHS is productive
+                if ( $productive == 1 ) {
+                    $symbol_productive = 1;
                     last LHS_RULE;
                 }
             }
 
-            # if this pass found the symbol reachable or unreachable, mark the symbol
-            if ( defined $symbol_reachable ) {
+            # if this pass found the symbol productive or unproductive, mark the symbol
+            if ( defined $symbol_productive ) {
                 $lhs_symbol->[Parse::Marpa::Internal::Symbol::PRODUCTIVE]
-                    = $symbol_reachable;
+                    = $symbol_productive;
                 $work_to_do++;
                 $symbol_work_set
                     ->[ $lhs_symbol->[Parse::Marpa::Internal::Symbol::ID] ] =
@@ -2301,7 +2274,7 @@ sub nulling {
                 next PRODUCING_RULE
                     if defined $rule->[Parse::Marpa::Internal::Rule::NULLING];
 
-                # assume nulling until we hit an unmarked or unreachable symbol
+                # assume nulling until we hit an unmarked or non-nulling symbol
                 my $rule_nulling = 1;
 
                 # are all symbols on the RHS of this rule marked?
@@ -2327,7 +2300,7 @@ sub nulling {
                     }
                 }
 
-                # if this pass found the rule reachable or unreachable, mark the rule
+                # if this pass found the rule nulling or non-nulling, mark the rule
                 if ( defined $rule_nulling ) {
                     $rule->[Parse::Marpa::Internal::Rule::NULLING] =
                         $rule_nulling;
@@ -3106,23 +3079,6 @@ sub alias_symbol {
     $alias;
 }
 
-=begin Innovation:
-
-Chomsky-Horspool-Aycock Form is one of my innovations.   Aycock & Horspool's NNF,
-in the worst case, is exponential in the size of the base grammar, and not
-exactly pretty in the example they give.  I think realistic grammars are likely
-to have productions with many nullables on the right side -- for example, the
-right hand side of a production might have several uses of optional whitespace.
-Grammars with a lot of these production might seriously bloat in size in NNF.
-
-CHAF breaks up productions with a more than a small number nullables on the RHS into
-"subproductions".  These are "reassembled" invisibly in evaluating the parse, so
-that the semantics of the original grammar are not affected.
-
-=end Innovation:
-
-=cut
-
 # For efficiency, steps in the CHAF evaluation
 # work on a last-is-rest principle -- productions
 # with a CHAF head always return reference to an array
@@ -3193,13 +3149,17 @@ sub rewrite_as_CHAF {
         next RULE if $nulling;
 
         # Keep track of whether the lhs side of any new rules we create should
-        # be nullable.  If any symbol is a production is not nullable, the lhs
+        # be nullable.  If any symbol in a production is not nullable, the lhs
         # is not nullable.  If the original production is nullable, all symbols
         # are nullable, all subproductions will be, and all new lhs's should be.
         # But even if the original production is not nullable, some of the
         # subproductions may be.  These will always be in a series starting from
-        # the far right.  Once the first non-nullable symbol is encountered,
-        # that subproduction is non-nullable, that lhs will be, and since that
+        # the far right.
+
+        # Going from right to left,
+        # once the first non-nullable symbol is encountered,
+        # that subproduction is non-nullable,
+        # that lhs will be non-nullable, and since that
         # new lhs is on the far rhs of subsequent (going left) subproductions,
         # all subsequent subproductions and their lhs's will be non-nullable.
         #
@@ -3270,8 +3230,8 @@ sub rewrite_as_CHAF {
                     last SETUP_SUBPRODUCTION;
                 }
 
-                # the following subproduction is non-nullable
-                # this code apparently not yet (1 Nov 2007) tried !!!
+                # The following subproduction is non-nullable.
+                # TODO: Has this code been tried yet? ( 15 Jan 2008)
                 if ( $proper_nullable1 < $last_nonnullable ) {
                     $subp_end = $proper_nullable1;
                     splice( @$proper_nullables, 0, 2 );
@@ -3416,15 +3376,11 @@ sub rewrite_as_CHAF {
                     Parse::Marpa::Internal::Rule::PRODUCTIVE,
                     Parse::Marpa::Internal::Rule::NULLABLE,
                     Parse::Marpa::Internal::Rule::NULLING,
-
-                    # Parse::Marpa::Internal::Rule::ORDER,
                     Parse::Marpa::Internal::Rule::HAS_CHAF_LHS,
                     Parse::Marpa::Internal::Rule::HAS_CHAF_RHS,
                     ]
                     = (
                     1, 1, 1, 0, 0,
-
-                    # $rule_id,
                     $has_chaf_lhs,
                     $has_chaf_rhs,
                     );
@@ -4084,7 +4040,7 @@ sub Parse::Marpa::Parse::new {
 
     my $SDFA = $grammar->[Parse::Marpa::Internal::Grammar::SDFA];
 
-    # A bit of a cheat here: I rely on an assumption about the numbering
+    # Here I rely on an assumption about the numbering
     # of the SDFA states -- specifically, that state 0 contains the
     # start productions.
     my $SDFA0 = $SDFA->[0];
@@ -4294,7 +4250,7 @@ sub clear_values {
     }
 }
 
-# check parse?
+# check class of parse?
 sub Parse::Marpa::Parse::earleme {
     my $parse = shift;
 
@@ -4302,7 +4258,7 @@ sub Parse::Marpa::Parse::earleme {
     local ($Parse::Marpa::Internal::This::grammar) = $grammar;
 
     # lexables not checked -- don't use prediction here
-    # maybe add this as an option
+    # maybe add this as an option?
     my $lexables = Parse::Marpa::Internal::Parse::complete_set($parse);
     return Parse::Marpa::Internal::Parse::scan_set( $parse, @_ );
 }
@@ -5693,15 +5649,18 @@ sub Parse::Marpa::show_value {
 
 =head1 NAME
 
-Parse::Marpa - (pre-Alpha) Jay Earley's general parsing algorithm, with LR(0) precomputation
+Parse::Marpa - (pre-Alpha) Earley's parsing with LR(0) precomputation
 
 =head1 VERSION
 
-This is Pre-alpha software.
+This is an Alpha release candidate.
 
-It's strictly a developer's version.
-Those not developing this module will want to wait
-for at least a released, beta version.
+It's intended to let people look Marpa over and try it out.
+Uses beyond that are risky.
+While Marpa is in alpha,
+you certainly don't want to use it for anything
+mission-critical or with a serious deadline.
+
 =cut
 
 =head1 SYNOPSIS
@@ -5787,21 +5746,27 @@ You're now ready to announce your results and continue the loop.
 
 =head1 DESCRIPTION
 
-C<Parse::Marpa> parses text given an arbitrary context-free grammar.
+C<Parse::Marpa> parses any cycle-free context-free grammar.
 
 =over 4
 
 =item *
 
 Marpa parses any grammar which can be specified in cycle-free BNF.
+(A cycle is a case where A produces A -- the BNF version of an infinite loop.)
 
 =item *
 
-Every context-free grammar that does not contain a cycle is fine.
-This includes
-recursive grammars (both left and right),
-grammars with empty productions,
-and ambiguous grammars.
+The ban on cycles is B<not> a ban on recursion.
+Marpa cheerfully parses left-recursive, right-recursive
+and any other kind of recursive grammar, so long as it is cycle-free.
+Recursion is useful.  Cycles (which are essentially recursion without change)
+seem to always be pathological.
+
+=item *
+
+Marpa parses grammars with empty productions.
+Empty productions are often important in specifying semantics.
 
 =item *
 
@@ -5825,39 +5790,21 @@ combining it with LR(0) precomputation.
 
 =item *
 
-Marpa's own innovations,
+Marpa's own innovations
 include predictive and ambiguous lexing.
 
 =back
 
-Marpa bans cycle-free grammars because it's not clear what their semantics
-should be.
-A grammar is said to have a cycle if
-the symbol A can produce (directly or via a series of productions)
-a sentential form consisting only of the symbol A.
-Basically, a cycle is recursion without change.
-The "natural" semantics for these
-"a rose is a rose is a rose is a ..." constructs is
-an infinite loop,
-and users don't need a sophisticated new tool for writing those.
+=head1 THE STATUS OF THIS MODULE
 
-=head1 BEWARE!  PRE-ALPHA SOFTWARE
-
+This is a candidate for the alpha release.
+See the warnings L<above|"VERSION">.
 Since this is pre-alpha software, users with immediate needs must
 look elsewhere.
 I've no personal experience with them, but
 C<Parse::Yapp> and C<Parse::RecDescent> are
 alternatives to this module which are well reviewed and
 much more mature and stable.
-
-=head2 What to Expect Once Marpa Goes Alpha
-
-The alpha version will be intended to let people look Marpa over
-and try it out.
-Uses beyond that are risky.
-While Marpa is in alpha,
-you certainly don't want to use it for anything
-mission-critical or with a serious deadline.
 
 There will be bugs and misfeatures when I go alpha,
 but all known bugs will be documented,

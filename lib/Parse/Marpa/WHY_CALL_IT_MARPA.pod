@@ -6,25 +6,29 @@ Parse::Marpa::WHY - Why call this parser "Marpa"?
 
 Marpa is the name of the greatest of the Tibetan "translators".  In
 that time (we're talking the 11th century AD) Indian Buddhism was
-at its height.  A generation of Tibetans translators were devoting
-themselves to obtaining its texts and translating them from Sanskrit.
+at its height.  A generation of Tibetan translators were devoting
+themselves to producing Tibetan versions of Buddhism's Sanskrit scriptures.
 Marpa was their major figure, and today he is known simply as Marpa
 Lotsawa: "Marpa the Translator".
 
 In the 11th century, translation was not a job for the indoors type.
-A translator needed to study with the Buddhist teachers who had the
+A translator needed to study with the teachers who had the
 texts and could explain them.  That meant going to India.  Marpa's
-home was in the Lhotrak Valley, and from there the easiest way to
-India was via the 15,000 foot Khala Chela Pass.  To reach Khala
-Chela's three-mile high summit, Marpa had to cross two hundred miles
-of Tibet, most of them difficult and all of them lawless.
+home was in the Lhotrak Valley.
+The route from the Lhotrak to India was via the three-mile high Khala Chela Pass,
+two hundred difficult and lawless miles away.
 
-From Khala Chela downhill to the great Buddhist center of Nalanda
-University was four hundred miles, but Tibetans would stop for years
-or months in Nepal, getting used to the low altitudes.  Almost no
-germs live in the cold, thin air of Tibet, and Tibetans arriving
-directly in the lowlands had no immunities.  Tibetans had learned
-the hard way not to go straight to Nalanda.  Whole expeditions had
+From Khala Chela to the great Buddhist center of Nalanda
+University was four hundred miles downhill,
+but Tibetans would stop off for years or months in Nepal,
+getting used to the low altitudes.
+Tibetans had learned
+not to go straight to Nalanda the hard way.
+Almost no germs live in the cold,
+thin air of Tibet,
+and Tibetans arriving
+directly in the lowlands had no immunities.
+Whole expeditions had
 died from disease within weeks of arrival on the hot plains.
 
 =head1 BLATANT PLUG

@@ -5,7 +5,6 @@ Makefile.PL
 README
 TODO
 bin/marpa
-bin/test.grammar
 bootstrap/Makefile
 bootstrap/bootstrap.pl
 bootstrap/bootstrap_header.pl

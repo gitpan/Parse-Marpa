@@ -1,7 +1,4 @@
-* Explicitly setting start symbol -- sort this out.  Note in docs that it
-  needs to be set in canonical form.
-
-* Test that max_parses is enforced
+* Test that max_parses is enforced, then document
 
 * Ensure Parse::Marpa::Internal::This::grammar set wherever appropriate.
 
@@ -13,7 +10,7 @@
 
 * Test (or remove?) lexing suffixes.
 
-* Allow macros:
+* Allow macros?
      @VALUE
      $VALUE_REF
      $VALUE[n]

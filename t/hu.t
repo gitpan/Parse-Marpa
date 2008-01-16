@@ -9,7 +9,10 @@ BEGIN {
 	use_ok( 'Parse::Marpa' );
 }
 
-# A grammar from Hopcroft & Ullman, pp. 248, 250.
+# A grammar from Hopcroft & Ullman,
+# _Introduction to Automata Theory, Languages and Computation_,
+# (Addison-Wesley, Reading, Massachusetts: 1979),
+# pp. 248, 250.
 
 my $g = new Parse::Marpa(
     start => "S'",

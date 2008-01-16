@@ -3,3 +3,10 @@ Revision history for Parse::Marpa
 0.01    Fri Sep 14 12:22:55 EDT 2007
         Under development
 
+0.200.0 Tue Jan 15 19:17:31 EST 2008
+        First Candidate for Alpha Release
+
+	The big jump in version numbers is because the earliest releases used a different
+	version number format, and are later in ASCII collating sequence.  This release
+	will be after all others, both chronologically *AND* in ASCII collating order.
+

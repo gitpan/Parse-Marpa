@@ -18,31 +18,37 @@ Marpa is based on and derived from
 the parser described in John Aycock and R.
 Nigel Horspool's "Practical Earley Parsing", I<The Computer Journal>,
 Vol. 45, No. 6, 2002, pp. 620-630.
-I take the idea that LR(0)
-precomputation can be done for
-L<Earley's general parsing algorithm|"Earley 1970">, as well as the details of
-how to do it, from Aycock and Horspool.
+The idea of doing LR(0)
+precomputation for
+L<Earley's general parsing algorithm|"Earley 1970">,
+as well as details of how to do it,
+came to me from this article.
 
-The Aycock and Horspool paper is
-L<available on the web|http://www.cs.uvic.ca/~nigelh/Publications/PracticalEarleyParsing.pdf>, unlike
-L<"Earley 1970">,
-and summarizes Earley's very nicely.
-It is B<not>, however, easy reading.
+The Aycock and Horspool paper 
+summarizes Earley's very nicely and is
+available on the web: L<http://www.cs.uvic.ca/~nigelh/Publications/PracticalEarleyParsing.pdf>,
+unlike L<"Earley 1970">.
+Aycock and Horspool 2002 is B<not>, however, easy reading.
 I have been following
 this particular topic on and off for years.
 Nonetheless I found this paper very heavy going.
+Readers who want to get into might find the Marpa documentation,
+up to and including L<Parse::Marpa::INTERNALS>,
+the easiest approach to the Aycock and Horspool paper,
+though I can't promise you there won't be leaps of
+insight required at several points.
 
 =head1 Earley 1970
 
-Jay Earley's most accessible paper on his algorithm.
+Jay Earley's most accessible paper on his algorithm
 is "An efficient context-free parsing algorithm",
 I<Communications of the Association for Computing Machinery>,
 13:2:94-102, 1970.
 
-Ordinarily, I'd not bother picking at nits in a brilliant and
-historically important article that's over 35 years old.
-But not a few people cite this article as not just the first word in Earley
-parsing, but the last.
+Ordinarily, I'd not bother pointing out 35-year old nits
+in a brilliant and historically important article.
+But more than a few people cite this article as not just the first word in Earley
+parsing, but also the last.
 They need to be aware of two issues.
 
 First, the parse engine itself, as described, has a serious bug.
@@ -55,17 +61,18 @@ L<in their article|"Aycock and Horspool 2002">.
 Second,
 according to Tomita there is a mistake in the parse
 tree representation.
-See the bibliography entry for this article in L<"Grune and Jacobs 2008">.
-In the printed edition, it's on page 578,
+See page 153 of L<"Grune and Jacobs 1990">,
+page 210 of L<"Grune and Jacobs 2008">,
+and the bibliography entry for Earley 1970 in L<"Grune and Jacobs 2008">.
+In the printed edition of the 2008 bibliography, the entry is on page 578,
 and on the web
 (L<ftp://ftp.cs.vu.nl/pub/dick/PTAPG_2nd_Edition/CompleteList.pdf>),
 it's on pp. 583-584.
 My methods for getting the parses
 out of Earley sets
-have come from
-L<Aho and Ullman|/"Aho and Ullmann 1972">,
-L<Aycock and Horspool|/"Aycock and Horspool 2002">,
-and my own device,
+have come from L<Aho and Ullman|/"Aho and Ullmann 1972">,
+from L<Aycock and Horspool|/"Aycock and Horspool 2002">,
+or been of my own device,
 so I am taking Tomita's word on this one.
 
 =head1 Grune and Jacobs 1990

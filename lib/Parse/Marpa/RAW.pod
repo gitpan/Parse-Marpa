@@ -110,6 +110,23 @@ The separator is not allowed to be a nullable symbol.
 
 =back
 
+=head2 Duplicate Rules
+
+Marpa throws an exception if a duplicate rule is added.
+For BNF productions, a rule is considered a duplicate if it has the
+same left hand side symbol,
+and the same symbols in the same order on the right hand side.
+
+For sequences, a rule is considered a duplicate if it has the same
+left hand symbol, the same right hand side symbol,
+and the same separator.
+It's possible this prevents some non-pathological uses of
+sequences,
+but that can be worked around by writing them
+as BNF productions.
+Since the semantics sequences in such cases would be tricky,
+writing them as BNF productions may be the best thing, anyway.
+
 =head1 THE TERMINALS METHOD OPTION
 
 The value of the C<terminals> option must be a reference to an array of references to terminal descriptions.
