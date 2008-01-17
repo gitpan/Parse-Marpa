@@ -10,3 +10,7 @@ Revision history for Parse::Marpa
 	version number format, and are later in ASCII collating sequence.  This release
 	will be after all others, both chronologically *AND* in ASCII collating order.
 
+0.202.0 Thu Jan 17 17:01:25 EST 2008
+
+        First Alpha Release
+

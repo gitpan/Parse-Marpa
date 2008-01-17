@@ -10,7 +10,7 @@ use strict;
 use Parse::Marpa::MDL;
 
 BEGIN {
-    our $VERSION = '0.200_000';
+    our $VERSION = '0.202000';
     our $STRING_VERSION = $VERSION;
     $VERSION = eval $VERSION;
 }
@@ -5649,11 +5649,11 @@ sub Parse::Marpa::show_value {
 
 =head1 NAME
 
-Parse::Marpa - (pre-Alpha) Earley's parsing with LR(0) precomputation
+Parse::Marpa - (Alpha) Earley's algorithm with LR(0) precomputation
 
 =head1 VERSION
 
-This is an Alpha release candidate.
+This is an Alpha release.
 
 It's intended to let people look Marpa over and try it out.
 Uses beyond that are risky.
@@ -5797,9 +5797,9 @@ include predictive and ambiguous lexing.
 
 =head1 THE STATUS OF THIS MODULE
 
-This is a candidate for the alpha release.
+This is an alpha release.
 See the warnings L<above|"VERSION">.
-Since this is pre-alpha software, users with immediate needs must
+Since this is alpha software, users with immediate needs must
 look elsewhere.
 I've no personal experience with them, but
 C<Parse::Yapp> and C<Parse::RecDescent> are

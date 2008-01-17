@@ -2,7 +2,7 @@ Parse::Marpa
 
 FIRST THE CAVEATS ...
 
-This is an Alpha release candidate.
+This is an Alpha release.
 
 It's intended to let people look Marpa over and try it out. Uses
 beyond that are risky. While Marpa is in alpha, you certainly don't
