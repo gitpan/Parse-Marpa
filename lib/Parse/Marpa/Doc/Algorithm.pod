@@ -1,6 +1,6 @@
 =head1 NAME
 
-Parse::Marpa::ALGORITHM - The Marpa Algorithm
+Parse::Marpa::Doc::Algorithm - The Marpa Algorithm
 
 =head1 OVERVIEW
 
@@ -11,7 +11,7 @@ This combines LR(0)
 precomputation
 with the general parsing algorithm
 L<described by Jay
-Earley in 1970|Parse::Marpa::BIBLIOGRAPHY/"Earley 1970">.
+Earley in 1970|Parse::Marpa::Doc::Bibliography/"Earley 1970">.
 
 Someday I'd like to set forth the whole algorithm,
 including the contributions of Aycock, Horspool and Earley,
@@ -24,7 +24,7 @@ with briefly describing the more significant ideas new with Marpa,
 and I have to assume that the reader is familiar with parsing in general,
 and that he understands terms like Earley set and Earley item.
 It will be helpful to have read the other Marpa documents,
-especially L<Parse::Marpa::INTERNALS>.
+especially L<Parse::Marpa::Doc::Internals>.
 
 All claims of originality are limited by my ignorance.
 The parsing literature is large, and I may have been preceded by someone whose

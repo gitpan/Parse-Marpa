@@ -14,24 +14,32 @@ WriteMakefile(
     PM => {
 	'lib/Parse/Marpa/Raw_Source.pm'
 	    => '$(INST_LIB)/Parse/Marpa/Raw_Source.pm',
-	'lib/Parse/Marpa/ALGORITHM.pod'
-	    => '$(INST_LIB)/Parse/Marpa/ALGORITHM.pod',
-	'lib/Parse/Marpa/BIBLIOGRAPHY.pod'
-	    => '$(INST_LIB)/Parse/Marpa/BIBLIOGRAPHY.pod',
-	'lib/Parse/Marpa/DIAGNOSTICS.pod'
-	    => '$(INST_LIB)/Parse/Marpa/DIAGNOSTICS.pod',
-	'lib/Parse/Marpa/INTERNALS.pod'
-	    => '$(INST_LIB)/Parse/Marpa/INTERNALS.pod',
-	'lib/Parse/Marpa/RAW.pod'
-	    => '$(INST_LIB)/Parse/Marpa/RAW.pod',
-	'lib/Parse/Marpa/LANGUAGE.pod'
-	    => '$(INST_LIB)/Parse/Marpa/LANGUAGE.pod',
-	'lib/Parse/Marpa/CONCEPTS.pod'
-	    => '$(INST_LIB)/Parse/Marpa/CONCEPTS.pod',
+	'lib/Parse/Marpa/Doc/Algorithm.pod'
+	    => '$(INST_LIB)/Parse/Marpa/Doc/Algorithm.pod',
+	'lib/Parse/Marpa/Doc/Bibliography.pod'
+	    => '$(INST_LIB)/Parse/Marpa/Doc/Bibliography.pod',
+	'lib/Parse/Marpa/Doc/Diagnostics.pod'
+	    => '$(INST_LIB)/Parse/Marpa/Doc/Diagnostics.pod',
+	'lib/Parse/Marpa/Doc/Internals.pod'
+	    => '$(INST_LIB)/Parse/Marpa/Doc/Internals.pod',
+	'lib/Parse/Marpa/Doc/Plumbing.pod'
+	    => '$(INST_LIB)/Parse/Marpa/Doc/Plumbing.pod',
+	'lib/Parse/Marpa/Doc/MDL.pod'
+	    => '$(INST_LIB)/Parse/Marpa/Doc/MDL.pod',
+	'lib/Parse/Marpa/Doc/To_Do.pod'
+	    => '$(INST_LIB)/Parse/Marpa/Doc/To_Do.pod',
 	'lib/Parse/Marpa/Lex.pm'
 	    => '$(INST_LIB)/Parse/Marpa/Lex.pm',
 	'lib/Parse/Marpa/MDL.pm'
 	    => '$(INST_LIB)/Parse/Marpa/MDL.pm',
+	'lib/Parse/Marpa/Grammar.pm'
+	    => '$(INST_LIB)/Parse/Marpa/Grammar.pm',
+	'lib/Parse/Marpa/Recognizer.pm'
+	    => '$(INST_LIB)/Parse/Marpa/Recognizer.pm',
+	'lib/Parse/Marpa/Evaluator.pm'
+	    => '$(INST_LIB)/Parse/Marpa/Evaluator.pm',
+	'lib/Parse/Marpa/Doc/Tutorial.pod'
+	    => '$(INST_LIB)/Parse/Marpa/Doc/Tutorial.pod',
 	'lib/Parse/Marpa.pm'
 	    => '$(INST_LIB)/Parse/Marpa.pm',
 	'lib/Parse/Marpa/trailer_Raw_Source.pm'
@@ -40,8 +48,8 @@ WriteMakefile(
 	    => '$(INST_LIB)/Parse/Marpa/Source.pm',
 	'lib/Parse/Marpa/Source.pm.PL'
 	    => '$(INST_LIB)/Parse/Marpa/Source.pm.PL',
-	'lib/Parse/Marpa/WHY_CALL_IT_MARPA.pod'
-	    => '$(INST_LIB)/Parse/Marpa/WHY_CALL_IT_MARPA.pod',
+	'lib/Parse/Marpa/Doc/Why_Call_It_Marpa.pod'
+	    => '$(INST_LIB)/Parse/Marpa/Why_Call_It_Marpa.pod',
 	'lib/Parse/Marpa/header_Raw_Source.pm'
 	    => '$(INST_LIB)/Parse/Marpa/header_Raw_Source.pm',
     },

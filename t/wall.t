@@ -25,16 +25,21 @@ BEGIN {
 # apart at each step.  But I wanted to test having
 # a start symbol that appears repeatedly on the RHS.
 
-my $g = new Parse::Marpa(
+my $g = new Parse::Marpa::Grammar({
     start => "E",
-    volatile => 0,
+    opaque => 0,
+
+    # Set max_parses just in case there's an infinite loop.
+    # This is for debugging, after all
+    max_parses => 300,
+
     rules => [
         [ "E", [qw/E Minus E/],
 <<'EOCODE'
     my ($right_string, $right_value)
-        = ($Parse::Marpa::Read_Only::v->[2] =~ /^(.*)==(.*)$/);
+        = ($_->[2] =~ /^(.*)==(.*)$/);
     my ($left_string, $left_value)
-        = ($Parse::Marpa::Read_Only::v->[0] =~ /^(.*)==(.*)$/);
+        = ($_->[0] =~ /^(.*)==(.*)$/);
     my $value = $left_value - $right_value;
     "(" . $left_string . "-" . $right_string . ")==" . $value;
 EOCODE
@@ -42,27 +47,27 @@ EOCODE
         [ "E", [qw/E Minus Minus/],
 <<'EOCODE'
     my ($string, $value)
-        = ($Parse::Marpa::Read_Only::v->[0] =~ /^(.*)==(.*)$/);
+        = ($_->[0] =~ /^(.*)==(.*)$/);
     "(" . $string . "--" . ")==" . $value--;
 EOCODE
         ],
         [ "E", [qw/Minus Minus E/],
 <<'EOCODE'
     my ($string, $value)
-        = ($Parse::Marpa::Read_Only::v->[2] =~ /^(.*)==(.*)$/);
+        = ($_->[2] =~ /^(.*)==(.*)$/);
     "(" . "--" . $string . ")==" . --$value;
 EOCODE
         ],
         [ "E", [qw/Minus E/],
 <<'EOCODE'
     my ($string, $value)
-        = ($Parse::Marpa::Read_Only::v->[1] =~ /^(.*)==(.*)$/);
+        = ($_->[1] =~ /^(.*)==(.*)$/);
     "(" . "-" . $string . ")==" . -$value;
 EOCODE
         ],
         [ "E", [qw/Number/],
 <<'EOCODE'
-            my $value = $Parse::Marpa::Read_Only::v->[0];
+            my $value = $_->[0];
             "$value==$value";
 EOCODE
         ],
@@ -73,37 +78,30 @@ EOCODE
     ],
     default_action =>
 <<'EOCODE'
-     my $v_count = scalar @$Parse::Marpa::Read_Only::v;
+     my $v_count = scalar @$_;
      return "" if $v_count <= 0;
-     return $Parse::Marpa::Read_Only::v->[0] if $v_count == 1;
-     "(" . join(";", @$Parse::Marpa::Read_Only::v) . ")";
+     return $_->[0] if $v_count == 1;
+     "(" . join(";", @$_) . ")";
 EOCODE
-);
+});
 
 my @expected = qw(0 1 1 3 4 8 12 21 33 55 88 144 232 );
 
 for my $n (1 .. 12) {
 
-    my $parse = new Parse::Marpa::Parse(grammar => $g);
+    my $recce = new Parse::Marpa::Recognizer({grammar => $g});
     my $minus = $g->get_symbol("Minus");
     my $number = $g->get_symbol("Number");
-    $parse->earleme([$number, 6, 1]);
+    $recce->earleme([$number, 6, 1]);
     for my $i (1 .. $n) {
-        $parse->earleme([$minus, "-", 1]);
+        $recce->earleme([$minus, "-", 1]);
     }
-    $parse->earleme([$number, 1, 1]);
+    $recce->earleme([$number, 1, 1]);
 
-    $parse->initial();
+    my $evaler = new Parse::Marpa::Evaluator($recce);
 
     my $parse_count = 0;
-    # Set max at 20 just in case there's an infinite loop.
-    # This is for debugging, after all
-    PARSE: for (my $i = 0;  1; $i++) {
-        my $value = $parse->value();
-        $parse_count++;
-        last PARSE unless $parse->next();
-    }
-
+    while ($evaler->next()) { $parse_count++; }
     is($expected[$n], $parse_count, "Wall Series Number $n");
 
 }

@@ -1,23 +1,45 @@
 =head1 NAME
 
-Parse::Marpa::RAW - Marpa's Raw Grammar Interface
+Parse::Marpa::Doc::Plumbing - Marpa's Plumbing Interface
 
 =head1 OVERVIEW
 
-This document describes Marpa's Raw Grammar Interface.
+This document describes Marpa's Plumbing Interface.
 It is the low-level interface used by all others.
-The Raw Grammar Interface can be used
+The Plumbing can be used
 directly.
 It is a short list of method options to the
 C<Parse::Marpa::new()>,
 C<Parse::Marpa::set()>,
-and C<Parse::Marpa::Parse::new()> methods.
+and C<Parse::Marpa::Recognizer::new()> methods.
 
 Marpa does not allow use of both the raw interface and a high level interface
 to build the same grammar,
 with a minor exception as described below.
 Marpa throws an exception if the user attempts to build the same grammar using
 both kinds of interface.
+
+=head1 METHODS
+
+=head2 get_symbol
+
+    my $minus = $grammar->get_symbol("minus");
+
+    my $number
+	= Parse::Marpa::Grammar::get_symbol($grammar, "number");
+
+This C<Parse::Marpa::Grammar> method, Given a symbol's raw interface name,
+returns the symbol's "cookie".
+It returns undefined if a symbol with that name doesn't exist.
+
+Symbol cookies are used primarily
+for calling of the C<Parse::Marpa::Recognizer::earleme> method.
+To get the cookie for a symbol using a high-level interface symbol name,
+see the documentation for the individual high level interface.
+
+If you are using MDL to define your grammar, you probably
+want to use C<Parse::Marpa::MDL::get_symbol> instead, so that
+the conversion from MDL name to raw interface name is handled for you.
 
 =head1 RAW INTERFACE SYMBOL NAMES
 
@@ -99,7 +121,7 @@ must be repeated at least C<min> times.
 Only one symbol is allowed on the right hand side of a sequence production,
 and it is repeated according to C<min> and C<max>.
 The right hand side symbol is not allowed be a nullable symbol.
-For an introduction to sequence productions, see the L<MDL document|Parse::Marpa::LANGUAGE>.
+For an introduction to sequence productions, see the L<MDL document|Parse::Marpa::Doc::MDL>.
 
 =item C<separator>
 

@@ -16,8 +16,13 @@ BEGIN {
 sub ah_extended {
      my $n = shift;
 
-    my $g = new Parse::Marpa(
+    my $g = new Parse::Marpa::Grammar({
         start => "S",
+
+        # An arbitrary maximum is put on the number of parses -- this is for
+        # debugging, and infinite loops happen.
+        max_parses => 999,
+
         rules => [
             [ "S", [("A")x$n] ],
             [ "A", [qw/a/] ],
@@ -27,27 +32,22 @@ sub ah_extended {
         terminals => [
             [ "a" => { regex => qr/a/ } ],
         ],
-        volatile => 1,
+        opaque => 1,
         # no warnings for $n equals zero
         warnings => ($n ? 1 : 0),
-    );
+    });
 
-    my $parse = new Parse::Marpa::Parse(grammar => $g);
+    my $recce = new Parse::Marpa::Recognizer({grammar => $g});
 
     my $a = $g->get_symbol("a");
-    for (0 .. $n) { $parse->earleme([$a, "a", 1]); }
+    for (0 .. $n) { $recce->earleme([$a, "a", 1]); }
 
     my @parse_counts;
     for my $loc (0 .. $n) {
         my $parse_number = 0;
-        die("Cannot initialize parse at location $loc") unless $parse->initial($loc);
-
-        # An arbitrary maximum is put on the number of parses -- this is for
-        # debugging, and infinite loops happen.
-        PARSE: for my $parse_number (1 .. 999) {
-           $parse_counts[$loc]++;
-           last PARSE unless $parse->next();
-        }
+        my $evaler = new Parse::Marpa::Evaluator($recce, $loc);
+        die("Cannot initialize parse at location $loc") unless $evaler;
+        while ($evaler->next()) { $parse_counts[$loc]++ }
     }
     join(" ", @parse_counts);
 }

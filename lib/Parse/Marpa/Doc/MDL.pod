@@ -281,7 +281,7 @@ until Marpa goes beta.
 
 Pedantically speaking, the start symbol is optional,
 in the sense that it may be specified later
-using L<the raw interface|Parse::Marpa::RAW>.
+using L<the raw interface|Parse::Marpa::Doc::Plumbing>.
 But if no start symbol has been specified by precomputation time,
 Marpa will fail.
 
@@ -331,7 +331,7 @@ to an at-sign.
 
 =head2 Default Lex Prefix Definition
 
-Terminals can be specified as patterns which the C<Parse::Marpa::Parse::text()>
+Terminals can be specified as patterns which the C<Parse::Marpa::Recognizer::text()>
 method will automatically search for.
 Terminals are allowed to have
 a "prefix", another pattern which is to be checked for
@@ -403,7 +403,7 @@ The usual form of a production sentence is
 a BNF (Backus-Naur Form) production.
 (The Marpa documents assume you know what BNF is.
 If you don't, a good start is
-L<Wikipedia's article on Backus Naur form|Parse::Marpa::BIBLIOGRAPHY/"WIKIPEDIA ON BNF">.)
+L<Wikipedia's article on Backus Naur form|Parse::Marpa::Doc::Bibliography/"WIKIPEDIA ON BNF">.)
 
 A BNF sentence consists of a left hand side and a right hand side, separated by a colon.
 The left hand side is the name of a single symbol.
@@ -491,7 +491,7 @@ and C<optional X sequence> would be C<X*>.
 
 The value of the child symbols in a sequence sentence is available
 to semantic actions in the
-array referenced by C<$Parse::Marpa::Read_Only::v>,
+array referenced by C<$_>,
 just as in a BNF sentence.
 Unlike in a BNF sentence,
 in a sequence sentence
@@ -502,8 +502,8 @@ by using operations like C<join> or C<map> which work
 on the entire array.
 You can also obtain a count of the symbols on the right side
 in the usual way,
-with C<scalar @{$Parse::Marpa::Read_Only::v}>.
-The index of the last symbol is available as C<$#$Parse::Marpa::Read_Only::v>.
+with C<scalar @{$_}>.
+The index of the last symbol is available as C<$#$_>.
 Sequence sentences work best where the semantics really is that of a sequence
 of semantically equivalent items.
 
@@ -582,7 +582,7 @@ A priority sentence is the keyword C<priority> followed by an integer value, whi
 may be negative.  The default priority is 0.
 
     definition: predefined setting, period.
-    q{ $Parse::Marpa::Read_Only::v->[0] }.
+    q{ $_->[0] }.
     priority 1000.
 
 In the example above,
@@ -757,7 +757,7 @@ The first element must be the value of the token at the match.
 This is often the matched substring, but it can be anything useful.
 The second element of the array must be the length of the token
 in earlemes
-(see L<the CONCEPTS document|Parse::Marpa::CONCEPTS> about earlemes).
+(see L<the Concepts document|Parse::Marpa::Doc::Concepts> about earlemes).
 Lex closures in MDL should assume
 that a one-character-per-earleme model is in use.
 
@@ -805,4 +805,4 @@ C<My symbol> and C<MY_SYMBOL> is, in canonical form, C<my-symbol>.
 
 Given an MDL symbol name as its one argument,
 C<Parse::Marpa::MDL::get_symbol()> will return the symbol's "cookie".
-Symbol cookies are needed to use the C<Parse::Marpa::Parse::earleme()> method.
+Symbol cookies are needed to use the C<Parse::Marpa::Recognizer::earleme()> method.

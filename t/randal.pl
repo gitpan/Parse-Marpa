@@ -1,14 +1,7 @@
 use 5.010_000;
 use strict;
 use warnings;
-use lib "../lib";
 use English;
-
-# use Test::More tests => 2;
-
-# BEGIN {
-	# use_ok( 'Parse::Marpa' );
-# }
 use Parse::Marpa;
 
 my @tests = split(/\n/, <<'EO_TESTS');
@@ -21,24 +14,23 @@ EO_TESTS
 
 my $source; { local($RS) = undef; $source = <DATA> };
 
-my $g = new Parse::Marpa(
-    warnings => 1,
-    code_lines => -1,
-);
-
-$g->set( source => \$source);
-
-$g->precompute();
+my $g = new Parse::Marpa::Grammar( { mdl_source => \$source });
 
 TEST: while (my $test = pop @tests) {
     say "Here's what I'm parsing: ", $test;
-    my $parse = new Parse::Marpa::Parse($g);
-    $parse->text(\$test);
-    $parse->initial();
+    my $recce = new Parse::Marpa::Recognizer({grammar => $g});
+    my $exhaustion_location = $recce->text(\$test);
+    if ($exhaustion_location >= 0) {
+        die("Parse exhausted at location $exhaustion_location in line: $test\n");
+    }
+    my $evaler = new Parse::Marpa::Evaluator($recce);
+    unless ($evaler)
+    {
+        die("No parse for line: $test\n");
+    }
     my @parses;
-    push(@parses, $parse->value);
-    while ($parse->next) {
-        push(@parses, $parse->value);
+    while (defined(my $value = $evaler->next)) {
+        push(@parses, $value);
     }
     if (scalar @parses == 1) {
        say "Things look good, I've got just one parse:";
@@ -54,24 +46,24 @@ TEST: while (my $test = pop @tests) {
 }
 
 __DATA__
-semantics are perl5.  version is 0.1.59.  the start symbol is perl line.
+semantics are perl5.  version is 0.205.0.  the start symbol is perl line.
 the default lex prefix is qr/\s*/.
 
 perl line: perl statements, optional comment.
 q{
-    my $result = $Parse::Marpa::This::v->[0];
+    my $result = $_->[0];
     $result .= ", comment"
-	if defined $Parse::Marpa::This::v->[1];
+	if defined $_->[1];
     $result
 }.
 
 perl statements: semicolon separated perl statement sequence.
-q{ join(", ", @{$Parse::Marpa::This::v}) }.
+q{ join(", ", @{$_}) }.
 
 perl statement: division. q{ "division" }.
 
 perl statement: function call.
-q{ $Parse::Marpa::This::v->[0] }.
+q{ $_->[0] }.
 
 perl statement: empty statement.  q{ "empty statement" }.
 
@@ -84,10 +76,10 @@ expr: function call.
 expr: number.
 
 function call: unary function name, argument.
-q{ $Parse::Marpa::This::v->[0] . " function call" }.
+q{ $_->[0] . " function call" }.
 
 function call: nullary function name.
-q{ $Parse::Marpa::This::v->[0] . " function call" }.
+q{ $_->[0] . " function call" }.
 
 argument: pattern match.
 

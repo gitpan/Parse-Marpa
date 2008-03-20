@@ -18,16 +18,21 @@ BEGIN {
 # apart at each step.  But I wanted to test having
 # a start symbol that appears repeatedly on the RHS.
 
-my $g = new Parse::Marpa(
+my $g = new Parse::Marpa::Grammar({
     start => "E",
+
+    # Set max at 10 just in case there's an infinite loop.
+    # This is for debugging, after all
+    max_parses => 10,
+
     rules => [
 	[ "E", [qw/E Op E/],
 <<'EOCODE'
             my ($right_string, $right_value)
-                = ($Parse::Marpa::Read_Only::v->[2] =~ /^(.*)==(.*)$/);
+                = ($_->[2] =~ /^(.*)==(.*)$/);
             my ($left_string, $left_value)
-                = ($Parse::Marpa::Read_Only::v->[0] =~ /^(.*)==(.*)$/);
-            my $op = $Parse::Marpa::Read_Only::v->[1];
+                = ($_->[0] =~ /^(.*)==(.*)$/);
+            my $op = $_->[1];
             my $value;
             if ($op eq "+") {
                $value = $left_value + $right_value;
@@ -43,7 +48,7 @@ EOCODE
         ],
 	[ "E", [qw/Number/],
 <<'EOCODE'
-           my $v0 = pop @$Parse::Marpa::Read_Only::v;
+           my $v0 = pop @$_;
            $v0 . "==" . $v0;
 EOCODE
         ],
@@ -53,24 +58,24 @@ EOCODE
 	[ "Op" => { regex => qr/[-+*]/ } ],
     ],
     default_action => q{
-         my $v_count = scalar @$Parse::Marpa::Read_Only::v;
+         my $v_count = scalar @$_;
          return "" if $v_count <= 0;
-         return $Parse::Marpa::Read_Only::v->[0] if $v_count == 1;
-         "(" . join(";", @$Parse::Marpa::Read_Only::v) . ")";
+         return $_->[0] if $v_count == 1;
+         "(" . join(";", @$_) . ")";
     },
-);
+});
 
-my $parse = new Parse::Marpa::Parse(grammar => $g);
+my $recce = new Parse::Marpa::Recognizer({grammar => $g});
 
 my $op = $g->get_symbol("Op");
 my $number = $g->get_symbol("Number");
-$parse->earleme([$number, 2, 1]);
-$parse->earleme([$op, "-", 1]);
-$parse->earleme([$number, 0, 1]);
-$parse->earleme([$op, "*", 1]);
-$parse->earleme([$number, 3, 1]);
-$parse->earleme([$op, "+", 1]);
-$parse->earleme([$number, 1, 1]);
+$recce->earleme([$number, 2, 1]);
+$recce->earleme([$op, "-", 1]);
+$recce->earleme([$number, 0, 1]);
+$recce->earleme([$op, "*", 1]);
+$recce->earleme([$number, 3, 1]);
+$recce->earleme([$op, "+", 1]);
+$recce->earleme([$number, 1, 1]);
 
 is( $g->show_rules(), <<'END_RULES', "Ambiguous Equation Rules" );
 0: E -> E Op E
@@ -110,18 +115,14 @@ my @expected = (
     '(2-((0*3)+1))==1',
     '(2-(0*(3+1)))==2',
 );
-$parse->initial();
+my $evaler = new Parse::Marpa::Evaluator($recce);
 
-# Set max at 10 just in case there's an infinite loop.
-# This is for debugging, after all
-PARSE: for my $i (0 .. 10) {
-    my $value = $parse->value();
+for (my $i = 0; defined(my $value = $evaler->next()); $i++) {
     if ($i > $#expected) {
        fail("Ambiguous equation has extra value: " . $$value . "\n");
     } else {
         is($$value, $expected[$i], "Ambiguous Equation Value $i");
     }
-    last PARSE unless $parse->next();
 }
 
 # Local Variables:

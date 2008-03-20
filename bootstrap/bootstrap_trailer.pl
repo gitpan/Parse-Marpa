@@ -8,24 +8,24 @@ croak("Version requested is ", $new_version, "\nVersion must match ", $Parse::Ma
 croak("Semantics are ", $new_semantics, "\nThe only semantics currently available are perl5.")
    unless $new_semantics eq "perl5";
 
-my $g = new Parse::Marpa(
+my $g = new Parse::Marpa::Grammar({
     start => $new_start_symbol,
     rules => $new_rules,
     terminals => $new_terminals,
     warnings => 1,
-);
+});
 
-$g->set(default_lex_prefix => $new_default_lex_prefix)
+$g->set({default_lex_prefix => $new_default_lex_prefix})
     if defined $new_default_lex_prefix;
-$g->set(default_action => $new_default_action)
+$g->set({default_action => $new_default_action})
     if defined $new_default_action;
-$g->set(default_null_value => $new_default_null_value)
+$g->set({default_null_value => $new_default_null_value})
     if defined $new_default_null_value;
 
-my $parse = new Parse::Marpa::Parse(
+my $recce = new Parse::Marpa::Recognizer({
    grammar=> $g,
    preamble => $new_preamble,
-);
+});
 
 sub locator {
     my $earleme = shift;
@@ -49,8 +49,7 @@ my $spec;
 {
     local($RS) = undef;
     $spec = <GRAMMAR>;
-    if ((my $earleme = $parse->text(\$spec)) >= 0) {
-	# print $parse->show_status();
+    if ((my $earleme = $recce->text(\$spec)) >= 0) {
 	# for the editors, line numbering starts at 1
 	# do something about this?
 	my ($line, $line_start) = locator($earleme, \$spec);
@@ -64,23 +63,8 @@ my $spec;
     }
 }
 
-unless ($parse->initial()) {
-    say STDERR "No parse";
-    my ($earleme, $lhs) = $parse->find_complete_rule();
-    unless (defined $earleme) {
-	say STDERR "No rules completed";
-	exit 1;
-    }
-    my ($line, $line_start) = locator($earleme, \$spec);
-    say STDERR "Parses completed at line $line, earleme $earleme for symbols:";
-    say STDERR join(", ", @$lhs);
-    given (index($spec, "\n", $line_start)) {
-	when (undef) { say STDERR substr($spec, $line_start) }
-	default { say STDERR substr($spec, $line_start, $_-$line_start) }
-    }
-    say STDERR +(" " x ($earleme-$line_start)), "^";
-    exit 1;
-}
+my $evaler = new Parse::Marpa::Evaluator($recce);
+die("No parse") unless $evaler;
 
 our $HEADER;
 my $header;
@@ -91,6 +75,6 @@ my $trailer;
 { local($RS) = undef; open(TRAILER, "<", $trailer_file_name); $trailer = <TRAILER>; }
 
 say "# This file was automatically generated using Parse::Marpa ", $Parse::Marpa::VERSION;
-my $value = $parse->value();
+my $value = $evaler->next();
 print $header, $$value, "\n", $trailer;
 

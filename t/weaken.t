@@ -16,7 +16,7 @@ plan tests => 5;
 use_ok( 'Parse::Marpa' );
 
 my $test = sub {
-    my $g = new Parse::Marpa(
+    my $g = new Parse::Marpa::Grammar({
         start => "S",
         rules => [
             [ "S", [qw/A A A A/] ],
@@ -27,16 +27,18 @@ my $test = sub {
         terminals => [
             [ "a" => { regex => qr/a/ } ],
         ],
-    );
+    });
     my $a = $g->get_symbol("a");
-    my $parse = new Parse::Marpa::Parse(grammar => $g);
-    $parse->earleme([$a, "a", 1]);
-    $parse->earleme([$a, "a", 1]);
-    $parse->earleme([$a, "a", 1]);
-    $parse->earleme([$a, "a", 1]);
-    $parse->initial();
-    $parse->next();
-    [ $g, $parse ];
+    my $recce = new Parse::Marpa::Recognizer({grammar => $g});
+    $recce->earleme([$a, "a", 1]);
+    $recce->earleme([$a, "a", 1]);
+    $recce->earleme([$a, "a", 1]);
+    $recce->earleme([$a, "a", 1]);
+    $recce->end_input();
+    my $evaler = new Parse::Marpa::Evaluator($recce);
+    die("No parse found") unless $evaler;
+    $evaler->next();
+    [ $g, $recce, $evaler ];
 };
 
 my ($weak_count, $strong_count, $unfreed_weak, $unfreed_strong)

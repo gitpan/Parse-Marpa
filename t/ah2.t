@@ -13,7 +13,7 @@ BEGIN {
 	use_ok( 'Parse::Marpa' );
 }
 
-my $g = new Parse::Marpa(
+my $g = new Parse::Marpa::Grammar({
     start => "S",
     rules => [
         [ "S", [qw/A A A A/] ],
@@ -24,18 +24,18 @@ my $g = new Parse::Marpa(
     default_null_value => "",
     default_action =>
 <<'EOCODE'
-     my $v_count = scalar @$Parse::Marpa::Read_Only::v;
+     my $v_count = scalar @$_;
      return "" if $v_count <= 0;
-     return $Parse::Marpa::Read_Only::v->[0] if $v_count == 1;
-     "(" . join(";", @$Parse::Marpa::Read_Only::v) . ")";
+     return $_->[0] if $v_count == 1;
+     "(" . join(";", @$_) . ")";
 EOCODE
-);
+});
 
-$g->set(
+$g->set({
     terminals => [
         [ "a" => { regex => "a" } ],
     ],
-);
+});
 
 $g->precompute();
 
@@ -240,7 +240,7 @@ St14: 8
 S ::= A[] S[R0:1][x6] .
 EOS
 
-my $parse = new Parse::Marpa::Parse(grammar => $g);
+my $recce = new Parse::Marpa::Recognizer({grammar => $g});
 
 my $set0_new = <<'EOS';
 Earley Set 0
@@ -342,38 +342,38 @@ my $sets_at_2 = $sets_at_1 . $set2_at_2 . $set3_at_2;
 my $sets_at_3 = $sets_at_2 . $set3_at_3 . $set4_at_3;
 my $sets_at_4 = $sets_at_3 . $set4_at_4;
 
-is( $parse->show_status(1),
+is( $recce->show_status(1),
     "Current Earley Set: 0; Furthest: 0\n" .  $sets_new,
     "Aycock/Horspool Parse Status before parse" );
 
 my $a = $g->get_symbol("a");
-$parse->earleme([$a, "a", 1]);
+$recce->earleme([$a, "a", 1]);
 
-is( $parse->show_status(1),
+is( $recce->show_status(1),
     "Current Earley Set: 1; Furthest: 1\n" .  $sets_at_0,
     "Aycock/Horspool Parse Status at 0" );
 
-$parse->earleme([$a, "a", 1]);
+$recce->earleme([$a, "a", 1]);
 
-is( $parse->show_status(1),
+is( $recce->show_status(1),
     "Current Earley Set: 2; Furthest: 2\n" .  $sets_at_1,
     "Aycock/Horspool Parse Status at 1" );
 
-$parse->earleme([$a, "a", 1]);
+$recce->earleme([$a, "a", 1]);
 
-is( $parse->show_status(1),
+is( $recce->show_status(1),
     "Current Earley Set: 3; Furthest: 3\n" .  $sets_at_2,
     "Aycock/Horspool Parse Status at 2" );
 
-$parse->earleme([$a, "a", 1]);
+$recce->earleme([$a, "a", 1]);
 
-is( $parse->show_status(1),
+is( $recce->show_status(1),
     "Current Earley Set: 4; Furthest: 4\n" .  $sets_at_3,
     "Aycock/Horspool Parse Status at 3" );
 
-$parse->end_input();
+$recce->end_input();
 
-is( $parse->show_status(1),
+is( $recce->show_status(1),
     "Current Earley Set: 5; Furthest: 4\n" .  $sets_at_4,
     "Aycock/Horspool Parse Status at 4" );
 
@@ -410,8 +410,8 @@ my @answer = ("", qw[(a;;;) (a;a;;) (;a;a;a) (a;a;a;a)]);
 
 PERMUTATION: for (;;) {
     for my $i (@a) {
-        $parse->initial($i);
-        my $result = $parse->value();
+        my $evaler = new Parse::Marpa::Evaluator($recce, $i);
+        my $result = $evaler->next();
         $total_count++;
         if ($answer[$i] ne $$result) {
             diag(

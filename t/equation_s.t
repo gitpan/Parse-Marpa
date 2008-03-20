@@ -21,21 +21,26 @@ BEGIN {
 
 my $source; { local($RS) = undef; $source = <DATA> };
 
-my $g = new Parse::Marpa(
-    source => \$source,
-);
+my $g = new Parse::Marpa::Grammar({
 
-my $parse = new Parse::Marpa::Parse(grammar => $g);
+    # Set max at 10 in case there's an infinite loop.
+    # This is for debugging, after all
+    max_parses => 10,
+
+    mdl_source => \$source,
+});
+
+my $recce = new Parse::Marpa::Recognizer({grammar => $g});
 
 my $op = Parse::Marpa::MDL::get_symbol($g, "Op");
 my $number = Parse::Marpa::MDL::get_symbol($g, "Number");
-$parse->earleme([$number, 2, 1]);
-$parse->earleme([$op, "-", 1]);
-$parse->earleme([$number, 0, 1]);
-$parse->earleme([$op, "*", 1]);
-$parse->earleme([$number, 3, 1]);
-$parse->earleme([$op, "+", 1]);
-$parse->earleme([$number, 1, 1]);
+$recce->earleme([$number, 2, 1]);
+$recce->earleme([$op, "-", 1]);
+$recce->earleme([$number, 0, 1]);
+$recce->earleme([$op, "*", 1]);
+$recce->earleme([$number, 3, 1]);
+$recce->earleme([$op, "+", 1]);
+$recce->earleme([$number, 1, 1]);
 
 my @expected = (
     '(((2-0)*3)+1)==7',
@@ -44,18 +49,15 @@ my @expected = (
     '(2-((0*3)+1))==1',
     '(2-(0*(3+1)))==2',
 );
-$parse->initial();
+my $evaler = new Parse::Marpa::Evaluator($recce);
+die("Parse failed") unless $evaler;
 
-# Set max at 10 just in case there's an infinite loop.
-# This is for debugging, after all
-PARSE: for my $i (0 .. 10) {
-    my $value = $parse->value();
+for (my $i = 0; defined(my $value = $evaler->next()); $i++) {
     if ($i > $#expected) {
        fail("Ambiguous equation has extra value: " . $$value . "\n");
     } else {
         is($$value, $expected[$i], "Ambiguous Equation Value $i");
     }
-    last PARSE unless $parse->next();
 }
 
 # Local Variables:
@@ -66,17 +68,17 @@ PARSE: for my $i (0 .. 10) {
 # vim: expandtab shiftwidth=4:
 
 __DATA__
-semantics are perl5.  version is 0.202.0.
+semantics are perl5.  version is 0.205.0.
 
 start symbol is E.
 
 	E: E, Op, E.
 q{
             my ($right_string, $right_value)
-                = ($Parse::Marpa::Read_Only::v->[2] =~ /^(.*)==(.*)$/);
+                = ($_->[2] =~ /^(.*)==(.*)$/);
             my ($left_string, $left_value)
-                = ($Parse::Marpa::Read_Only::v->[0] =~ /^(.*)==(.*)$/);
-            my $op = $Parse::Marpa::Read_Only::v->[1];
+                = ($_->[0] =~ /^(.*)==(.*)$/);
+            my $op = $_->[1];
             my $value;
             if ($op eq "+") {
                $value = $left_value + $right_value;
@@ -92,7 +94,7 @@ q{
 
 E: Number.
 q{
-           my $v0 = pop @$Parse::Marpa::Read_Only::v;
+           my $v0 = pop @$_;
            $v0 . "==" . $v0;
 }.
 
@@ -101,8 +103,8 @@ Number matches qr/\d+/.
 Op matches qr/[-+*]/.
  
 the default action is q{
-         my $v_count = scalar @$Parse::Marpa::Read_Only::v;
+         my $v_count = scalar @$_;
          return "" if $v_count <= 0;
-         return $Parse::Marpa::Read_Only::v->[0] if $v_count == 1;
-         "(" . join(";", @$Parse::Marpa::Read_Only::v) . ")";
+         return $_->[0] if $v_count == 1;
+         "(" . join(";", @$_) . ")";
     }.

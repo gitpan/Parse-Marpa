@@ -25,23 +25,22 @@ EO_TESTS
 
 my $source; { local($RS) = undef; $source = <DATA> };
 
-my $g = new Parse::Marpa(
+my $g = new Parse::Marpa::Grammar({
     warnings => 1,
     code_lines => -1,
-);
+});
 
-$g->set( source => \$source);
+$g->set({ mdl_source => \$source });
 
 $g->precompute();
 
 TEST: while (my $test = pop @tests) {
-    my $parse = new Parse::Marpa::Parse(grammar => $g);
-    $parse->text(\$test);
-    $parse->initial();
+    my $recce = new Parse::Marpa::Recognizer({grammar => $g});
+    $recce->text(\$test);
+    my $evaler = new Parse::Marpa::Evaluator($recce);
     my @parses;
-    push(@parses, $parse->value);
-    while ($parse->next) {
-        push(@parses, $parse->value);
+    while (defined(my $value = $evaler->next)) {
+        push(@parses, $value);
     }
     my @expected_parses;
     my ($test_name) = ($test =~ /^([a-z]+) /);
@@ -83,24 +82,24 @@ TEST: while (my $test = pop @tests) {
 }
 
 __DATA__
-semantics are perl5.  version is 0.202.0.  the start symbol is perl line.
+semantics are perl5.  version is 0.205.0.  the start symbol is perl line.
 the default lex prefix is qr/\s*/.
 
 perl line: perl statements, optional comment.
 q{
-    my $result = $Parse::Marpa::Read_Only::v->[0];
+    my $result = $_->[0];
     $result .= ", comment"
-	if defined $Parse::Marpa::Read_Only::v->[1];
+	if defined $_->[1];
     $result
 }.
 
 perl statements: semicolon separated perl statement sequence.
-q{ join(", ", @{$Parse::Marpa::Read_Only::v}) }.
+q{ join(", ", @{$_}) }.
 
 perl statement: division. q{ "division" }.
 
 perl statement: function call.
-q{ $Parse::Marpa::Read_Only::v->[0] }.
+q{ $_->[0] }.
 
 perl statement: empty statement.  q{ "empty statement" }.
 
@@ -113,10 +112,10 @@ expr: function call.
 expr: number.
 
 function call: unary function name, argument.
-q{ $Parse::Marpa::Read_Only::v->[0] . " function call" }.
+q{ $_->[0] . " function call" }.
 
 function call: nullary function name.
-q{ $Parse::Marpa::Read_Only::v->[0] . " function call" }.
+q{ $_->[0] . " function call" }.
 
 argument: pattern match.
 

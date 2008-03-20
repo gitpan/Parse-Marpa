@@ -1,6 +1,6 @@
 =head1 NAME
 
-Parse::Marpa::BIBLIOGRAPHY - A Marpa Bibliography
+Parse::Marpa::Doc::Bibliography - A Marpa Bibliography
 
 =head1 Aho and Ullman 1972
 
@@ -33,10 +33,23 @@ I have been following
 this particular topic on and off for years.
 Nonetheless I found this paper very heavy going.
 Readers who want to get into might find the Marpa documentation,
-up to and including L<Parse::Marpa::INTERNALS>,
+up to and including L<Parse::Marpa::Doc::Internals>,
 the easiest approach to the Aycock and Horspool paper,
 though I can't promise you there won't be leaps of
 insight required at several points.
+
+=head1 Dominus 2005
+
+Although my approach to parsing is not heavily influenced
+by Mark Jason Dominus's I<Higher Order Perl>,
+just about every page of the rest of the book opened
+my eyes to new ideas.
+I wish I'd gotten his book earlier in my coding.
+
+Both the Perl and the English are examples of good
+writing, and the book is dense with ideas.
+Mark's discussion on memoization in Chapter 3 is the
+best I've seen.
 
 =head1 Earley 1970
 
@@ -82,7 +95,7 @@ by Dick Grune
 Ceriel Jacobs,
 (Ellis Horwood Limited: Chichester, West Sussex, England,
 1990).
-This book is L<available on the Web|http://www.cs.vu.nl/~dick/PTAPG.html>
+This book is available on the Web: L<http://www.cs.vu.nl/~dick/PTAPG.html>
 
 =head1 Grune and Jacobs 2008
 

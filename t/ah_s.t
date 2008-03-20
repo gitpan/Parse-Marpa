@@ -17,23 +17,23 @@ BEGIN {
 
 my $source; { local($RS) = undef; $source = <DATA> };
 
-my $g = new Parse::Marpa(
+my $g = new Parse::Marpa::Grammar({
     warnings => 1,
     code_lines => -1,
-);
+});
 
-$g->set( source => \$source);
+$g->set({ mdl_source => \$source});
 
 $g->precompute();
 
-my $parse = new Parse::Marpa::Parse(grammar => $g);
+my $recce = new Parse::Marpa::Recognizer({grammar => $g});
 
 my $lc_a = Parse::Marpa::MDL::get_symbol($g, "lowercase a");
-$parse->earleme([$lc_a, "lowercase a", 1]);
-$parse->earleme([$lc_a, "lowercase a", 1]);
-$parse->earleme([$lc_a, "lowercase a", 1]);
-$parse->earleme([$lc_a, "lowercase a", 1]);
-$parse->end_input();
+$recce->earleme([$lc_a, "lowercase a", 1]);
+$recce->earleme([$lc_a, "lowercase a", 1]);
+$recce->earleme([$lc_a, "lowercase a", 1]);
+$recce->earleme([$lc_a, "lowercase a", 1]);
+$recce->end_input();
 
 # from Tye McQueen's Algorithm::Loops
 sub NextPermute(\@)
@@ -74,8 +74,8 @@ my @answer = (
 
 PERMUTATION: for (;;) {
     for my $i (@a) {
-        $parse->initial($i);
-        my $result = $parse->value();
+        my $evaler = new Parse::Marpa::Evaluator($recce, $i);
+        my $result = $evaler->next();
         $total_count++;
         if ($answer[$i] ne $$result) {
             diag( "got "
@@ -103,12 +103,12 @@ ok(!$failure_count, ($total_count-$failure_count) . " of $total_count parse perm
 # vim: expandtab shiftwidth=4:
 
 __DATA__
-semantics are perl5.  version is 0.202.0.  the start symbol is
+semantics are perl5.  version is 0.205.0.  the start symbol is
 S.  the default null value is q{}.  the default action is q{
-     my $v_count = scalar @$Parse::Marpa::Read_Only::v;
+     my $v_count = scalar @$_;
      return "" if $v_count <= 0;
-     return $Parse::Marpa::Read_Only::v->[0] if $v_count == 1;
-     "(" . join(";", @$Parse::Marpa::Read_Only::v) . ")";
+     return $_->[0] if $v_count == 1;
+     "(" . join(";", @$_) . ")";
 }.
 
 S: A, A, A, A.
