@@ -7,7 +7,7 @@ no warnings "recursion";
 use strict;
 
 BEGIN {
-    our $VERSION = '0.205_004';
+    our $VERSION = '0.205_005';
     our $STRING_VERSION = $VERSION;
     $VERSION = eval $VERSION;
 }
@@ -155,9 +155,9 @@ sub Parse::Marpa::show_value {
 
 Parse::Marpa - (Alpha) Earley's algorithm with LR(0) precomputation
 
-=head1 VERSION
+=head1 WARNING: THIS IS A DEVELOPER'S RELEASE, NOT FOR USE BY NON-DEVELOPERS.
 
-WARNING -- THIS IS A DEVELOPER'S RELEASE, NOT FOR USE BY NON-DEVELOPERS.
+This is a developer's release, not for use by non-developers.
 I use these releases to avail myself of the cpantesters results,
 and to test the release process itself.
 
@@ -167,25 +167,6 @@ thing to do.
 
 Right now the documentation in this release is half-converted from one interface
 to another, so it's incomplete and inconsistent.
-
-=begin commented_out:
-
-    When I do my next alpha release, this text will be included:
-
-    This is an Alpha release.
-    It's intended to let people look Marpa over and try it out.
-    Uses beyond that are risky.
-    While Marpa is in alpha,
-    you don't want to use it for anything
-    mission-critical or with a serious deadline.
-    I've no personal experience with them, but
-    C<Parse::Yapp> and C<Parse::RecDescent> are
-    alternatives to this module which are well reviewed and
-    more mature and stable.
-
-=end commented_out:
-
-=cut
 
 =head1 SYNOPSIS
 
@@ -216,6 +197,63 @@ to another, so it's incomplete and inconsistent.
     Expression: /\d+/.  q{ $_->[0] }.
 
 =head1 DESCRIPTION
+
+=head2 Status
+
+B<This is an Alpha release.
+It's intended to let people look Marpa over and try it out.
+Uses beyond that are risky.
+While Marpa is in alpha,
+you don't want to use it for anything
+mission-critical or with a serious deadline.>
+I've no personal experience with them, but
+C<Parse::Yapp> and C<Parse::RecDescent> are
+alternatives to this module which are well reviewed and
+more mature and stable.
+
+=head2 What Marpa can do
+
+Marpa parses any language which can be written in BNF.
+Marpa handles all proper context-free grammars,
+plus those with empty rules,
+inaccessble rules and unproductive rules.
+Marpa parses left- and right-recursive grammars and ambiguous grammars.
+
+Marpa's parses all context-free grammars, with one restriction.
+Currently the grammar must be written so that it is cycle-free.
+A cycle is a special, pathological case of recursion --
+recursion without change.
+A cycle happens when applying the rules of the grammar to a symbol results in
+exactly that same symbol.
+I may lift the restriction on cycles in future versions,
+but grammars with cycles seem to have no advantages in convenience
+or expressiveness.
+The main gain from extending Marpa to parse grammars with cycles would be bragging rights
+-- Marpa could then be able to say that it parses
+anything you can write in BNF, with no restrictions whatsoever.
+
+Empty productions are often necessary to express a language in a natural way.
+Inaccessible rules and unproductive rules aren't useful, but they cause no
+real harm.
+
+Ambiguous grammars are a Marpa specialty.
+(An ambiguous grammar is a grammar which might can parse an input in more than one way.)
+Ambiguity is often useful even if you are only interested in one parse.
+An ambiguous grammar is often
+the easiest and most sensible way to express a language.
+
+Human languages are ambiguous.
+English sentences are often ambiguous,
+but human listeners hear the parse that makes most sense.
+Marpa allows the user to prioritize rules
+so that a preferred parse is returned first.
+Marpa can also return all the parses of an ambiguous grammar,
+if that's what the user prefers.
+
+Marpa incorporates major improvements from recent research into Earley's algorithm.
+In particular, it combines Earley's with LR(0) precomputation.
+Marpa also has innovations of its own,
+including predictive and ambiguous lexing.
 
 =head2 Parsing Terminology
 
@@ -388,7 +426,10 @@ the grammar is said to be B<left-recursive>.
 If any symbol non-trivially produces a symbol string with itself on the right,
 the grammar is said to be B<right-recursive>.
 A non-trivial derivation of a symbol string from itself is a B<cycle>.
+
 A grammar which contains no cycles is B<cycle-free>.
+A B<proper context-free grammar> in one which is
+cycle-free and has no useless rules or empty productions.
 
 =head3 Structure
 
@@ -438,43 +479,6 @@ from the values of zero or more of the nodes which represent the rhs symbols
 (child nodes).
 Values are computed recursively, bottom-up.
 The value of a parse is the value of its start symbol.
-
-=head2 Capabilities
-
-Marpa parses any language which can be expressed in cycle-free BNF.
-(A cycle occurs when a symbol string, after one or more derivation steps, reproduces itself exactly.)
-Essentially, a cycle is recursion without change.
-Recursion is highly useful, but cycles always seem to be pathological.
-Marpa will parse recursive grammars, including left-recursive and right-recursive ones,
-as long as they are cycle-free.
-
-In formal terms, Marpa parses any cycle-free context-free grammar.
-Marpa can parse grammars
-with empty productions and useless productions.
-Often you cannot
-express the semantics of a grammar in a natural way without 
-using empty productions.
-Useless productions cause no major harm,
-and Marpa is happy to tolerate them.
-
-Ambiguous grammars are a Marpa specialty.
-(An ambiguous grammar is a grammar which might can parse an input in more than one way.)
-Ambiguity is often useful even if you are only interested in one parse.
-An ambiguous grammar is often
-the easiest and most sensible way to express a language.
-
-Human languages are ambiguous.
-English sentences are often ambiguous,
-but human listeners hear the parse that makes most sense.
-Marpa allows the user to prioritize rules
-so that a preferred parse is returned first.
-Marpa can also return all the parses of an ambiguous grammar,
-if that's what the user prefers.
-
-Marpa incorporates major improvements from recent research into Earley's algorithm.
-In particular, it combines Earley's with LR(0) precomputation.
-Marpa also has innovations of its own,
-including predictive and ambiguous lexing.
 
 =head2 The Easy Way
 
@@ -992,9 +996,12 @@ or may simply wish to deal with them later.
 
 =head1 IMPLEMENTATION NOTES
 
+=head2 Exports and Object Orientation
+
+Marpa exports nothing, either optionally or by default.
 Use of object orientation in Marpa is superficial.
-Only grammars, recognizers and evaluators are objects, and they are not
-designed to be inherited.
+Only grammars, recognizers and evaluators are objects,
+and they are not designed to be inherited.
 
 =head2 Speed
 
@@ -1132,10 +1139,6 @@ B<The God Proof> is available
 as a free download L<http://www.lulu.com/content/933192>,
 and in print form at Amazon.com:
 L<http://www.amazon.com/God-Proof-Jeffrey-Kegler/dp/1434807355>.
-
-=head1 TO DO
-
-See L<Parse::Marpa::To_Do>.
 
 =head1 BUGS
 
