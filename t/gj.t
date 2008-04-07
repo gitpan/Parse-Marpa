@@ -101,64 +101,62 @@ S16: T ::= ( E . )
 S17: T ::= ( E ) .
 EOS
 
-is( $g->show_ii_SDFA(), <<'EOS', "Grune/Jacobs SDFA");
+is( $g->show_ii_QDFA(), <<'EOS', "Grune/Jacobs QDFA");
+Start States: St0; St9
 St0: 1
 S' ::= . S $
- empty => St9 (4,6,10,12,14)
- <S> => St7 (2)
+ <S> => St7
 St1: 11
 E ::= T .
-St2: 12,14
+St2: predict; 12,14
 T ::= . n
 T ::= . ( E )
- <(> => St4 (15)
- <n> => St3 (13)
+ <(> => St11; St4
+ <n> => St3
 St3: 13
 T ::= n .
 St4: 15
 T ::= ( . E )
- empty => St11 (6,10,12,14)
- <E> => St5 (16)
+ <E> => St5
 St5: 16
 T ::= ( E . )
- <)> => St6 (17)
+ <)> => St6
 St6: 17
 T ::= ( E ) .
 St7: 2
 S' ::= S . $
- <$> => St8 (3)
+ <$> => St8
 St8: 3
 S' ::= S $ .
-St9: 4,6,10,12,14
+St9: predict; 4,6,10,12,14
 S ::= . E
 E ::= . E - T
 E ::= . T
 T ::= . n
 T ::= . ( E )
- <(> => St4 (15)
- <E> => St10 (5,7)
- <T> => St1 (11)
- <n> => St3 (13)
+ <(> => St11; St4
+ <E> => St10
+ <T> => St1
+ <n> => St3
 St10: 5,7
 S ::= E .
 E ::= E . - T
- <-> => St13 (8)
-St11: 6,10,12,14
+ <-> => St13; St2
+St11: predict; 6,10,12,14
 E ::= . E - T
 E ::= . T
 T ::= . n
 T ::= . ( E )
- <(> => St4 (15)
- <E> => St12 (7)
- <T> => St1 (11)
- <n> => St3 (13)
+ <(> => St11; St4
+ <E> => St12
+ <T> => St1
+ <n> => St3
 St12: 7
 E ::= E . - T
- <-> => St13 (8)
+ <-> => St13; St2
 St13: 8
 E ::= E - . T
- empty => St2 (12,14)
- <T> => St14 (9)
+ <T> => St14
 St14: 9
 E ::= E - T .
 EOS

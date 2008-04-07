@@ -65,17 +65,7 @@ EOCODE
     },
 });
 
-my $recce = new Parse::Marpa::Recognizer({grammar => $g});
-
-my $op = $g->get_symbol("Op");
-my $number = $g->get_symbol("Number");
-$recce->earleme([$number, 2, 1]);
-$recce->earleme([$op, "-", 1]);
-$recce->earleme([$number, 0, 1]);
-$recce->earleme([$op, "*", 1]);
-$recce->earleme([$number, 3, 1]);
-$recce->earleme([$op, "+", 1]);
-$recce->earleme([$number, 1, 1]);
+$g->precompute();
 
 is( $g->show_rules(), <<'END_RULES', "Ambiguous Equation Rules" );
 0: E -> E Op E
@@ -83,30 +73,49 @@ is( $g->show_rules(), <<'END_RULES', "Ambiguous Equation Rules" );
 2: E['] -> E
 END_RULES
 
-is( $g->show_ii_SDFA(), <<'END_SDFA', "Ambiguous Equation SDFA" );
-St0: 1,5
+is( $g->show_ii_QDFA(), <<'END_QDFA', "Ambiguous Equation QDFA" );
+Start States: St0; St5
+St0: predict; 1,5
 E ::= . E Op E
 E ::= . Number
- <E> => St1 (2)
- <Number> => St4 (6)
+ <E> => St1
+ <Number> => St4
 St1: 2
 E ::= E . Op E
- <Op> => St2 (3)
+ <Op> => St0; St2
 St2: 3
 E ::= E Op . E
- empty => St0 (1,5)
- <E> => St3 (4)
+ <E> => St3
 St3: 4
 E ::= E Op E .
 St4: 6
 E ::= Number .
 St5: 7
 E['] ::= . E
- empty => St0 (1,5)
- <E> => St6 (8)
+ <E> => St6
 St6: 8
 E['] ::= E .
-END_SDFA
+END_QDFA
+
+my $recce = new Parse::Marpa::Recognizer({grammar => $g});
+
+my $op = $g->get_symbol("Op");
+my $number = $g->get_symbol("Number");
+
+my @tokens = (
+    [$number, 2, 1],
+    [$op, "-", 1],
+    [$number, 0, 1],
+    [$op, "*", 1],
+    [$number, 3, 1],
+    [$op, "+", 1],
+    [$number, 1, 1],
+);
+
+TOKEN: for my $token (@tokens) {
+    next TOKEN if $recce->earleme($token);
+    die("Parse exhausted at character: ", $token->[1]);
+}
 
 my @expected = (
     '(((2-0)*3)+1)==7',

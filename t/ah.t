@@ -6,7 +6,7 @@ use strict;
 use warnings;
 use lib "../lib";
 
-use Test::More tests => 9;
+use Test::More tests => 8;
 
 BEGIN {
     use_ok('Parse::Marpa');
@@ -57,6 +57,7 @@ is( $g->show_productive_symbols(),
     "A E S S' a", "Aycock/Horspool Productive Symbols" );
 is( $g->show_accessible_symbols(),
     "A E S S' a", "Aycock/Horspool Accessible Symbols" );
+
 is( $g->show_NFA(), <<'EOS', "Aycock/Horspool NFA" );
 S0: /* empty */
  empty => S1
@@ -81,58 +82,11 @@ S8: A ::= . a
  <a> => S9
 S9: A ::= a .
 S10: A ::= . E
+at_nulling
  empty => S12
  <E> => S11
 S11: A ::= E .
 S12: E ::= .
-EOS
-
-is( $g->show_ii_SDFA(), <<'EOS', , "Aycock/Horspool SDFA" );
-St0: 1,2
-S' ::= . S
-S' ::= S .
- empty => St2 (3,4,5,6,7,8,11,12)
- <S> => St1 (2)
-St1: 2
-S' ::= S .
-St2: 3,4,5,6,7,8,11,12
-S ::= . A A A A
-S ::= A . A A A
-S ::= A A . A A
-S ::= A A A . A
-S ::= A A A A .
-A ::= . a
-A ::= E .
-E ::= .
- <A> => St3 (4,5,6,7)
- <a> => St8 (9)
-St3: 4,5,6,7
-S ::= A . A A A
-S ::= A A . A A
-S ::= A A A . A
-S ::= A A A A .
- empty => St7 (8,11,12)
- <A> => St4 (5,6,7)
-St4: 5,6,7
-S ::= A A . A A
-S ::= A A A . A
-S ::= A A A A .
- empty => St7 (8,11,12)
- <A> => St5 (6,7)
-St5: 6,7
-S ::= A A A . A
-S ::= A A A A .
- empty => St7 (8,11,12)
- <A> => St6 (7)
-St6: 7
-S ::= A A A A .
-St7: 8,11,12
-A ::= . a
-A ::= E .
-E ::= .
- <a> => St8 (9)
-St8: 9
-A ::= a .
 EOS
 
 # Local Variables:
