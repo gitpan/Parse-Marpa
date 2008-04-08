@@ -74,6 +74,8 @@ use constant ITEM       => 2;          # an LR(0) item
 use constant TRANSITION => 3;          # the transitions, as a hash
                                        # from symbol name to NFA states
 use constant AT_NULLING => 4;  # dot just before a nullable symbol?
+use constant COMPLETE   => 5;          # rule is complete?
+use constant PRIORITY   => 6;          # rule priority
 
 package Parse::Marpa::Internal::QDFA;
 
@@ -756,7 +758,7 @@ sub Parse::Marpa::Grammar::set {
 		if ($value) {
 		    say $trace_fh "Setting $option";
 		    say $trace_fh "Warning: Setting $option after semantics were finalized"
-			if $phase >= Parse::Marpa::Internal::Phase::EVALED;
+			if $phase >= Parse::Marpa::Internal::Phase::PRECOMPUTED;
 		    $grammar->[ Parse::Marpa::Internal::Grammar::TRACING  ] = 1;
 		}
             }
@@ -1215,22 +1217,26 @@ sub Parse::Marpa::show_item {
 
 sub Parse::Marpa::show_NFA_state {
     my $state = shift;
-    my ( $name, $item, $transition, $at_nulling ) = @{$state}[
+    my ( $name, $item, $transition, $at_nulling, $priority ) = @{$state}[
         Parse::Marpa::Internal::NFA::NAME,
         Parse::Marpa::Internal::NFA::ITEM,
         Parse::Marpa::Internal::NFA::TRANSITION,
         Parse::Marpa::Internal::NFA::AT_NULLING,
+        Parse::Marpa::Internal::NFA::PRIORITY,
     ];
     my $text = $name . ': ';
     $text .= Parse::Marpa::show_item($item) . "\n";
-    $text .= "at_nulling\n" if $at_nulling;
+    my @properties = ();
+    push(@properties, 'at_nulling') if $at_nulling;
+    push(@properties, "priority=$priority") if defined $priority and $priority;
+    $text .= join(' ', @properties) . "\n" if @properties;
     for my $symbol_name ( sort keys %$transition ) {
         my $transition_states = $transition->{$symbol_name};
         $text
-            .= " "
-            . ( $symbol_name eq "" ? "empty" : "<" . $symbol_name . ">" )
-            . " => "
-            . join( " ",
+            .= ' '
+            . ( $symbol_name eq '' ? 'empty' : '<' . $symbol_name . '>' )
+            . ' => '
+            . join( ' ',
             map { $_->[Parse::Marpa::Internal::NFA::NAME] }
                 @$transition_states )
             . "\n";
@@ -1240,7 +1246,7 @@ sub Parse::Marpa::show_NFA_state {
 
 sub Parse::Marpa::Grammar::show_NFA {
     my $grammar = shift;
-    my $text    = "";
+    my $text    = '';
     my $NFA     = $grammar->[Parse::Marpa::Internal::Grammar::NFA];
     for my $state (@$NFA) {
         $text .= Parse::Marpa::show_NFA_state($state);
@@ -1513,6 +1519,15 @@ sub add_rule {
     my $new_rule   = [];
     my $nulling    = @$rhs ? undef : 1;
     $priority //= 0;
+
+    my $max_priority = int(0x7FFFFFFF/10)-1;
+    if ($priority > $max_priority) {
+        croak("Rule priority ($priority) greater than maximum ($max_priority)");
+    }
+    my $min_priority = int(0x80000000/10)+1;
+    if ($priority < $min_priority) {
+        croak("Rule priority ($priority) greater than maximum ($min_priority)");
+    }
 
     @{$new_rule}[
         Parse::Marpa::Internal::Rule::ID,
@@ -2702,10 +2717,15 @@ sub create_NFA {
         ];
         my $rule_id = $rule->[Parse::Marpa::Internal::Rule::ID];
         my $next_symbol =
-            $rule->[Parse::Marpa::Internal::Rule::RHS]->[$position];
+            $rule->[ Parse::Marpa::Internal::Rule::RHS ]->[$position];
 
         # no transitions if position is after the end of the RHS
-        if ( not defined $next_symbol ) { next STATE; }
+        if ( not defined $next_symbol ) {
+	    $state->[ Parse::Marpa::Internal::NFA::COMPLETE ] = 1;
+	    $state->[ Parse::Marpa::Internal::NFA::PRIORITY ]
+		= $rule->[ Parse::Marpa::Internal::Rule::PRIORITY ];
+	    next STATE;
+	}
 
 	$state->[ Parse::Marpa::Internal::NFA::AT_NULLING ] = 1
 	    if $next_symbol->[ Parse::Marpa::Internal::Symbol::NULLING ];
@@ -2745,10 +2765,17 @@ sub create_NFA {
 # a reference to an array of the fully built quasi-DFA (QDFA) states.
 # as necessary.  The build is complete, except for transitions, which are
 # left to be set up later.
-#
 sub assign_QDFA_state_set {
     my $grammar       = shift;
     my $kernel_states = shift;
+
+    my $tracing = $grammar->[Parse::Marpa::Internal::Grammar::TRACING ];
+    my ($trace_fh, $trace_priorities);
+    if ($tracing) {
+        $trace_fh = $grammar->[Parse::Marpa::Internal::Grammar::TRACE_FILE_HANDLE];
+        $trace_priorities = $grammar->[ Parse::Marpa::Internal::Grammar::TRACE_PRIORITIES ];
+    }
+
     my ( $NFA_states,
 	$QDFA_by_name,
 	$QDFA
@@ -2758,10 +2785,8 @@ sub assign_QDFA_state_set {
         Parse::Marpa::Internal::Grammar::QDFA
     ];
 
-    # the data for the NFA states to be used in the result:
-    # An array (indexed by reset flag) of references to arrays
-    # of NFA states
-    my @result_NFA_states = ([], []);
+
+    my $highest_priority;
 
     # pre-allocate the arrays that track whether we've already used an NFA state
     my @NFA_state_seen;
@@ -2778,7 +2803,7 @@ sub assign_QDFA_state_set {
 
 	my $NFA_id = $NFA_state->[Parse::Marpa::Internal::NFA::ID];
 	next WORK_ITEM if defined $NFA_state_seen[$NFA_id];
-	$NFA_state_seen[$NFA_id] = 1;
+	my $seen = $NFA_state_seen[$NFA_id] = [];
 
 	my $transition = $NFA_state->[Parse::Marpa::Internal::NFA::TRANSITION];
 
@@ -2806,42 +2831,95 @@ sub assign_QDFA_state_set {
 	}
 
 	$reset //= 0;
-	push(@{$result_NFA_states[$reset]}, $NFA_id);
+	my $priority = $NFA_state->[ Parse::Marpa::Internal::NFA::PRIORITY ]
+	    if $NFA_state->[ Parse::Marpa::Internal::NFA::COMPLETE ];
+	if (defined $priority) {
+	    $highest_priority = $priority
+		if not defined $highest_priority or $priority > $highest_priority;
+	}
+	push(@$seen, $reset, $priority, $NFA_id);
 
     } # WORK_ITEM
 
-    my @result_states;
+    $highest_priority //= 0;
 
-    QDFA_STATE: for my $reset (0, 1) {
-	my @NFA_seen;
-	$#NFA_seen = @$NFA_states;
-	my $NFA_state_set = $result_NFA_states[$reset];
-	next unless @$NFA_state_set;
-	my @NFA_ids
-	    = sort { $a <=> $b }
-		grep { not $NFA_seen[$_]++ }
-		@$NFA_state_set;
-	my $name = join( ",", @NFA_ids);
-	my $QDFA_state = $QDFA_by_name->{$name};
-	unless (defined $QDFA_state) {
-	    @{$QDFA_state}[
-		Parse::Marpa::Internal::QDFA::ID,
-		Parse::Marpa::Internal::QDFA::NAME,
-		Parse::Marpa::Internal::QDFA::NFA_STATES,
-		Parse::Marpa::Internal::QDFA::RESET_ORIGIN,
-		Parse::Marpa::Internal::QDFA::PRIORITY,
-	    ] = (
-		scalar @$QDFA,
-		$name,
-		[ @{ $NFA_states }[@NFA_ids] ],
-		$reset,
-		0,
-	    );
-	    push( @$QDFA, $QDFA_state );
-	    $QDFA_by_name->{$name} = $QDFA_state;
+    my @result_data
+        = map { $_->[0] }
+	    sort { $a->[1] cmp $b->[1] }
+	    map {
+		$_->[1] //= $highest_priority;
+		[ $_, pack('NN', $_->[0], $_->[1]) ]
+	    } grep { defined $_ and scalar @$_ }
+	    @NFA_state_seen;
+
+    # this is a fake record with an 
+    # "impossible" value for priority to force a
+    # control break at the last record
+    push(@result_data, [ -1 ] ); # -1 is an 
+
+    # this will hold the QDFA state set,
+    # which is the result
+    my @result_states = ();
+
+    # Below is "control break logic", which was big in the days of tape sorts
+    # (yes, I'm that old).  Anyway, it's fast in Perl, will be really fast in
+    # C and I think actually easier to figure out than the alternative --
+    # which is something like references to arrays of hash of references.
+
+    my $old_reset = -2; # -2 is an "impossible" value
+    my $old_priority;
+    my @NFA_ids = ();
+
+    # result data is an array of the "records"
+    DATUM: for my $result_data (@result_data) {
+
+        my ($reset, $priority, $NFA_id)
+	    = @$result_data;
+
+	# if no "control break"
+	if ($old_reset == $reset and $old_priority == $priority) {
+	    push(@NFA_ids, $NFA_id);
+	    next DATUM;
 	}
-	push(@result_states, $QDFA_state);
-    }
+
+	# here what's called the "control break", where the record key changes
+	if (@NFA_ids) {
+	     my $name = join(',', @NFA_ids);
+	     my $QDFA_state = $QDFA_by_name->{$name};
+
+	     # this is a new QDFA state -- create it
+	     unless ($QDFA_state) {
+		 my $id = scalar @$QDFA;
+	         @{$QDFA_state}[
+		    Parse::Marpa::Internal::QDFA::ID,
+		    Parse::Marpa::Internal::QDFA::NAME,
+		    Parse::Marpa::Internal::QDFA::NFA_STATES,
+		    Parse::Marpa::Internal::QDFA::RESET_ORIGIN,
+		    Parse::Marpa::Internal::QDFA::PRIORITY,
+		] = (
+		    $id,
+		    $name,
+		    [ @{ $NFA_states }[@NFA_ids] ],
+		    $old_reset,
+		    $old_priority,
+		);
+		if ($trace_priorities) {
+		    say $trace_fh "Priority for QDFA state $id: ", $old_priority;
+		}
+		push( @$QDFA, $QDFA_state );
+		$QDFA_by_name->{$name} = $QDFA_state;
+	    } # unless $QDFA_state
+
+	    push(@result_states, $QDFA_state);
+
+	}
+
+	# reset everything for the next control break
+	@NFA_ids = ($NFA_id);
+	$old_reset = $reset;
+	$old_priority = $priority;
+
+    } # DATUM
 
     \@result_states;
 }
