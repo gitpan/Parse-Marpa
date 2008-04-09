@@ -42,6 +42,7 @@ t/hu.t
 t/minus.t
 t/minus_s.t
 t/pascal.t
+t/priority.t
 t/randal.t
 t/synopsis.t
 t/wall.t
