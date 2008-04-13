@@ -7,7 +7,7 @@ no warnings "recursion";
 use strict;
 
 BEGIN {
-    our $VERSION = '0.208000';
+    our $VERSION = '0.209_000';
     our $STRING_VERSION = $VERSION;
     $VERSION = eval $VERSION;
 }
@@ -155,19 +155,15 @@ sub Parse::Marpa::show_value {
 
 Parse::Marpa - (Alpha) Earley's algorithm with LR(0) precomputation
 
-=begin for_developer_releases:
+=head1 BEWARE: THIS RELEASE IS FOR DEVELOPERS ONLY
 
- =urnq1 ORJNER: GUVF ERYRNFR VF SBE QRIRYBCREF BAYL
+This is a developer's release, not for use by non-developers.
+I use these releases to avail myself of the cpantesters results,
+and to test the release process itself.
 
-Guvf vf n qrirybcre'f eryrnfr, abg sbe hfr ol aba-qrirybcref.
-V hfr gurfr eryrnfrf gb ninvy zlfrys bs gur pcnagrfgref erfhygf,
-naq gb grfg gur eryrnfr cebprff vgfrys.
-
-Bs pbhefr, vg'f bcra fbhepr, naq lbh'er ragvgyrq gb nccbvag lbhefrys
-n qrirybcre vs lbh vafvfg ba vg.  Ohg gung jvyy hfhnyyl abg or n ernfbanoyr
-guvat gb qb.
-
-=end for_developer_releases:
+Of course, it's open source, and you're entitled to appoint yourself
+a developer if you insist on it.  But that will usually not be a reasonable
+thing to do.
 
 =head1 SYNOPSIS
 
@@ -847,12 +843,13 @@ by the user.
 If there is a problem with user supplied code,
 Marpa prints the error message and a description of where the code is being used.
 Marpa also displays the code.
-The value of C<code_lines> tells Marpa how many lines to print before truncating the
-code.
-If it's zero, no code is displayed.
+The value of C<code_lines> tells Marpa how many lines of context to print.
 If it's negative, all the code is displayed, no matter how long it is.
-The default is 30 lines.
+The default is 3 lines.
 The C<code_lines> option can be changed at any point in a parse.
+
+If the line with the problem cannot be determined, the first lines
+of code are printed, up to a maximum of twice C<code_lines>, plus one.
 
 =item default_action
 
@@ -1164,43 +1161,6 @@ and in print form at Amazon.com:
 L<http://www.amazon.com/God-Proof-Jeffrey-Kegler/dp/1434807355>.
 
 =head1 BUGS
-
-=head2 Non-intuitive Parse Order in Unusual Cases
-
-This problem occurs when
-
-=over 4
-
-=item * an ambiguous production has more than two nullable symbols on the right hand side; and
-
-=item * the order of the parses for that production matters.
-
-=back
-
-This doesn't happen in any practical grammars I've tried.
-Perhaps it's a unnatural way to set up the semantics.
-But it certainly does happen in textbook grammars.
-
-A very straightforward workaround is described below.
-But the problem needs to be fixed before Marpa goes beta.
-
-Details: The problem occurs because these productions are rewritten internally by CHAF.
-A rightmost parse comes first, as I have documented,
-but it is a rightmost parse for the grammar B<as rewritten by CHAF>.
-This is a bug for pendantic reasons, because
-CHAF rewriting is supposed to be invisible.
-It's a bug for practical reasons because the CHAF-driven order is not intuitive,
-and I can't picture it ever being the desired first choice.
-Priorities are B<not> a workaround, because priorites cannot be set for rules
-within a CHAF rewrite.
-
-Workaround:
-Rewrite the rule for which this is a problem.
-The problem only
-occurs where a rule is subject to CHAF rewriting,
-and CHAF rewrites are only done to rules with more than two nullables on the right hand side.
-It is always possible to break up a
-rule into other rules such that at most two nullables occur on the right hand side.
 
 =head2 End of Line Comment Cannot be Last in MDL Source
 
