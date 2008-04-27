@@ -28,12 +28,16 @@ WriteMakefile(
 	    => '$(INST_LIB)/Parse/Marpa/Doc/MDL.pod',
 	'lib/Parse/Marpa/Doc/To_Do.pod'
 	    => '$(INST_LIB)/Parse/Marpa/Doc/To_Do.pod',
+	'lib/Parse/Marpa/Doc/Undocumented.pod'
+	    => '$(INST_LIB)/Parse/Marpa/Doc/Undocumented.pod',
 	'lib/Parse/Marpa/Lex.pm'
 	    => '$(INST_LIB)/Parse/Marpa/Lex.pm',
 	'lib/Parse/Marpa/MDL.pm'
 	    => '$(INST_LIB)/Parse/Marpa/MDL.pm',
 	'lib/Parse/Marpa/Grammar.pm'
 	    => '$(INST_LIB)/Parse/Marpa/Grammar.pm',
+	'lib/Parse/Marpa/Bocage.pm'
+	    => '$(INST_LIB)/Parse/Marpa/Bocage.pm',
 	'lib/Parse/Marpa/Recognizer.pm'
 	    => '$(INST_LIB)/Parse/Marpa/Recognizer.pm',
 	'lib/Parse/Marpa/Evaluator.pm'
@@ -51,6 +55,7 @@ WriteMakefile(
     },
     EXE_FILES => [
                            'bin/marpa',
+                           'bin/bocage',
     ],
     PREREQ_PM => {
         'Test::More' => 0,

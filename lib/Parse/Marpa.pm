@@ -7,7 +7,7 @@ no warnings "recursion";
 use strict;
 
 BEGIN {
-    our $VERSION = '0.210000';
+    our $VERSION        = '0.211_000';
     our $STRING_VERSION = $VERSION;
     $VERSION = eval $VERSION;
 }
@@ -75,6 +75,7 @@ package Parse::Marpa::Internal;
 use Carp;
 
 our $compiled_eval_error;
+
 BEGIN {
     eval "use Parse::Marpa::Source $Parse::Marpa::STRING_VERSION";
     $compiled_eval_error = $@;
@@ -100,7 +101,7 @@ package Parse::Marpa::Internal;
 # all of them in list context.
 sub Parse::Marpa::mdl {
     my $grammar = shift;
-    my $text = shift;
+    my $text    = shift;
     my $options = shift;
 
     my $ref = ref $grammar;
@@ -116,24 +117,23 @@ sub Parse::Marpa::mdl {
     croak(qq{text arg to mdl() was ref type "$ref", must be hash ref})
         unless $ref eq "HASH";
 
-    my $g = new Parse::Marpa::Grammar(
-        { mdl_source => $grammar, %{$options} }
-    );
-    my $recce = new Parse::Marpa::Recognizer({grammar => $g});
+    my $g =
+        new Parse::Marpa::Grammar( { mdl_source => $grammar, %{$options} } );
+    my $recce = new Parse::Marpa::Recognizer( { grammar => $g } );
 
     my $failed_at_earleme = $recce->text($text);
-    if ($failed_at_earleme >= 0) {
-        die_with_parse_failure($text, $failed_at_earleme);
+    if ( $failed_at_earleme >= 0 ) {
+        die_with_parse_failure( $text, $failed_at_earleme );
     }
 
     my $evaler = new Parse::Marpa::Evaluator($recce);
-    if (not defined $evaler) {
-        die_with_parse_failure($text, length($text));
+    if ( not defined $evaler ) {
+        die_with_parse_failure( $text, length($text) );
     }
     return $evaler->next if not wantarray;
     my @values;
-    while (defined(my $value = $evaler->next())) {
-        push(@values, $value);
+    while ( defined( my $value = $evaler->next() ) ) {
+        push( @values, $value );
     }
     @values;
 }
@@ -238,7 +238,8 @@ Inaccessible rules and unproductive rules aren't useful, but they cause no
 real harm.
 
 Ambiguous grammars are a Marpa specialty.
-(An ambiguous grammar is a grammar which might can parse an input in more than one way.)
+(An ambiguous grammar is one for which there is some input
+which has more than one parse tree.)
 Ambiguity is often useful even if you are only interested in one parse.
 An ambiguous grammar is often
 the easiest and most sensible way to express a language.
@@ -448,11 +449,6 @@ cycle-free and has no useless rules or empty productions.
 
 The structure of a parse can be represented by as a series of derivation steps from
 the start symbol to the input.
-If, for a particular grammar, more than one derivation is possible for an input,
-that input is said to have an B<ambiguous> parse.
-An B<ambiguous> grammar is one which for which there is some input
-that has an ambiguous parse.
-
 Another way to represent structure is as a B<parse tree>.
 Every symbol used in the parse is
 represented by a B<node> of the parse tree.
@@ -464,6 +460,12 @@ Terminals and symbols on the
 left hand side of empty productions are B<leaf nodes>.
 If a node is not a B<leaf node>, it is an B<inner node>.
 A B<nulled node> is one that represents a nulled symbol.
+
+If, for a given grammar and a given input,
+more than one derivation tree is possible,
+we say that parse is B<ambiguous>.
+Any grammar with an ambiguous parse
+is an B<ambiguous> grammar.
 
 The node at the root of the tree is the B<start node>.
 Any node with a symbol being used as a terminal is a B<terminal node>.
@@ -929,33 +931,6 @@ when the first evaluator is created from a recognizer,
 Marpa assumes that input to the recognizer has ended.
 The recognizer does some final bookkeeping,
 and refuses to accept any more input.
-
-=item opaque
-
-The C<opaque> option is used to set the opacity of an object.
-Not specifying this option and accepting the default behavior is always safe.
-A value of 1 marks the object opaque, which is the default, and which is also
-always safe.
-
-A value of 0 marks an object transparent.
-If an evaluator object is marked transparent,
-an optimization called "node value memoization" is enabled.
-An evaluator should be marked transparent only if
-its semantic actions can be safely memoized.
-
-Recognizers inherit the opacity marking of the grammar used to create them,
-if there was one.
-If a recognizer is created from a grammar without an opacity marking,
-and no C<opaque> option is specified,
-the recognizer is marked opaque.
-Evaluators inherit the opacity marking of the recognizer used to create them.
-Once an object has been marked opaque,
-its opacity setting cannot be changed.
-
-Marpa marks a grammar opaque internally,
-if the grammar uses certain kinds of sequence productions.
-For more details,
-see L<Parse::Marpa::Evaluator/"Node Memoization">.
 
 =item preamble
 
