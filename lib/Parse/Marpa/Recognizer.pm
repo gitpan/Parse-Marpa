@@ -2,16 +2,20 @@ package Parse::Marpa::Internal::Recognizer;
 use 5.010_000;
 
 use warnings;
+no warnings 'recursion';
 use strict;
 use integer;
-
-## no critic
-no warnings "recursion";
-## use critic
+use English qw( -no_match_vars );
 
 package Parse::Marpa::Read_Only;
 
+# perhaps a Perl critic bug here -- I can't turn off the
+# complaint for Parse::Marpa::Read_Only package
+# variables
+
+## no critic (Variables::ProhibitPackageVars)
 our $rule;
+## use critic
 
 package Parse::Marpa::Internal::Earley_item;
 
@@ -146,15 +150,22 @@ sub set_null_values {
                 $lhs->[Parse::Marpa::Internal::Symbol::NULL_ALIAS];
             next RULE unless defined $nulling_alias;
 
-            my $code = "package $package;\nlocal(" . '$_' . ")=[]; $action";
+            my $code
+		= "package $package;\n"
+		. 'local($_)=[];' . "\n"
+		. $action ;
             my @warnings;
             my @caller_return;
             local $SIG{__WARN__} = sub {
                 push @warnings, $_[0];
                 @caller_return = caller 0;
             };
-            my $null_value  = eval($code);
-            my $fatal_error = $@;
+
+	    ## no critic (BuiltinFunctions::ProhibitStringyEval)
+            my $null_value  = eval $code;
+	    ## use critic
+
+            my $fatal_error = $EVAL_ERROR;
             if ( $fatal_error or @warnings ) {
                 Parse::Marpa::Internal::code_problems(
                     $fatal_error,
@@ -163,7 +174,7 @@ sub set_null_values {
                     'evaluating null value for '
                         . $nulling_alias
                         ->[Parse::Marpa::Internal::Symbol::NAME],
-                    \$action,
+                    \$code,
                     \@caller_return
                 );
             }
@@ -216,18 +227,13 @@ sub set_actions {
     my $grammar = shift;
     my $package = shift;
 
-    my ( $rules, $symbols, $symbol_hash, $QDFA, $tracing, $default_prefix,
-        $default_suffix, $default_action, )
-        = @{$grammar}[
+    my (
+	$rules, $tracing, $default_action,
+    ) = @{$grammar}[
         Parse::Marpa::Internal::Grammar::RULES,
-        Parse::Marpa::Internal::Grammar::SYMBOLS,
-        Parse::Marpa::Internal::Grammar::SYMBOL_HASH,
-        Parse::Marpa::Internal::Grammar::QDFA,
         Parse::Marpa::Internal::Grammar::TRACING,
-        Parse::Marpa::Internal::Grammar::DEFAULT_LEX_PREFIX,
-        Parse::Marpa::Internal::Grammar::DEFAULT_LEX_SUFFIX,
         Parse::Marpa::Internal::Grammar::DEFAULT_ACTION,
-        ];
+    ];
 
     my $trace_fh;
     my $trace_actions;
@@ -266,34 +272,36 @@ sub set_actions {
             # At this point has chaf rhs or lhs but not both
             if ($has_chaf_lhs) {
 
-                $action = q{
-                        push @{$_}, [];
-                        $_;
-                    };
+                $action
+		    = q{push @{$_}, [];} . "\n"
+		    . q{$_} . "\n";
                 last ACTION;
 
             }
 
             # at this point must have chaf rhs and not a chaf lhs
 
+	    # Is this really the best way to do pass the rule?
             my $original_rule = $Parse::Marpa::Read_Only::rule
                 ->[Parse::Marpa::Internal::Rule::ORIGINAL_RULE];
 
-            $action = q{
-                TAIL: for (;;) {
-                    my $tail = pop @{$_};
-                    last TAIL unless scalar @{$tail};
-                    push @{$_}, @{$tail};
-                }
-            }    # q string
+            $action
+		= "TAIL: for (;;) {\n"
+		. q<    my $tail = pop @{$_};> . "\n"
+		. q<    last TAIL unless scalar @{$tail};> . "\n"
+		. q<    push @{$_}, @{$tail};> . "\n"
+		. "}\n"
                 . $action;
 
         }    # ACTION
 
         next RULE unless defined $action;
 
-        my $code =
-            "sub {\n" . '    package ' . $package . ";\n" . $action . "\n}";
+        my $code
+	    = "sub {\n"
+	    . '    package ' . $package . ";\n"
+	    . q{    } . $action . "\n"
+	    . '}';
 
         if ($trace_actions) {
             print {$trace_fh} 'Setting action for rule ',
@@ -309,8 +317,12 @@ sub set_actions {
                 push @warnings, $_[0];
                 @caller_return = caller 0;
             };
+
+	    ## no critic (BuiltinFunctions::ProhibitStringyEval)
             $closure = eval $code;
-            my $fatal_error = $@;
+	    ## use critic
+
+            my $fatal_error = $EVAL_ERROR;
             if ( $fatal_error or @warnings ) {
                 Parse::Marpa::Internal::code_problems(
                     $fatal_error,
@@ -324,10 +336,43 @@ sub set_actions {
             }
         }
 
-        $rule->[Parse::Marpa::Internal::Rule::ACTION]  = $code;
+        $rule->[Parse::Marpa::Internal::Rule::CODE]  = $code;
         $rule->[Parse::Marpa::Internal::Rule::CLOSURE] = $closure;
 
     }    # RULE
+
+    return;
+
+} # set_actions
+
+sub set_lexers {
+
+    my $grammar = shift;
+    my $package = shift;
+
+    my (
+	$symbols,
+	$symbol_hash,
+	$QDFA,
+	$tracing, $default_prefix,
+        $default_suffix
+    ) = @{$grammar}[
+        Parse::Marpa::Internal::Grammar::SYMBOLS,
+        Parse::Marpa::Internal::Grammar::SYMBOL_HASH,
+        Parse::Marpa::Internal::Grammar::QDFA,
+        Parse::Marpa::Internal::Grammar::TRACING,
+        Parse::Marpa::Internal::Grammar::DEFAULT_LEX_PREFIX,
+        Parse::Marpa::Internal::Grammar::DEFAULT_LEX_SUFFIX,
+    ];
+
+    my $trace_fh;
+    my $trace_actions;
+    if ($tracing) {
+        $trace_fh =
+            $grammar->[Parse::Marpa::Internal::Grammar::TRACE_FILE_HANDLE];
+        $trace_actions =
+            $grammar->[Parse::Marpa::Internal::Grammar::TRACE_ACTIONS];
+    }
 
     my @lexers;
     $#lexers = $#{$symbols};
@@ -366,12 +411,14 @@ sub set_actions {
                     [ \&Parse::Marpa::Lex::lex_regex, $prefix, $suffix ];
             }
             default {
-                my $code = q[
-                        sub {
-                            my $STRING = shift;
-                            my $START = shift;
-                     ]
-                    . 'package ' . $package . ";\n" . $action . "; return\n}";
+                my $code
+		    = "sub {\n"
+		    . '    my $STRING = shift;' . "\n"
+		    . '    my $START = shift;' . "\n"
+                    . '    package ' . $package . ";\n"
+		    . q{    } . $action . ";\n"
+		    . "    return\n"
+		    . "}\n";
 
                 if ($trace_actions) {
                     print {$trace_fh} 'Setting action for terminal ', $name,
@@ -388,8 +435,12 @@ sub set_actions {
                         push @warnings, $_[0];
                         @caller_return = caller 0;
                     };
+
+		    ## no critic (BuiltinFunctions::ProhibitStringyEval)
                     $closure = eval $code;
-                    my $fatal_error = $@;
+		    ## use critic
+
+                    my $fatal_error = $EVAL_ERROR;
                     if ( $fatal_error or @warnings ) {
                         Parse::Marpa::Internal::code_problems(
                             $fatal_error,
@@ -429,7 +480,7 @@ sub set_actions {
 
     return ( \@lexers, \@lexables_by_state, );
 
-}    # sub set_actions
+} # sub set_lexers
 
 sub compile_regexes {
     my $grammar = shift;
@@ -459,6 +510,8 @@ sub compile_regexes {
         $symbol->[Parse::Marpa::Internal::Symbol::REGEX] = $compiled_regex;
     }    # SYMBOL
 
+    return;
+
 }
 
 sub eval_grammar {
@@ -482,8 +535,14 @@ sub eval_grammar {
             push @warnings, $_[0];
             @caller_return = caller 0;
         };
-        eval( 'package ' . $package . ";\n" . $preamble );
-        my $fatal_error = $@;
+
+	## no critic (BuiltinFunctions::ProhibitStringyEval)
+        eval
+	    'package ' . $package . ";\n"
+	    . $preamble;
+	## use critic
+
+        my $fatal_error = $EVAL_ERROR;
         if ( $fatal_error or @warnings ) {
             Parse::Marpa::Internal::code_problems(
                 $fatal_error, \@warnings,
@@ -496,16 +555,22 @@ sub eval_grammar {
 
     compile_regexes($grammar);
     set_null_values( $grammar, $package );
+    set_actions( $grammar, $package );
     @{$parse}[ LEXERS, LEXABLES_BY_STATE ] =
-        set_actions( $grammar, $package );
+        set_lexers( $grammar, $package );
     $grammar->[Parse::Marpa::Internal::Grammar::PHASE] =
         Parse::Marpa::Internal::Phase::EVALED;
+
+    return;
 
 }
 
 # Returns the new parse object or throws an exception
 sub Parse::Marpa::Recognizer::new {
     my $class = shift;
+    my $args = shift;
+
+    my $arg_trace_fh = $args->{trace_file_handle};
 
     my $parse = [];
     my $ambiguous_lex;
@@ -513,9 +578,6 @@ sub Parse::Marpa::Recognizer::new {
 
     # do we have a private copy of the grammar?
     my $private_grammar = 0;
-
-    my ($args) = @_;
-    my $arg_trace_fh = $args->{trace_file_handle};
 
     my $grammar = $args->{grammar};
     if ( not defined $grammar ) {
@@ -689,7 +751,7 @@ sub Parse::Marpa::show_earley_item {
         if defined $pointer;
     push @symbols, 'lhs: ' . $lhs->[Parse::Marpa::Internal::Symbol::NAME]
         if defined $lhs;
-    $text .= "\n  " . join( '; ', @symbols ) if @symbols;
+    $text .= "\n  " . (join q{; }, @symbols) if @symbols;
     $text .= "\n  value: " . Parse::Marpa::show_value( $value, $ii )
         if defined $value;
 
@@ -753,7 +815,11 @@ sub Parse::Marpa::Recognizer::show_status {
 }
 
 # check class of parse?
+
+## no critic (Subroutines::RequireArgUnpacking)
 sub Parse::Marpa::Recognizer::earleme {
+## use critic
+
     my $parse = shift;
 
     my $grammar = $parse->[Parse::Marpa::Internal::Recognizer::GRAMMAR];
@@ -808,9 +874,9 @@ sub Parse::Marpa::Recognizer::text {
         Parse::Marpa::Internal::Grammar::AMBIGUOUS_LEX,
     ];
 
-    $length = length $$input_ref unless defined $length;
+    $length = length ${$input_ref} unless defined $length;
 
-    POS: for my $pos ( ( pos $$input_ref // 0 ) .. ($length - 1) ) {
+    POS: for my $pos ( ( pos ${$input_ref} // 0 ) .. ($length - 1) ) {
         my @alternatives;
 
         # NOTE: Often the number of the earley set, and the idea of
@@ -822,7 +888,7 @@ sub Parse::Marpa::Recognizer::text {
         if ( $trace_lex_tries and scalar @{$lexables} ) {
             my $string_to_match = substr ${$input_ref}, $pos, 20;
             $string_to_match
-                =~ s/([\x00-\x1F\x7F-\xFF])/sprintf('{%#.2x}', ord($1))/ge;
+                =~ s/([\x00-\x1F\x7F-\xFF])/sprintf('{%#.2x}', ord($1))/gexm;
             say $trace_fh "Match target at $pos: ", $string_to_match;
         }
 
@@ -840,16 +906,24 @@ sub Parse::Marpa::Recognizer::text {
             croak('Illegal type for lexer: undefined')
                 unless defined $lexer_type;
 
-            pos $$input_ref = $pos;
+            pos ${$input_ref} = $pos;
 
             if ( $lexer_type eq 'Regexp' ) {
-                if ( $$input_ref =~ /$lexer/g ) {
+
+		## no critic (RegularExpressions::RequireLineBoundaryMatching)
+		## no critic (RegularExpressions::RequireExtendedFormatting)
+                if ( ${$input_ref} =~ /$lexer/g ) {
+		## use critic
+
+		    ## no critic (Variables::ProhibitPunctuationVars)
                     my $match = $+{mArPa_match};
+		    ## use critic
 
                     # my $prefix = $+{mArPa_prefix};
                     # my $suffix = $+{mArPa_suffix};
                     # my $length = length(${^MATCH});
-                    my $length = ( pos $$input_ref ) - $pos;
+
+                    my $length = ( pos ${$input_ref} ) - $pos;
                     croak(
                         'Internal error, zero length token -- this is a Marpa bug'
                     ) unless $length;
@@ -875,7 +949,12 @@ sub Parse::Marpa::Recognizer::text {
 
             my ( $lex_closure, $prefix, $suffix ) = @{$lexer};
             if ( defined $prefix ) {
-                $$input_ref =~ /\G$prefix/g;
+
+		## no critic (RegularExpressions::RequireLineBoundaryMatching)
+		## no critic (RegularExpressions::RequireExtendedFormatting)
+                ${$input_ref} =~ /\G$prefix/g;
+		## use critic
+
             }
 
             my ( $match, $length );
@@ -889,7 +968,7 @@ sub Parse::Marpa::Recognizer::text {
                 eval {
                     ( $match, $length ) = $lex_closure->( $input_ref, $pos );
                 };
-                my $fatal_error = $@;
+                my $fatal_error = $EVAL_ERROR;
                 if ( $fatal_error or @warnings ) {
                     Parse::Marpa::Internal::code_problems(
                         $fatal_error,
@@ -956,25 +1035,25 @@ sub Parse::Marpa::Recognizer::end_input {
     return;
 }
 
-=begin Apolegetic:
 
-It's bad style, but this routine is in a tight loop and for efficiency
-I pull the token alternatives out of @_ one by one as I go in the code,
-rather than at the beginning of the method.
+# It's bad style, but this routine is in a tight loop -- it may be called
+# as often as once per character of input in.  For efficiency
+# I pull the token alternatives out of @_ one by one as I go in the code,
+# rather than at the beginning of the method.
 
-The remaining arguments should be a list of token alternatives, as
-array references.  The array for each alternative is (token, value,
-length), where token is a symbol reference, value can anything
-meaningful to the user, and length is the length of this token in
-earlemes.
-
-=end Apolegetic:
-
-=cut
+# The remaining arguments should be a list of token alternatives, as
+# array references.  The array for each alternative is (token, value,
+# length), where token is a symbol reference, value can anything
+# meaningful to the user, and length is the length of this token in
+# earlemes.
 
 # Given a parse object and a list of alternative tokens starting at
 # the current earleme, compute the Earley set for that earleme
+
+## no critic (Subroutines::RequireArgUnpacking)
 sub scan_set {
+## use critic
+
     my $parse = shift;
 
     my ( $earley_set_list, $earley_hash, $grammar, $current_set,
@@ -1000,6 +1079,7 @@ sub scan_set {
         return !$exhausted;
     }
 
+    # Rewrite this as while loop
     EARLEY_ITEM: for (my $ix = 0; $ix < @{$earley_set}; $ix++ ) {
 
         my $earley_item = $earley_set->[$ix];
@@ -1119,6 +1199,7 @@ sub complete_set {
     my $lexable_seen = [];
     $#{$lexable_seen} = $#{$symbols};
 
+    # Rewrite this as while loop
     EARLEY_ITEM: for (my $ix = 0; $ix < @{$earley_set}; $ix++ ) {
 
         my $earley_item = $earley_set->[$ix];

@@ -2,7 +2,7 @@ use 5.010_000;
 use strict;
 use warnings;
 use lib "../lib";
-use English;
+use English qw( -no_match_vars ) ;
 
 use Test::More tests => 5;
 
@@ -82,7 +82,7 @@ TEST: while (my $test = pop @tests) {
 }
 
 __DATA__
-semantics are perl5.  version is 0.211.1.  the start symbol is perl line.
+semantics are perl5.  version is 0.211.2.  the start symbol is perl line.
 the default lex prefix is qr/\s*/.
 
 perl line: perl statements, optional comment.

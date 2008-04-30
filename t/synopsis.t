@@ -2,7 +2,7 @@ use 5.010_000;
 use strict;
 use warnings;
 use lib "../lib";
-use English;
+use English qw( -no_match_vars ) ;
 use Config;
 use IPC::Open2;
 
@@ -27,7 +27,7 @@ is(<PIPE>, "12\n", "synopsis example");
 close(PIPE);
 
 $ENV{PERL5LIB} = "../lib:" . $ENV{PERL5LIB};
-my $pid = open2(\*PIPE, \*TEXT, $this_perl, "../bin/marpa", "parse", "-grammar", "../example/null_value.marpa");
+my $pid = open2(\*PIPE, \*TEXT, $this_perl, "../bin/mdl", "parse", "-grammar", "../example/null_value.marpa");
 say TEXT "Z";
 close(TEXT);
 is(<PIPE>, "A is missing, but Zorro was here\n", "null value example");

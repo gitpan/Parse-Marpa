@@ -7,7 +7,7 @@ no warnings "recursion";
 use strict;
 
 BEGIN {
-    our $VERSION        = '0.211_001';
+    our $VERSION        = '0.211_002';
     our $STRING_VERSION = $VERSION;
     $VERSION = eval $VERSION;
 }
@@ -170,7 +170,7 @@ thing to do.
     use 5.010_000;
     use strict;
     use warnings;
-    use English;
+    use English qw( -no_match_vars ) ;
     use Parse::Marpa;
 
     # remember to use refs to strings

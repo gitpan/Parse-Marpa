@@ -1,7 +1,7 @@
 use 5.010_000;
 use strict;
 use warnings;
-use English;
+use English qw( -no_match_vars ) ;
 use Parse::Marpa;
 
 # remember to use refs to strings
@@ -12,7 +12,7 @@ my $value = Parse::Marpa::mdl(
 say $$value;
 
 __DATA__
-semantics are perl5.  version is 0.211.1.  start symbol is Expression.
+semantics are perl5.  version is 0.211.2.  start symbol is Expression.
 
 Expression: Expression, /[*]/, Expression.  priority 200.  q{
     $_->[0] * $_->[2]

@@ -6,7 +6,7 @@ use 5.010_000;
 use strict;
 use warnings;
 use lib "../lib";
-use English;
+use English qw( -no_match_vars ) ;
 
 use Test::More tests => 10;
 
@@ -55,7 +55,7 @@ for (my $i = 0; $i <= $#expected; $i++) {
 # a start symbol that appears repeatedly on the RHS.
 
 __DATA__
-semantics are perl5.  version is 0.211.1.
+semantics are perl5.  version is 0.211.2.
 
 the start symbol is E.
 

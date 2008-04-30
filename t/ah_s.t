@@ -1,4 +1,3 @@
-
 # the example grammar in Aycock/Horspool "Practical Earley Parsing",
 # _The Computer Journal_, Vol. 45, No. 6, pp. 620-630,
 # in source form
@@ -7,7 +6,7 @@ use 5.010_000;
 use strict;
 use warnings;
 use lib "../lib";
-use English;
+use English qw( -no_match_vars ) ;
 
 use Test::More tests => 2;
 
@@ -103,7 +102,7 @@ ok(!$failure_count, ($total_count-$failure_count) . " of $total_count parse perm
 # vim: expandtab shiftwidth=4:
 
 __DATA__
-semantics are perl5.  version is 0.211.1.  the start symbol is
+semantics are perl5.  version is 0.211.2.  the start symbol is
 S.  the default null value is q{}.  the default action is q{
      my $v_count = scalar @$_;
      return "" if $v_count <= 0;
