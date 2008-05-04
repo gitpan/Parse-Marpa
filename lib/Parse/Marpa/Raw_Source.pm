@@ -19,10 +19,10 @@ my $new_default_null_value;
 my $new_default_lex_prefix;
 my %strings;
 
-# This file was automatically generated using Parse::Marpa 0.211003
+# This file was automatically generated using Parse::Marpa 0.211004
 $new_semantics = 'perl5';
 
-$new_version = '0.211003';
+$new_version = '0.211004';
 
 $new_start_symbol = "grammar";
 
@@ -156,7 +156,7 @@ min => 0,
 });
 push(@$new_rules, {
     lhs => "non-structural-production-sentence"
-,    rhs => ["priority:k19", "integer", "period"],
+,    rhs => ["priority:k0", "integer", "period"],
     action => 
 q{ q{ priority => } . $_->[1] },
 ,
@@ -164,12 +164,12 @@ q{ q{ priority => } . $_->[1] },
 
 });
 push(@$new_terminals,
-    ["priority:k19" => { regex => qr/priority/ }],
+    ["priority:k0" => { regex => qr/priority/ }],
 );
 
 push(@$new_rules, {
     lhs => "action-sentence"
-,    rhs => ["the:kb:optional", "action:k9", "is:k8", "action-specifier", "period"],
+,    rhs => ["the:k1:optional", "action:k2", "is:k3", "action-specifier", "period"],
     action => 
 q{
     "    action => "
@@ -179,6 +179,20 @@ q{
 ,
 
 });
+push(@$new_terminals,
+    ["the:k1" => { regex => qr/the/ }],
+    ["action:k2" => { regex => qr/action/ }],
+    ["is:k3" => { regex => qr/is/ }],
+);
+
+push(@$new_rules, 
+    { lhs => "the:k1:optional",  rhs => [ "the:k1" ], 
+                     min => 0,
+                     max => 1,
+                     action => q{ $_->[0] }
+             },
+ );
+
 push(@$new_rules, {
     lhs => "action-sentence"
 ,    rhs => ["action-specifier", "period"],
@@ -311,7 +325,7 @@ push(@$new_rules, {
 });
 push(@$new_rules, {
     lhs => "semantics-setting"
-,    rhs => ["the:kb:optional", "semantics:k17", "copula", "perl5:k18"],
+,    rhs => ["the:k1:optional", "semantics:k4", "copula", "perl5:k5"],
     action => 
      q{
          q{$new_semantics = '}
@@ -322,9 +336,14 @@ push(@$new_rules, {
 ,
 
 });
+push(@$new_terminals,
+    ["semantics:k4" => { regex => qr/semantics/ }],
+    ["perl5:k5" => { regex => qr/perl5/ }],
+);
+
 push(@$new_rules, {
     lhs => "semantics-setting"
-,    rhs => ["perl5:k18", "copula", "the:kb:optional", "semantics:k17"],
+,    rhs => ["perl5:k5", "copula", "the:k1:optional", "semantics:k4"],
     action => 
 q{
     q{$new_semantics = '}
@@ -335,14 +354,9 @@ q{
 ,
 
 });
-push(@$new_terminals,
-    ["semantics:k17" => { regex => qr/semantics/ }],
-    ["perl5:k18" => { regex => qr/perl5/ }],
-);
-
 push(@$new_rules, {
     lhs => "version-setting"
-,    rhs => ["the:kb:optional", "version:k15", "copula", "version-number"],
+,    rhs => ["the:k1:optional", "version:k6", "copula", "version-number"],
     action => 
 q{
     q{$new_version = '}
@@ -353,9 +367,13 @@ q{
 ,
 
 });
+push(@$new_terminals,
+    ["version:k6" => { regex => qr/version/ }],
+);
+
 push(@$new_rules, {
     lhs => "version-setting"
-,    rhs => ["version%20number:k16", "copula", "the:kb:optional", "version:k15"],
+,    rhs => ["version%20number:k7", "copula", "the:k1:optional", "version:k6"],
     action => 
 q{
     q{$new_version = '}
@@ -367,13 +385,12 @@ q{
 
 });
 push(@$new_terminals,
-    ["version:k15" => { regex => qr/version/ }],
-    ["version%20number:k16" => { regex => qr/version number/ }],
+    ["version%20number:k7" => { regex => qr/version number/ }],
 );
 
 push(@$new_rules, {
     lhs => "start-symbol-setting"
-,    rhs => ["the:kb:optional", "start:k14", "symbol:k13", "copula", "symbol-phrase"],
+,    rhs => ["the:k1:optional", "start:k8", "symbol:k9", "copula", "symbol-phrase"],
     action => 
 q{
     q{$new_start_symbol = "}
@@ -384,9 +401,14 @@ q{
 ,
 
 });
+push(@$new_terminals,
+    ["start:k8" => { regex => qr/start/ }],
+    ["symbol:k9" => { regex => qr/symbol/ }],
+);
+
 push(@$new_rules, {
     lhs => "start-symbol-setting"
-,    rhs => ["symbol-phrase", "copula", "the:kb:optional", "start:k14", "symbol:k13"],
+,    rhs => ["symbol-phrase", "copula", "the:k1:optional", "start:k8", "symbol:k9"],
     action => 
 q{
     q{$new_start_symbol = }
@@ -397,14 +419,9 @@ q{
 ,
 
 });
-push(@$new_terminals,
-    ["symbol:k13" => { regex => qr/symbol/ }],
-    ["start:k14" => { regex => qr/start/ }],
-);
-
 push(@$new_rules, {
     lhs => "default-lex-prefix-setting"
-,    rhs => ["regex", "copula", "the:kb:optional", "default:ka", "lex:ke", "prefix:k12"],
+,    rhs => ["regex", "copula", "the:k1:optional", "default:ka", "lex:kb", "prefix:kc"],
     action => 
 q{
              q{$new_default_lex_prefix = }
@@ -415,9 +432,15 @@ q{
 ,
 
 });
+push(@$new_terminals,
+    ["default:ka" => { regex => qr/default/ }],
+    ["lex:kb" => { regex => qr/lex/ }],
+    ["prefix:kc" => { regex => qr/prefix/ }],
+);
+
 push(@$new_rules, {
     lhs => "default-lex-prefix-setting"
-,    rhs => ["the:kb:optional", "default:ka", "lex:ke", "prefix:k12", "copula", "regex"],
+,    rhs => ["the:k1:optional", "default:ka", "lex:kb", "prefix:kc", "copula", "regex"],
     action => 
 q{
     q{$new_default_lex_prefix = }
@@ -428,13 +451,9 @@ q{
 ,
 
 });
-push(@$new_terminals,
-    ["prefix:k12" => { regex => qr/prefix/ }],
-);
-
 push(@$new_rules, {
     lhs => "default-null-value-setting"
-,    rhs => ["string-specifier", "copula", "the:kb:optional", "default:ka", "null:k11", "value:k10"],
+,    rhs => ["string-specifier", "copula", "the:k1:optional", "default:ka", "null:kd", "value:ke"],
     action => 
 q{
              q{$new_default_null_value = }
@@ -445,9 +464,14 @@ q{
 ,
 
 });
+push(@$new_terminals,
+    ["null:kd" => { regex => qr/null/ }],
+    ["value:ke" => { regex => qr/value/ }],
+);
+
 push(@$new_rules, {
     lhs => "default-null-value-setting"
-,    rhs => ["the:kb:optional", "default:ka", "null:k11", "value:k10", "copula", "string-specifier"],
+,    rhs => ["the:k1:optional", "default:ka", "null:kd", "value:ke", "copula", "string-specifier"],
     action => 
 q{
     q{$new_default_null_value = }
@@ -458,14 +482,9 @@ q{
 ,
 
 });
-push(@$new_terminals,
-    ["value:k10" => { regex => qr/value/ }],
-    ["null:k11" => { regex => qr/null/ }],
-);
-
 push(@$new_rules, {
     lhs => "preamble-setting"
-,    rhs => ["a:kf", "preamble:kd", "is:k8", "string-specifier"],
+,    rhs => ["a:kf", "preamble:k10", "is:k3", "string-specifier"],
     action => 
 q{
     q{$new_preamble .= }
@@ -476,9 +495,14 @@ q{
  priority => 1000,
 
 });
+push(@$new_terminals,
+    ["a:kf" => { regex => qr/a/ }],
+    ["preamble:k10" => { regex => qr/preamble/ }],
+);
+
 push(@$new_rules, {
     lhs => "preamble-setting"
-,    rhs => ["string-specifier", "is:k8", "a:kf", "preamble:kd"],
+,    rhs => ["string-specifier", "is:k3", "a:kf", "preamble:k10"],
     action => 
 q{
     q{$new_preamble .= }
@@ -491,7 +515,7 @@ q{
 });
 push(@$new_rules, {
     lhs => "lex-preamble-setting"
-,    rhs => ["a:kf", "lex:ke", "preamble:kd", "is:k8", "string-specifier"],
+,    rhs => ["a:kf", "lex:kb", "preamble:k10", "is:k3", "string-specifier"],
     action => 
 q{
     q{$new_lex_preamble .= }
@@ -504,7 +528,7 @@ q{
 });
 push(@$new_rules, {
     lhs => "preamble-setting"
-,    rhs => ["string-specifier", "is:k8", "a:kf", "lex:ke", "preamble:kd"],
+,    rhs => ["string-specifier", "is:k3", "a:kf", "lex:kb", "preamble:k10"],
     action => 
 q{
     q{$new_lex_preamble .= }
@@ -515,33 +539,27 @@ q{
  priority => 1000,
 
 });
-push(@$new_terminals,
-    ["preamble:kd" => { regex => qr/preamble/ }],
-    ["lex:ke" => { regex => qr/lex/ }],
-    ["a:kf" => { regex => qr/a/ }],
-);
-
 push(@$new_rules, {
     lhs => "copula"
-,    rhs => ["is:k8"],
+,    rhs => ["is:k3"],
 ,
 ,
 
 });
 push(@$new_rules, {
     lhs => "copula"
-,    rhs => ["are:kc"],
+,    rhs => ["are:k11"],
 ,
 ,
 
 });
 push(@$new_terminals,
-    ["are:kc" => { regex => qr/are/ }],
+    ["are:k11" => { regex => qr/are/ }],
 );
 
 push(@$new_rules, {
     lhs => "string-definition"
-,    rhs => ["symbol-phrase", "is:k8", "string-specifier", "period"],
+,    rhs => ["symbol-phrase", "is:k3", "string-specifier", "period"],
     action => 
 q{
     '$strings{"'
@@ -556,7 +574,7 @@ q{
 });
 push(@$new_rules, {
     lhs => "default-action-setting"
-,    rhs => ["action-specifier", "is:k8", "the:kb:optional", "default:ka", "action:k9"],
+,    rhs => ["action-specifier", "is:k3", "the:k1:optional", "default:ka", "action:k2"],
     action => 
 q{
     q{ $new_default_action = }
@@ -569,7 +587,7 @@ q{
 });
 push(@$new_rules, {
     lhs => "default-action-setting"
-,    rhs => ["the:kb:optional", "default:ka", "action:k9", "is:k8", "action-specifier"],
+,    rhs => ["the:k1:optional", "default:ka", "action:k2", "is:k3", "action-specifier"],
     action => 
 q{
     q{ $new_default_action = }
@@ -580,28 +598,17 @@ q{
 ,
 
 });
-push(@$new_terminals,
-    ["is:k8" => { regex => qr/is/ }],
-    ["action:k9" => { regex => qr/action/ }],
-    ["default:ka" => { regex => qr/default/ }],
-    ["the:kb" => { regex => qr/the/ }],
-);
-
-push(@$new_rules, 
-    { lhs => "the:kb:optional",  rhs => [ "the:kb" ], 
-                     min => 0,
-                     max => 1,
-                     action => q{ $_->[0] }
-             },
- );
-
 push(@$new_rules, {
     lhs => "comment-sentence"
-,    rhs => ["comment-tag", "%3a:k7", "comment-words", "period"],
+,    rhs => ["comment-tag", "%3a:k12", "comment-words", "period"],
 ,
 ,
 
 });
+push(@$new_terminals,
+    ["%3a:k12" => { regex => qr/:/ }],
+);
+
 push(@$new_rules, {
     lhs => "comment-words"
 ,rhs => ["comment-word"],
@@ -650,24 +657,20 @@ q{
 });
 push(@$new_rules, {
     lhs => "production-copula"
-,    rhs => ["%3a:k7"],
+,    rhs => ["%3a:k12"],
 ,
 ,
 
 });
-push(@$new_terminals,
-    ["%3a:k7" => { regex => qr/:/ }],
-);
-
 push(@$new_rules, {
     lhs => "production-copula"
-,    rhs => ["%3a%3a%3d:k6"],
+,    rhs => ["%3a%3a%3d:k13"],
 ,
 ,
 
 });
 push(@$new_terminals,
-    ["%3a%3a%3d:k6" => { regex => qr/::=/ }],
+    ["%3a%3a%3d:k13" => { regex => qr/::=/ }],
 );
 
 push(@$new_rules, {
@@ -713,7 +716,7 @@ q{ "    rhs => [" . join(", ", @$_) . "]" },
 });
 push(@$new_rules, {
     lhs => "rhs"
-,    rhs => ["symbol-phrase", "sequence:k4"],
+,    rhs => ["symbol-phrase", "sequence:k14"],
     action => 
 q{
     q{rhs => ["}
@@ -725,9 +728,13 @@ q{
  priority => 1000,
 
 });
+push(@$new_terminals,
+    ["sequence:k14" => { regex => qr/sequence/ }],
+);
+
 push(@$new_rules, {
     lhs => "rhs"
-,    rhs => ["optional:k3", "symbol-phrase", "sequence:k4"],
+,    rhs => ["optional:k15", "symbol-phrase", "sequence:k14"],
     action => 
 q{
     q{rhs => ["}
@@ -739,9 +746,13 @@ q{
  priority => 2000,
 
 });
+push(@$new_terminals,
+    ["optional:k15" => { regex => qr/optional/ }],
+);
+
 push(@$new_rules, {
     lhs => "rhs"
-,    rhs => ["symbol-phrase", "separated:k5", "symbol-phrase", "sequence:k4"],
+,    rhs => ["symbol-phrase", "separated:k16", "symbol-phrase", "sequence:k14"],
     action => 
 q{
     q{rhs => ["}
@@ -756,9 +767,13 @@ q{
  priority => 2000,
 
 });
+push(@$new_terminals,
+    ["separated:k16" => { regex => qr/separated/ }],
+);
+
 push(@$new_rules, {
     lhs => "rhs"
-,    rhs => ["optional:k3", "symbol-phrase", "separated:k5", "symbol-phrase", "sequence:k4"],
+,    rhs => ["optional:k15", "symbol-phrase", "separated:k16", "symbol-phrase", "sequence:k14"],
     action => 
 q{
     q{rhs => ["}
@@ -773,11 +788,6 @@ q{
  priority => 3000,
 
 });
-push(@$new_terminals,
-    ["sequence:k4" => { regex => qr/sequence/ }],
-    ["separated:k5" => { regex => qr/separated/ }],
-);
-
 push(@$new_rules, {
     lhs => "rhs-element"
 ,    rhs => ["mandatory-rhs-element"],
@@ -805,7 +815,7 @@ q{ q{"} . $_->[0] . q{"} },
 });
 push(@$new_rules, {
     lhs => "optional-rhs-element"
-,    rhs => ["optional:k3", "rhs-symbol-specifier"],
+,    rhs => ["optional:k15", "rhs-symbol-specifier"],
     action => 
 q{
      my $symbol_phrase = $_->[1];
@@ -831,10 +841,6 @@ q{
 ,
 
 });
-push(@$new_terminals,
-    ["optional:k3" => { regex => qr/optional/ }],
-);
-
 push(@$new_rules, {
     lhs => "rhs-symbol-specifier"
 ,    rhs => ["symbol-phrase"],
@@ -888,7 +894,7 @@ min => 0,
 });
 push(@$new_rules, {
     lhs => "terminal-sentence"
-,    rhs => ["symbol-phrase", "matches:k2", "regex", "period"],
+,    rhs => ["symbol-phrase", "matches:k17", "regex", "period"],
     action => 
 q{
     q{push(@$new_terminals, [ "}
@@ -904,12 +910,12 @@ q{
 
 });
 push(@$new_terminals,
-    ["matches:k2" => { regex => qr/matches/ }],
+    ["matches:k17" => { regex => qr/matches/ }],
 );
 
 push(@$new_rules, {
     lhs => "terminal-sentence"
-,    rhs => ["match:k1", "symbol-phrase", "using:k0", "string-specifier", "period"],
+,    rhs => ["match:k18", "symbol-phrase", "using:k19", "string-specifier", "period"],
     action => 
 q{
     q{push(@$new_terminals, [ "}
@@ -925,8 +931,8 @@ q{
 
 });
 push(@$new_terminals,
-    ["using:k0" => { regex => qr/using/ }],
-    ["match:k1" => { regex => qr/match/ }],
+    ["match:k18" => { regex => qr/match/ }],
+    ["using:k19" => { regex => qr/using/ }],
 );
 
 push(@$new_rules, {

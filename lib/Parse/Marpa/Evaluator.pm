@@ -1,62 +1,405 @@
+package Parse::Marpa::Internal::Evaluator;
 use 5.010_000;
 
 use warnings;
-no warnings "recursion";
+no warnings 'recursion';
 use strict;
 use integer;
+use List::Util qw(max);
+use English qw( -no_match_vars );
 
-package Parse::Marpa::Read_Only;
+# The bocage is Marpa's structure for keeping multiple parses.
+# A parse bocage is a list of or-nodes, whose child
+# and-nodes must be (at most) binary.
 
-our $rule;
+# "Parse forests" are the structures used to keep multiple
+# parses in many parsers, but Marpa
+# can't use them because
+# Marpa allows cyclical parses, and
+# it breaks the RHS of productions into
+# and-nodes of a most two symbols.
+# And-nodes start in binary form
+# in the Aycock-Horspool Earley items, and because
+# binary and-nodes store the parses
+# compactly, and allow easier tree
+# traversals, I keep them that way.
+
+# Bocage is a special type of forest,
+# consisting of hedgerows deliberately cultivated
+# as obstacles to cattle and armies.
+
+# Saplings become or-nodes when they grow up.
+
+package Parse::Marpa::Internal::Sapling;
+
+use constant NAME     => 0;
+use constant ITEM     => 1;
+use constant RULE     => 2;
+use constant POSITION => 3;
+use constant SYMBOL   => 4;
+
+package Parse::Marpa::Internal::And_Node;
+
+use constant PREDECESSOR => 0;
+use constant CAUSE       => 1;
+use constant VALUE_REF   => 2;
+use constant CLOSURE     => 3;
+use constant ARGC        => 4;
+use constant RULE        => 5;
+use constant POSITION    => 6;
+
+package Parse::Marpa::Internal::Or_Node;
+
+use constant NAME      => 0;
+use constant AND_NODES => 1;
+
+package Parse::Marpa::Internal::Tree_Node;
+
+use constant OR_NODE     => 0;
+use constant CHOICE      => 1;
+use constant PREDECESSOR => 2;
+use constant CAUSE       => 3;
+use constant DEPTH       => 4;
+use constant CLOSURE     => 6;
+use constant ARGC        => 7;
+use constant VALUE_REF   => 8;
+use constant RULE        => 9;
+use constant POSITION    => 10;
+
+package Parse::Marpa::Internal::Evaluator::Rule;
+
+use constant CODE    => 0;
+use constant CLOSURE => 1;
 
 package Parse::Marpa::Internal::Evaluator;
 
 use constant RECOGNIZER  => 0;
 use constant PARSE_COUNT => 1;    # number of parses in an ambiguous parse
+use constant OR_NODES    => 2;
+use constant TREE        => 3;    # current evaluation tree
+use constant RULE_DATA   => 4;
+use constant PACKAGE     => 5;
+use constant NULL_VALUES => 6;
 
 use Scalar::Util qw(weaken);
 use Data::Dumper;
 use Carp;
 
-sub clear_notations {
-    my $evaler     = shift;
-    my $recognizer = $evaler->[Parse::Marpa::Internal::Evaluator::RECOGNIZER];
+sub run_preamble {
+    my $preamble = shift;
+    my $package  = shift;
 
-    my ($earley_set_list) =
-        @{$evaler}[Parse::Marpa::Internal::Recognizer::EARLEY_SETS];
-    for my $earley_set (@$earley_set_list) {
-        for my $earley_item (@$earley_set) {
-            @{$earley_item}[
-                Parse::Marpa::Internal::Earley_item::POINTER,
-                Parse::Marpa::Internal::Earley_item::RULES,
-                Parse::Marpa::Internal::Earley_item::RULE_CHOICE,
-                Parse::Marpa::Internal::Earley_item::LINK_CHOICE,
-                Parse::Marpa::Internal::Earley_item::TOKEN_CHOICE,
-                Parse::Marpa::Internal::Earley_item::VALUE,
-                Parse::Marpa::Internal::Earley_item::PREDECESSOR,
-                Parse::Marpa::Internal::Earley_item::SUCCESSOR,
-                Parse::Marpa::Internal::Earley_item::EFFECT,
-                Parse::Marpa::Internal::Earley_item::LHS,
-                ]
-                = ( undef, undef, 0, 0, 0, undef, undef, undef, undef, undef,
+    my @warnings;
+    my @caller_return;
+    local $SIG{__WARN__} = sub {
+        push @warnings, $_[0];
+        @caller_return = caller 0;
+    };
+
+    ## no critic (BuiltinFunctions::ProhibitStringyEval)
+    eval 'package ' . $package . ";\n" . $preamble;
+    ## use critic
+
+    my $fatal_error = $EVAL_ERROR;
+    if ( $fatal_error or @warnings ) {
+        Parse::Marpa::Internal::code_problems(
+            $fatal_error, \@warnings,
+            'evaluating preamble',
+            'evaluating preamble',
+            \$preamble, \@caller_return
+        );
+    }
+
+    return;
+
+}    # run_preamble
+
+# Given symbol, returns null value, calculating it
+# if necessary.
+#
+# Assumes all but CHAF values have already been set
+sub set_null_symbol_value {
+    my $null_values = shift;
+    my $symbol      = shift;
+
+    # if it's not a CHAF nulling symbol,
+    # or the value is already set, use what we have
+    my $chaf_nulling =
+        $symbol->[Parse::Marpa::Internal::Symbol::IS_CHAF_NULLING];
+    my $symbol_id  = $symbol->[Parse::Marpa::Internal::Symbol::ID];
+    my $null_value = $null_values->[$symbol_id];
+    if ( not $chaf_nulling or defined $null_value ) {
+        return $null_value;
+    }
+
+    # it is a CHAF nulling symbol, but needs its null value calculated.
+    my @chaf_null_values = ();
+    for my $rhs_symbol ( @{$chaf_nulling} ) {
+        my $nulling_symbol =
+            $rhs_symbol->[Parse::Marpa::Internal::Symbol::NULL_ALIAS]
+            // $rhs_symbol;
+        my $value = set_null_symbol_value( $null_values, $nulling_symbol );
+        push @chaf_null_values, $value;
+    }
+    push @chaf_null_values, [];
+
+    return ( $null_values->[$symbol_id] = \@chaf_null_values );
+
+}    # null symbol value
+
+sub set_null_values {
+    my $grammar = shift;
+    my $package = shift;
+
+    my ( $rules, $symbols, $tracing, $default_null_value ) = @{$grammar}[
+        Parse::Marpa::Internal::Grammar::RULES,
+        Parse::Marpa::Internal::Grammar::SYMBOLS,
+        Parse::Marpa::Internal::Grammar::TRACING,
+        Parse::Marpa::Internal::Grammar::DEFAULT_NULL_VALUE,
+    ];
+
+    my $null_values;
+    $#{$null_values} = $#{$symbols};
+
+    my $trace_fh;
+    my $trace_actions;
+    if ($tracing) {
+        $trace_fh =
+            $grammar->[Parse::Marpa::Internal::Grammar::TRACE_FILE_HANDLE];
+        $trace_actions =
+            $grammar->[Parse::Marpa::Internal::Grammar::TRACE_ACTIONS];
+    }
+
+    SYMBOL: for my $symbol ( @{$symbols} ) {
+        next SYMBOL
+            if $symbol->[Parse::Marpa::Internal::Symbol::IS_CHAF_NULLING];
+        my $id = $symbol->[Parse::Marpa::Internal::Symbol::ID];
+        $null_values->[$id] = $default_null_value;
+    }
+
+    # Before tackling the CHAF symbols, set null values specified in
+    # empty rules.
+    RULE: for my $rule ( @{$rules} ) {
+
+        my $action = $rule->[Parse::Marpa::Internal::Rule::ACTION];
+
+        # Set the null value of symbols from the action for their
+        # empty rules
+        my $rhs = $rule->[Parse::Marpa::Internal::Rule::RHS];
+
+        # Empty rule with action?
+        if ( defined $action and @{$rhs} <= 0 ) {
+            my $lhs = $rule->[Parse::Marpa::Internal::Rule::LHS];
+            my $nulling_alias =
+                $lhs->[Parse::Marpa::Internal::Symbol::NULL_ALIAS];
+            next RULE unless defined $nulling_alias;
+
+            my $code =
+                "package $package;\n" . 'local(@_)=[];' . "\n" . $action;
+            my @warnings;
+            my @caller_return;
+            local $SIG{__WARN__} = sub {
+                push @warnings, $_[0];
+                @caller_return = caller 0;
+            };
+
+            ## no critic (BuiltinFunctions::ProhibitStringyEval)
+            my $null_value = eval $code;
+            ## use critic
+
+            my $fatal_error = $EVAL_ERROR;
+            if ( $fatal_error or @warnings ) {
+                Parse::Marpa::Internal::code_problems(
+                    $fatal_error,
+                    \@warnings,
+                    'evaluating null value',
+                    'evaluating null value for '
+                        . $nulling_alias
+                        ->[Parse::Marpa::Internal::Symbol::NAME],
+                    \$code,
+                    \@caller_return
                 );
+            }
+            my $nulling_alias_id =
+                $nulling_alias->[Parse::Marpa::Internal::Symbol::ID];
+            $null_values->[$nulling_alias_id] = $null_value;
+
+            if ($trace_actions) {
+                print {$trace_fh} 'Setting null value for symbol ',
+                    $nulling_alias->[Parse::Marpa::Internal::Symbol::NAME],
+                    " from\n", $code, "\n",
+                    ' to ', Parse::Marpa::show_value( \$null_value ), "\n"
+                    or croak('Could not print to trace file');
+            }
+
+        }
+
+    }    # RULE
+
+    SYMBOL: for my $symbol ( @{$symbols} ) {
+        next SYMBOL
+            unless $symbol->[Parse::Marpa::Internal::Symbol::IS_CHAF_NULLING];
+        set_null_symbol_value( $null_values, $symbol );
+    }
+
+    if ($trace_actions) {
+        SYMBOL: for my $symbol ( @{$symbols} ) {
+            next SYMBOL
+                unless
+                $symbol->[Parse::Marpa::Internal::Symbol::IS_CHAF_NULLING];
+
+            my ( $name, $id ) = @{$symbol}[
+                Parse::Marpa::Internal::Symbol::NAME,
+                Parse::Marpa::Internal::Symbol::ID,
+            ];
+            print {$trace_fh}
+                'Setting null value for CHAF symbol ',
+                $name, ' to ', Dumper( $null_values->[$id] ),
+                or croak('Could not print to trace file');
         }
     }
-}
 
-sub clear_values {
-    my $evaler     = shift;
-    my $recognizer = $evaler->[Parse::Marpa::Internal::Evaluator::RECOGNIZER];
+    return $null_values;
 
-    my ($earley_set_list) =
-        @{$recognizer}[Parse::Marpa::Internal::Recognizer::EARLEY_SETS];
-    for my $earley_set (@$earley_set_list) {
-        for my $earley_item (@$earley_set) {
-            $earley_item->[Parse::Marpa::Internal::Earley_item::VALUE] =
-                undef;
-        }
+}    # set_null_values
+
+sub set_actions {
+    my $grammar = shift;
+    my $package = shift;
+
+    my ( $rules, $tracing, $default_action, ) = @{$grammar}[
+        Parse::Marpa::Internal::Grammar::RULES,
+        Parse::Marpa::Internal::Grammar::TRACING,
+        Parse::Marpa::Internal::Grammar::DEFAULT_ACTION,
+    ];
+
+    # need trace_fh for code problems here, even if not tracing
+    my $trace_fh
+         = $grammar->[Parse::Marpa::Internal::Grammar::TRACE_FILE_HANDLE];
+    my $trace_actions;
+    if ($tracing) {
+        $trace_actions =
+            $grammar->[Parse::Marpa::Internal::Grammar::TRACE_ACTIONS];
     }
-}
+
+    my $rule_data = [];
+
+    RULE: for my $rule ( @{$rules} ) {
+
+        next RULE unless $rule->[Parse::Marpa::Internal::Rule::USEFUL];
+
+        my $action = $rule->[Parse::Marpa::Internal::Rule::ACTION];
+
+        ACTION: {
+
+            $action //= $default_action;
+            last ACTION unless defined $action;
+
+            # HAS_CHAF_RHS and HAS_CHAF_LHS would work well as a bit
+            # mask in a C implementation
+            my $has_chaf_lhs =
+                $rule->[Parse::Marpa::Internal::Rule::HAS_CHAF_LHS];
+            my $has_chaf_rhs =
+                $rule->[Parse::Marpa::Internal::Rule::HAS_CHAF_RHS];
+
+            last ACTION unless $has_chaf_lhs or $has_chaf_rhs;
+
+            if ( $has_chaf_rhs and $has_chaf_lhs ) {
+                $action = q{ $_; };
+                last ACTION;
+            }
+
+            # At this point has chaf rhs or lhs but not both
+            if ($has_chaf_lhs) {
+
+                $action = q{push @{$_}, [];} . "\n" . q{$_} . "\n";
+                last ACTION;
+
+            }
+
+            # at this point must have chaf rhs and not a chaf lhs
+
+            $action =
+                  "    TAIL: for (;;) {\n"
+                . q<        my $tail = pop @{$_};> . "\n"
+                . q<        last TAIL unless scalar @{$tail};> . "\n"
+                . q<        push @{$_}, @{$tail};> . "\n"
+		. "    } # TAIL\n"
+                . $action;
+
+        }    # ACTION
+
+        my $rule_id = $rule->[Parse::Marpa::Internal::Rule::ID];
+
+	if (not defined $action) {
+
+	    if ($trace_actions) {
+		print {$trace_fh} 'Setting action for rule ',
+		    Parse::Marpa::brief_rule($rule), " to undef by default\n"
+		    or croak('Could not print to trace file');
+	    }
+
+	    my $rule_datum;
+	    $rule_datum->[Parse::Marpa::Internal::Evaluator::Rule::CODE] = "default to undef";
+	    $rule_datum->[Parse::Marpa::Internal::Evaluator::Rule::CLOSURE] = \undef;
+	    $rule_data->[$rule_id] = $rule_datum;
+	    next RULE;
+	}
+
+        my $code =
+              "sub {\n"
+            . '    package '
+            . $package . ";\n"
+            . $action . "\n" . '}';
+
+        if ($trace_actions) {
+            print {$trace_fh} 'Setting action for rule ',
+                Parse::Marpa::brief_rule($rule), " to\n", $code, "\n"
+                or croak('Could not print to trace file');
+        }
+
+        my $closure;
+        {
+            my @warnings;
+            my @caller_return;
+            local $SIG{__WARN__} = sub {
+                push @warnings, $_[0];
+                @caller_return = caller 0;
+            };
+
+            ## no critic (BuiltinFunctions::ProhibitStringyEval)
+            $closure = eval $code;
+            ## use critic
+
+            my $fatal_error = $EVAL_ERROR;
+            if ( $fatal_error or @warnings ) {
+		say {$trace_fh}
+		    'Problems compiling action for original rule: ',
+		    Parse::Marpa::brief_original_rule($rule);
+                Parse::Marpa::Internal::code_problems(
+                    $fatal_error,
+                    \@warnings,
+                    'compiling action',
+                    'compiling action for '
+                        . Parse::Marpa::brief_rule($rule),
+                    \$code,
+                    \@caller_return
+                );
+            }
+        }
+
+        my $rule_datum;
+        $rule_datum->[Parse::Marpa::Internal::Evaluator::Rule::CODE] = $code;
+        $rule_datum->[Parse::Marpa::Internal::Evaluator::Rule::CLOSURE] =
+            $closure;
+
+	$rule_data->[$rule_id] = $rule_datum;
+
+    }    # RULE
+
+    return $rule_data;
+
+}    # set_actions
 
 sub Parse::Marpa::Evaluator::new {
     my $class         = shift;
@@ -65,14 +408,14 @@ sub Parse::Marpa::Evaluator::new {
     my $self          = bless [], $class;
 
     my $recognizer_class = ref $recognizer;
-    my $right_class      = "Parse::Marpa::Recognizer";
+    my $right_class      = 'Parse::Marpa::Recognizer';
     croak(
         "Don't parse argument is class: $recognizer_class; should be: $right_class"
     ) unless $recognizer_class eq $right_class;
 
-    croak("Recognizer already in use by evaluator")
-        if
-        defined $recognizer->[Parse::Marpa::Internal::Recognizer::EVALUATOR];
+    defined $recognizer->[Parse::Marpa::Internal::Recognizer::EVALUATOR]
+        and croak('Recognizer already in use by Evaluator');
+
     weaken( $recognizer->[Parse::Marpa::Internal::Recognizer::EVALUATOR] =
             $self );
 
@@ -80,7 +423,9 @@ sub Parse::Marpa::Evaluator::new {
         Parse::Marpa::Internal::Recognizer::GRAMMAR,
         Parse::Marpa::Internal::Recognizer::EARLEY_SETS,
     ];
+
     local ($Parse::Marpa::Internal::This::grammar) = $grammar;
+
     my $tracing = $grammar->[Parse::Marpa::Internal::Grammar::TRACING];
     my $trace_fh;
     my $trace_iteration_changes;
@@ -102,26 +447,24 @@ sub Parse::Marpa::Evaluator::new {
         $recognizer->[Parse::Marpa::Internal::Recognizer::DEFAULT_PARSE_SET];
 
     $self->[Parse::Marpa::Internal::Evaluator::PARSE_COUNT] = 0;
-    clear_notations($self);
+    $self->[Parse::Marpa::Internal::Evaluator::OR_NODES]    = [];
 
     my $current_parse_set = $parse_set_arg // $default_parse_set;
 
     # Look for the start item and start rule
     my $earley_set = $earley_sets->[$current_parse_set];
 
-    # The start rule, if not nulling, must be a pure links rule
-    # (no tokens) because I don't allow tokens to be recognized
-    # for the start symbol
-
     my $start_item;
     my $start_rule;
+    my $start_state;
 
-    # mark start items with LHS?
-    EARLEY_ITEM: for ( my $ix = 0; $ix <= $#$earley_set; $ix++ ) {
-        $start_item = $earley_set->[$ix];
-        my $state = $start_item->[Parse::Marpa::Internal::Earley_item::STATE];
-        $start_rule = $state->[Parse::Marpa::Internal::QDFA::START_RULE];
-        last EARLEY_ITEM if $start_rule;
+    EARLEY_ITEM: for my $item ( @{$earley_set} ) {
+        $start_state = $item->[Parse::Marpa::Internal::Earley_item::STATE];
+        $start_rule =
+            $start_state->[Parse::Marpa::Internal::QDFA::START_RULE];
+        next EARLEY_ITEM unless $start_rule;
+        $start_item = $item;
+        last EARLEY_ITEM;
     }
 
     return unless $start_rule;
@@ -134,446 +477,441 @@ sub Parse::Marpa::Evaluator::new {
 
     $self->[Parse::Marpa::Internal::Evaluator::RECOGNIZER] = $recognizer;
 
-    finish_evaluation($self);
+    state $parse_number = 0;
+    my $package = $self->[Parse::Marpa::Internal::Evaluator::PACKAGE] =
+        sprintf 'Parse::Marpa::E_%x', $parse_number++;
+    my $preamble = $grammar->[Parse::Marpa::Internal::Grammar::PREAMBLE];
+    defined $preamble and run_preamble( $preamble, $package );
+    my $null_values =
+        $self->[Parse::Marpa::Internal::Evaluator::NULL_VALUES] =
+        set_null_values( $grammar, $package );
+    my $rule_data = $self->[Parse::Marpa::Internal::Evaluator::RULE_DATA] =
+        set_actions( $grammar, $package );
 
-    $self;
-}
-
-sub finish_evaluation {
-    my $evaler     = shift;
-    my $recognizer = $evaler->[Parse::Marpa::Internal::Evaluator::RECOGNIZER];
-
-    # mark start items with LHS?
-    my $start_item =
-        $recognizer->[Parse::Marpa::Internal::Recognizer::START_ITEM];
-    my $grammar = $recognizer->[Parse::Marpa::Internal::Recognizer::GRAMMAR];
-
-    my $previous_value =
-        $start_item->[Parse::Marpa::Internal::Earley_item::VALUE];
-    return 1 if $previous_value;
-
-    my $state = $start_item->[Parse::Marpa::Internal::Earley_item::STATE];
-    my $start_rule = $state->[Parse::Marpa::Internal::QDFA::START_RULE];
-
-    my $lhs = $start_rule->[Parse::Marpa::Internal::Rule::LHS];
-    my ( $nulling, $null_value ) = @{$lhs}[
+    my $start_symbol = $start_rule->[Parse::Marpa::Internal::Rule::LHS];
+    my ( $nulling, $symbol_id ) = @{$start_symbol}[
         Parse::Marpa::Internal::Symbol::NULLING,
-        Parse::Marpa::Internal::Symbol::NULL_VALUE
+        Parse::Marpa::Internal::Symbol::ID,
     ];
+    my $start_null_value = $null_values->[$symbol_id];
 
-    my $tracing = $grammar->[Parse::Marpa::Internal::Grammar::TRACING];
-    my $trace_fh;
-    my $trace_iteration_changes;
-    if ($tracing) {
-        $trace_fh =
-            $grammar->[Parse::Marpa::Internal::Grammar::TRACE_FILE_HANDLE];
-        $trace_iteration_changes = $grammar
-            ->[Parse::Marpa::Internal::Grammar::TRACE_ITERATION_CHANGES];
-    }
-
+    # deal with a null parse as a special case
     if ($nulling) {
-        @{$start_item}[
-            Parse::Marpa::Internal::Earley_item::VALUE,
-            Parse::Marpa::Internal::Earley_item::TOKEN_CHOICE,
-            Parse::Marpa::Internal::Earley_item::LINK_CHOICE,
-            Parse::Marpa::Internal::Earley_item::RULE_CHOICE,
-            Parse::Marpa::Internal::Earley_item::RULES,
-            Parse::Marpa::Internal::Earley_item::LHS,
+        my $and_node = [];
+
+        my $closure =
+            $rule_data->[ $start_rule->[Parse::Marpa::Internal::Rule::ID] ]
+            ->[Parse::Marpa::Internal::Evaluator::Rule::CLOSURE];
+
+        @{$and_node}[
+            Parse::Marpa::Internal::And_Node::VALUE_REF,
+            Parse::Marpa::Internal::And_Node::CLOSURE,
+            Parse::Marpa::Internal::And_Node::ARGC,
+            Parse::Marpa::Internal::And_Node::RULE,
+            Parse::Marpa::Internal::And_Node::POSITION,
             ]
-            = ( \$null_value, 0, 0, 0, [$start_rule], $lhs, );
-        if ( $tracing && $trace_iteration_changes ) {
-            print $trace_fh
-                "Setting nulling start value of ",
-                Parse::Marpa::brief_earley_item($start_item), ", ",
-                $lhs->[Parse::Marpa::Internal::Symbol::NAME], " to ",
-                Dumper($null_value);
-        }
-        return 1;
+            = (
+            \$start_null_value,
+            $closure,
+            ( scalar @{ $start_rule->[Parse::Marpa::Internal::Rule::RHS] } ),
+            $start_rule,
+	    0,
+            );
+
+        my $or_node = [];
+        $or_node->[Parse::Marpa::Internal::Or_Node::NAME] =
+            $start_item->[Parse::Marpa::Internal::Earley_item::NAME];
+        $or_node->[Parse::Marpa::Internal::Or_Node::AND_NODES] = [$and_node];
+
+        $self->[OR_NODES] = [$or_node];
+
+        return $self;
+
+    }    # if $nulling
+
+    my @saplings;
+    my %or_node_by_name;
+    my $start_sapling = [];
+    {
+        my $name = $start_item->[Parse::Marpa::Internal::Earley_item::NAME];
+        my $symbol_id = $start_symbol->[Parse::Marpa::Internal::Symbol::ID];
+        $name .= 'L' . $symbol_id;
+        $start_sapling->[Parse::Marpa::Internal::Sapling::NAME] = $name;
     }
+    $start_sapling->[Parse::Marpa::Internal::Sapling::ITEM] = $start_item;
+    $start_sapling->[Parse::Marpa::Internal::Sapling::SYMBOL] =
+        $start_symbol;
+    push @saplings, $start_sapling;
 
-    my $value = initialize_children( $start_item, $lhs );
-    @{$start_item}[
-        Parse::Marpa::Internal::Earley_item::VALUE,
-        Parse::Marpa::Internal::Earley_item::TOKEN_CHOICE,
-        Parse::Marpa::Internal::Earley_item::LINK_CHOICE,
-        Parse::Marpa::Internal::Earley_item::RULE_CHOICE,
-        Parse::Marpa::Internal::Earley_item::RULES,
-        Parse::Marpa::Internal::Earley_item::LHS,
-        ]
-        = ( \$value, 0, 0, 0, [$start_rule], $lhs, );
-    if ( $tracing && $trace_iteration_changes ) {
-        print $trace_fh "Setting start value of ",
-            Parse::Marpa::brief_earley_item($start_item), ", ",
-            $lhs->[Parse::Marpa::Internal::Symbol::NAME], " to ",
-            Dumper($value);
-    }
+    my $i = 0;
+    SAPLING: while (1) {
 
-    1;
-
-}
-
-sub initialize_children {
-    my $item       = shift;
-    my $lhs_symbol = shift;
-
-    my $grammar = $Parse::Marpa::Internal::This::grammar;
-    my $tracing = $grammar->[Parse::Marpa::Internal::Grammar::TRACING];
-    my $trace_fh;
-    my $trace_evaluation_choices;
-    my $trace_iteration_changes;
-    my $trace_iteration_searches;
-    my $trace_values;
-
-    if ($tracing) {
-        $trace_fh =
-            $grammar->[Parse::Marpa::Internal::Grammar::TRACE_FILE_HANDLE];
-        $trace_evaluation_choices = $grammar
-            ->[Parse::Marpa::Internal::Grammar::TRACE_EVALUATION_CHOICES];
-        $trace_iteration_changes = $grammar
-            ->[Parse::Marpa::Internal::Grammar::TRACE_ITERATION_CHANGES];
-        $trace_iteration_searches = $grammar
-            ->[Parse::Marpa::Internal::Grammar::TRACE_ITERATION_SEARCHES];
-        $trace_values =
-            $grammar->[Parse::Marpa::Internal::Grammar::TRACE_VALUES];
-    }
-
-    $item->[Parse::Marpa::Internal::Earley_item::LHS] = $lhs_symbol;
-    my $lhs_symbol_id = $lhs_symbol->[Parse::Marpa::Internal::Symbol::ID];
-
-    my ( $state, $child_rule_choice ) = @{$item}[
-        Parse::Marpa::Internal::Earley_item::STATE,
-        Parse::Marpa::Internal::Earley_item::RULE_CHOICE,
-    ];
-
-    if ( not defined $child_rule_choice ) {
-        $child_rule_choice = 0;
-    }
-    my $child_rules =
-        $state->[Parse::Marpa::Internal::QDFA::COMPLETE_RULES]
-        ->[$lhs_symbol_id];
-    my $rule = $child_rules->[$child_rule_choice];
-    if ( $trace_evaluation_choices and scalar @$child_rules > 1 ) {
-        my ( $set, $parent ) = @{$item}[
-            Parse::Marpa::Internal::Earley_item::SET,
-            Parse::Marpa::Internal::Earley_item::PARENT,
-        ];
-        say $trace_fh "Choose rule ", $child_rule_choice,
-            " of ", ( scalar @$child_rules ), " at earlemes ", $parent, "-",
-            $set, ": ", Parse::Marpa::brief_rule($rule);
-        for ( my $ix = 0; $ix <= $#$child_rules; $ix++ ) {
-            my $choice = $child_rules->[$ix];
-            say $trace_fh
-                "Rule choice $ix at $parent-$set: ",
-                Parse::Marpa::brief_rule($choice);
-        }
-    }
-    local ($Parse::Marpa::Read_Only::rule) = $rule;
-    my ($rhs) = @{$rule}[Parse::Marpa::Internal::Rule::RHS];
-
-    my $values = [];    # to store values in
-
-    my @work_entries;
-
-    CHILD:
-    for ( my $child_number = $#$rhs; $child_number >= 0; $child_number-- ) {
-
-        my $child_symbol = $rhs->[$child_number];
-        my $nulling =
-            $child_symbol->[Parse::Marpa::Internal::Symbol::NULLING];
-
-	# Nulling?  Is so, use the null symbol value.
-	# There are no items for null values, so current item does not
-	# change.
-        if ($nulling) {
-            my $null_value =
-                $child_symbol->[Parse::Marpa::Internal::Symbol::NULL_VALUE];
-            $values->[$child_number] = $null_value;
-
-            if ($trace_values) {
-                my $value_description =
-                    ( not defined $null_value ) ? "undefined" : $null_value;
-                say $trace_fh
-                    "Using null value for ",
-                    $child_symbol->[Parse::Marpa::Internal::Symbol::NAME],
-                    ": ",
-                    $value_description;
-            }
-
-            next CHILD;
-        }
-
-	# If there is already a value, use it, and set the next item
-	# to be predecessor, which we saved.
-        my ( $tokens, $links, $previous_value, $previous_predecessor,
-            $item_set, )
-            = @{$item}[
-            Parse::Marpa::Internal::Earley_item::TOKENS,
-            Parse::Marpa::Internal::Earley_item::LINKS,
-            Parse::Marpa::Internal::Earley_item::VALUE,
-            Parse::Marpa::Internal::Earley_item::PREDECESSOR,
-            Parse::Marpa::Internal::Earley_item::SET,
+        my ( $sapling_name, $item, $symbol, $rule, $position ) =
+            @{ $saplings[ $i++ ] }[
+            Parse::Marpa::Internal::Sapling::NAME,
+            Parse::Marpa::Internal::Sapling::ITEM,
+            Parse::Marpa::Internal::Sapling::SYMBOL,
+            Parse::Marpa::Internal::Sapling::RULE,
+            Parse::Marpa::Internal::Sapling::POSITION,
             ];
 
-        if ( defined $previous_value ) {
-            $values->[$child_number] = $$previous_value;
-            $item = $previous_predecessor;
+        last SAPLING unless defined $item;
 
-            if ($trace_values) {
-                my $value_description =
-                    ( not defined $$previous_value )
-                    ? "undefined"
-                    : $$previous_value;
-                say $trace_fh
-                    "Using previous value for ",
-                    $child_symbol->[Parse::Marpa::Internal::Symbol::NAME],
-                    ": ",
-                    $value_description;
+        # If we don't have a current rule, we need to get one or
+        # more rules, and deduce the position and a new symbol from
+        # them.
+        my @rule_work_list;
+
+        # If we have a rule and a position, get the current symbol
+        if ( defined $position ) {
+
+            my $symbol =
+                $rule->[Parse::Marpa::Internal::Rule::RHS]->[$position-1];
+            push @rule_work_list, [ $rule, $position, $symbol ];
+
+        }
+        else {    # if not defined $position
+
+            my $lhs_id = $symbol->[Parse::Marpa::Internal::Symbol::ID];
+            my $state  = $item->[Parse::Marpa::Internal::Earley_item::STATE];
+            for my $rule (
+                @{  $state->[Parse::Marpa::Internal::QDFA::COMPLETE_RULES]
+                        ->[$lhs_id];
+                }
+                )
+            {
+
+                my $rhs = $rule->[Parse::Marpa::Internal::Rule::RHS];
+                my $closure =
+                    $rule_data->[ $rule->[Parse::Marpa::Internal::Rule::ID] ]
+                    ->[Parse::Marpa::Internal::Evaluator::Rule::CLOSURE];
+
+                my $last_position = @{$rhs};
+                push @rule_work_list,
+                    [
+                    $rule,                  $last_position,
+                    $rhs->[$last_position-1], $closure
+                    ];
+
+            }    # for my $rule
+
+        }    # not defined $position
+
+        my @and_nodes;
+
+        my $item_name = $item->[Parse::Marpa::Internal::Earley_item::NAME];
+
+        RULE: for my $rule_work_item (@rule_work_list) {
+
+            my ( $rule, $position, $symbol, $closure ) = @{$rule_work_item};
+
+            my ( $rule_id, $rhs ) = @{$rule}[
+                Parse::Marpa::Internal::Rule::ID,
+                Parse::Marpa::Internal::Rule::RHS
+            ];
+            my $rule_length = @{$rhs};
+
+            my @work_list;
+            if ( $symbol->[Parse::Marpa::Internal::Symbol::NULLING] ) {
+                my $symbol_id = $symbol->[Parse::Marpa::Internal::Symbol::ID];
+                my $null_value = $null_values->[$symbol_id];
+                @work_list = ( [ $item, undef, \$null_value, ] );
+            }
+            else {
+                @work_list = (
+                    (   map { [ $_->[0], undef, \( $_->[1] ) ] } @{
+                            $item->[
+                                Parse::Marpa::Internal::Earley_item::TOKENS
+                            ]
+                            }
+                    ),
+                    (   map { [ $_->[0], $_->[1] ] } @{
+                            $item
+                                ->[Parse::Marpa::Internal::Earley_item::LINKS]
+                            }
+                    )
+                );
             }
 
-            next CHILD;
+            for my $work_item (@work_list) {
+
+                my ( $predecessor, $cause, $value_ref ) = @{$work_item};
+
+                my $predecessor_name;
+
+                if ( $position > 1 ) {
+
+                    $predecessor_name =
+                        $predecessor
+                        ->[Parse::Marpa::Internal::Earley_item::NAME]
+			. "R$rule_id:$position";
+
+                    unless ( $predecessor_name ~~ %or_node_by_name ) {
+
+                        $or_node_by_name{$predecessor_name} = [];
+
+                        my $sapling = [];
+                        @{$sapling}[
+                            Parse::Marpa::Internal::Sapling::NAME,
+                            Parse::Marpa::Internal::Sapling::RULE,
+                            Parse::Marpa::Internal::Sapling::POSITION,
+                            Parse::Marpa::Internal::Sapling::ITEM,
+                            ]
+                            = (
+                            $predecessor_name, $rule, $position - 1,
+                            $predecessor,
+                            );
+
+                        push @saplings, $sapling;
+
+                    }    # $predecessor_name ~~ %or_node_by_name
+
+                }    # if position > 0
+
+                my $cause_name;
+
+                if ( defined $cause ) {
+
+                    my $symbol_id =
+                        $symbol->[Parse::Marpa::Internal::Symbol::ID];
+
+                    $cause_name =
+                          $cause->[Parse::Marpa::Internal::Earley_item::NAME]
+                        . 'L'
+                        . $symbol_id;
+
+                    unless ( $cause_name ~~ %or_node_by_name ) {
+
+                        $or_node_by_name{$cause_name} = [];
+
+                        my $sapling = [];
+                        @{$sapling}[
+                            Parse::Marpa::Internal::Sapling::NAME,
+                            Parse::Marpa::Internal::Sapling::SYMBOL,
+                            Parse::Marpa::Internal::Sapling::ITEM,
+                            ]
+                            = ( $cause_name, $symbol, $cause, );
+
+                        push @saplings, $sapling;
+
+                    }    # $cause_name ~~ %or_node_by_name
+
+                }    # if cause
+
+                my $and_node = [];
+                @{$and_node}[
+                    Parse::Marpa::Internal::And_Node::PREDECESSOR,
+                    Parse::Marpa::Internal::And_Node::CAUSE,
+                    Parse::Marpa::Internal::And_Node::VALUE_REF,
+                    Parse::Marpa::Internal::And_Node::CLOSURE,
+                    Parse::Marpa::Internal::And_Node::ARGC,
+                    Parse::Marpa::Internal::And_Node::RULE,
+                    Parse::Marpa::Internal::And_Node::POSITION,
+                    ]
+                    = (
+                    $predecessor_name, $cause_name, $value_ref, $closure,
+                    $rule_length, $rule, $position,
+                    );
+
+                push @and_nodes, $and_node;
+
+            }    # for work_item
+
+        }    # RULE
+
+        my $or_node = [];
+        $or_node->[Parse::Marpa::Internal::Or_Node::NAME] = $sapling_name;
+        $or_node->[Parse::Marpa::Internal::Or_Node::AND_NODES] = \@and_nodes;
+        push @{ $self->[OR_NODES] }, $or_node;
+        $or_node_by_name{$sapling_name} = $or_node;
+
+    }    # SAPLING
+
+    # resolve links in the bocage
+    for my $and_node (
+        map { @{ $_->[Parse::Marpa::Internal::Or_Node::AND_NODES] } }
+        @{ $self->[OR_NODES] } )
+    {
+        FIELD:
+        for my $field (
+            Parse::Marpa::Internal::And_Node::PREDECESSOR,
+            Parse::Marpa::Internal::And_Node::CAUSE,
+            )
+        {
+            my $name = $and_node->[$field];
+            next FIELD unless defined $name;
+            $and_node->[$field] = $or_node_by_name{$name};
         }
 
-        unless ( defined $child_rules ) {
-            $child_rules       = [];
-            $child_rule_choice = 0;
-        }
+    }
 
-        if (@$tokens) {
-            my ( $predecessor, $value ) = @{ $tokens->[0] };
+    return $self;
 
-            if ( $trace_evaluation_choices
-                and scalar @$tokens > 1 )
-            {
-                my ( $set, $parent ) = @{$item}[
-                    Parse::Marpa::Internal::Earley_item::SET,
-                    Parse::Marpa::Internal::Earley_item::PARENT,
-                ];
-                say $trace_fh "Choose token 0 of ",
-                    ( scalar @$tokens ), " at earlemes ", $parent, "-", $set,
-                    ": ", show_token_choice( $tokens->[0] );
-                for ( my $ix = 1; $ix <= $#$tokens; $ix++ ) {
-                    my $choice = $tokens->[$ix];
-                    say $trace_fh
-                        "Alternative token choice $ix at $parent-$set: ",
-                        show_token_choice($choice);
+}
+
+sub Parse::Marpa::show_bocage {
+    my $evaler  = shift;
+    my $verbose = shift;
+
+    my ( $parse_count, $or_nodes, $package, ) = @{$evaler}[
+        Parse::Marpa::Internal::Evaluator::PARSE_COUNT,
+        Parse::Marpa::Internal::Evaluator::OR_NODES,
+        Parse::Marpa::Internal::Evaluator::PACKAGE,
+    ];
+
+    local $Data::Dumper::Terse = 1;
+
+    my $text =
+        'package: ' . $package . '; parse count: ' . $parse_count . "\n";
+
+    for my $or_node ( @{ $evaler->[OR_NODES] } ) {
+
+        my $lhs = $or_node->[Parse::Marpa::Internal::Or_Node::NAME];
+
+        for my $and_node (
+            @{ $or_node->[Parse::Marpa::Internal::Or_Node::AND_NODES] } )
+        {
+
+            my ( $predecessor, $cause, $value_ref, $closure,
+		$argc, $rule, $position,
+	    ) = @{$and_node}[
+                Parse::Marpa::Internal::And_Node::PREDECESSOR,
+                Parse::Marpa::Internal::And_Node::CAUSE,
+                Parse::Marpa::Internal::And_Node::VALUE_REF,
+                Parse::Marpa::Internal::And_Node::CLOSURE,
+                Parse::Marpa::Internal::And_Node::ARGC,
+                Parse::Marpa::Internal::And_Node::RULE,
+                Parse::Marpa::Internal::And_Node::POSITION,
+	    ];
+
+            my @rhs = ();
+
+            if ($predecessor) {
+                push @rhs,
+                    $predecessor->[Parse::Marpa::Internal::Or_Node::NAME];
+            }    # predecessor
+
+            if ($cause) {
+                push @rhs, $cause->[Parse::Marpa::Internal::Or_Node::NAME];
+            }    # cause
+
+            if ( defined $value_ref ) {
+                my $value_as_string = Dumper( ${$value_ref} );
+                chomp $value_as_string;
+                push @rhs, $value_as_string;
+            }    # value
+
+            $text .= $lhs . ' ::= ' . join( q{ }, @rhs ) . "\n";
+
+            if ($verbose) {
+                $text .= '    rule=' . Parse::Marpa::show_dotted_rule($rule, $position) . "\n";
+                $text .= '    argc=' . $argc;
+                if ( defined $closure ) {
+                    $text .= '; closure=' . Dumper($closure);
+                }
+                else {
+                    $text .= "\n";
                 }
             }
 
-            @{$item}[
-                Parse::Marpa::Internal::Earley_item::TOKEN_CHOICE,
-                Parse::Marpa::Internal::Earley_item::LINK_CHOICE,
-                Parse::Marpa::Internal::Earley_item::RULE_CHOICE,
-                Parse::Marpa::Internal::Earley_item::RULES,
-                Parse::Marpa::Internal::Earley_item::VALUE,
-                Parse::Marpa::Internal::Earley_item::PREDECESSOR,
-                Parse::Marpa::Internal::Earley_item::POINTER,
-                ]
-                = (
-                0, 0, $child_rule_choice, $child_rules, \$value, $predecessor,
-                $child_symbol,
-                );
-            if ($trace_iteration_changes) {
-                my $predecessor_set =
-                    $predecessor->[ Parse::Marpa::Internal::Earley_item::SET,
-                    ];
-                print $trace_fh
-                    "Initializing token value of ",
-                    Parse::Marpa::brief_earley_item($item), ", ",
-                    $child_symbol->[Parse::Marpa::Internal::Symbol::NAME],
-                    " at ", $predecessor_set, "-", $item_set, " to ",
-                    Dumper($value);
-            }
-            $values->[$child_number] = $value;
-            weaken(
-                $predecessor->[Parse::Marpa::Internal::Earley_item::SUCCESSOR]
-                    = $item );
-            $item = $predecessor;
-            next CHILD;
+        }    # for my $and_node;
+
+    }    # for my $or_node
+
+    return $text;
+}
+
+sub Parse::Marpa::show_tree {
+    my $evaler  = shift;
+    my $verbose = shift;
+
+    my ( $tree, ) = @{$evaler}[ Parse::Marpa::Internal::Evaluator::TREE, ];
+
+    local $Data::Dumper::Terse = 1;
+
+    my $text = q{};
+
+    for my $tree_node ( @{$tree} ) {
+
+        my ($or_node, $choice,    $predecessor,
+            $cause,   $depth,     $closure,
+            $argc,    $value_ref, $rule,
+	    $position,
+	) = @{$tree_node}[
+            Parse::Marpa::Internal::Tree_Node::OR_NODE,
+            Parse::Marpa::Internal::Tree_Node::CHOICE,
+            Parse::Marpa::Internal::Tree_Node::PREDECESSOR,
+            Parse::Marpa::Internal::Tree_Node::CAUSE,
+            Parse::Marpa::Internal::Tree_Node::DEPTH,
+            Parse::Marpa::Internal::Tree_Node::CLOSURE,
+            Parse::Marpa::Internal::Tree_Node::ARGC,
+            Parse::Marpa::Internal::Tree_Node::VALUE_REF,
+            Parse::Marpa::Internal::Tree_Node::RULE,
+            Parse::Marpa::Internal::Tree_Node::POSITION,
+	];
+
+        $text
+            .= 'Tree Node: '
+            . $or_node->[Parse::Marpa::Internal::Or_Node::NAME]
+            . "[$choice]"
+            . "; Depth=$depth; Argc=$argc\n";
+        $text
+            .= '    Rule: '
+            . Parse::Marpa::show_dotted_rule($rule, $position)
+	    . "\n";
+        $text
+            .= '    Predecessor: '
+            . $predecessor->[Parse::Marpa::Internal::Tree_Node::OR_NODE]
+		->[Parse::Marpa::Internal::Or_Node::NAME] . "\n"
+            if defined $predecessor;
+        $text
+            .= '    Cause: '
+            . $cause->[Parse::Marpa::Internal::Tree_Node::OR_NODE]
+		->[Parse::Marpa::Internal::Or_Node::NAME] . "\n"
+            if defined $cause;
+        if ( $verbose and defined $value_ref ) {
+            $text .= '    Value: ' . Dumper( ${$value_ref} );
+        }
+        if ( $verbose and defined $closure ) {
+            $text .= "    Closure: $closure\n";
         }
 
-        # We've eliminated nulling symbols and symbols caused by tokens,
-        # so we have to have a symbol caused by a completion
+    }    # $tree_node
 
-        my ( $predecessor, $cause ) = @{ $links->[0] };
-        weaken( $cause->[Parse::Marpa::Internal::Earley_item::EFFECT] =
-                $item );
-
-        if ( $trace_evaluation_choices
-            and scalar @$links > 1 )
-        {
-            my ( $set, $parent ) = @{$item}[
-                Parse::Marpa::Internal::Earley_item::SET,
-                Parse::Marpa::Internal::Earley_item::PARENT,
-            ];
-            say $trace_fh "Choose link 0 of ",
-                ( scalar @$links ), " at earlemes ", $parent, "-", $set, ": ",
-                Parse::Marpa::Internal::Recognizer::show_link_choice(
-                $links->[0] );
-            for ( my $ix = 1; $ix <= $#$links; $ix++ ) {
-                my $choice = $links->[$ix];
-                say $trace_fh
-                    "Alternative link choice $ix at $parent-$set: ",
-                    Parse::Marpa::Internal::Recognizer::show_link_choice(
-                    $links->[$ix] );
-            }
-        }
-
-        my $work_entry =
-            [ $predecessor, $item, $child_number, $cause, $child_symbol, ];
-
-        # for efficiency push (right-to-left evaluation) is the default
-        push( @work_entries, $work_entry );
-
-        @{$item}[
-            Parse::Marpa::Internal::Earley_item::TOKEN_CHOICE,
-            Parse::Marpa::Internal::Earley_item::LINK_CHOICE,
-            Parse::Marpa::Internal::Earley_item::RULE_CHOICE,
-            Parse::Marpa::Internal::Earley_item::RULES,
-
-            # Parse::Marpa::Internal::Earley_item::VALUE,
-            Parse::Marpa::Internal::Earley_item::PREDECESSOR,
-            Parse::Marpa::Internal::Earley_item::POINTER,
-            ]
-            = (
-            0,                  0,
-            $child_rule_choice, $child_rules,
-
-            # \$value,
-            $predecessor,
-            $child_symbol,
-            );
-
-        weaken(
-            $predecessor->[Parse::Marpa::Internal::Earley_item::SUCCESSOR] =
-                $item );
-        $item = $predecessor;
-
-    }    # CHILD
-
-    for my $work_entry (@work_entries) {
-        my ( $predecessor_item, $effect_item, $rhs_index, $cause,
-            $child_symbol, )
-            = @$work_entry;
-        my $value = $values->[$rhs_index] =
-            initialize_children( $cause, $child_symbol );
-        $effect_item->[Parse::Marpa::Internal::Earley_item::VALUE] = \$value;
-        if ($trace_iteration_searches) {
-            my $predecessor_set =
-                $predecessor_item->[Parse::Marpa::Internal::Earley_item::SET];
-            my $item_set =
-                $effect_item->[Parse::Marpa::Internal::Earley_item::SET];
-            print $trace_fh
-                "Initializing caused value of ",
-                Parse::Marpa::brief_earley_item($effect_item), ", ",
-                $child_symbol->[Parse::Marpa::Internal::Symbol::NAME], " at ",
-                $predecessor_set, "-", $item_set, " to ", Dumper($value);
-        }
-    }
-
-    my $closure = $rule->[Parse::Marpa::Internal::Rule::CLOSURE];
-    my @warnings;
-    return $closure unless defined $closure;
-
-    my $result;
-    {
-        my @warnings;
-        my @caller_return;
-        local $SIG{__WARN__} = sub {
-            push( @warnings, $_[0] );
-            @caller_return = caller 0;
-        };
-        $result = eval {
-            local ($_) = $values;
-            $closure->();
-        };
-        my $fatal_error = $@;
-        if ( $fatal_error or @warnings ) {
-            Parse::Marpa::Internal::code_problems(
-                $fatal_error,
-                \@warnings,
-                "computing value",
-                "computing value for rule: "
-                    . Parse::Marpa::brief_original_rule($rule),
-                \( $rule->[Parse::Marpa::Internal::Rule::CODE] ),
-                \@caller_return
-            );
-        }
-    }
-
-    if ($trace_values) {
-        my $result_description =
-            ( not defined $result ) ? "undefined" : $result;
-        say $trace_fh "Rule ", Parse::Marpa::brief_rule($rule), "; value: ",
-            $result_description;
-    }
-
-    $result;
+    return $text;
 
 }
 
-# Undocumented.  It's main purpose was to allow the user to differentiate
-# between an unevaluated node and a node whose value was a Perl 5 undefined.
-sub Parse::Marpa::Evaluator::value {
-    my $evaler     = shift;
-    my $recognizer = $evaler->[Parse::Marpa::Internal::Evaluator::RECOGNIZER];
-
-    croak("Not yet converted");
-    my $start_item =
-        $recognizer->[Parse::Marpa::Internal::Recognizer::START_ITEM];
-    return unless defined $start_item;
-    my $value_ref = $start_item->[Parse::Marpa::Internal::Earley_item::VALUE];
-
-    # croak("No value defined") unless defined $value_ref;
-    return $value_ref;
-}
-
+# Apparently perlcritic has a bug and doesn't see the final return
+## no critic (Subroutines::RequireFinalReturn)
 sub Parse::Marpa::Evaluator::next {
-    my $evaler     = shift;
-    my $recognizer = $evaler->[Parse::Marpa::Internal::Evaluator::RECOGNIZER];
+## use critic
 
-    croak("No parse supplied") unless defined $evaler;
+    my $evaler = shift;
+    my $recognizer =
+        $evaler->[Parse::Marpa::Internal::Evaluator::RECOGNIZER];
+
+    croak('No parse supplied') unless defined $evaler;
     my $evaler_class = ref $evaler;
-    my $right_class  = "Parse::Marpa::Evaluator";
+    my $right_class  = 'Parse::Marpa::Evaluator';
     croak(
         "Don't parse argument is class: $evaler_class; should be: $right_class"
     ) unless $evaler_class eq $right_class;
 
-    my ( $grammar, $start_item, $current_parse_set, ) = @{$recognizer}[
-        Parse::Marpa::Internal::Recognizer::GRAMMAR,
-        Parse::Marpa::Internal::Recognizer::START_ITEM,
-        Parse::Marpa::Internal::Recognizer::CURRENT_PARSE_SET,
-    ];
-
-    # TODO: Is this check enough be sure that this is an evaluated parse?
-    croak("Parse not initialized: no start item") unless defined $start_item;
-
-    my $max_parses = $grammar->[Parse::Marpa::Internal::Grammar::MAX_PARSES];
-    my $parse_count =
-        $evaler->[Parse::Marpa::Internal::Evaluator::PARSE_COUNT];
-    if ( $max_parses > 0 && $parse_count > $max_parses ) {
-        croak("Maximum parse count ($max_parses) exceeded");
-    }
-
-    if ( $parse_count <= 0 ) {
-        $evaler->[Parse::Marpa::Internal::Evaluator::PARSE_COUNT] = 1;
-
-        # Allow semipredication
-        my $start_value =
-            $start_item->[Parse::Marpa::Internal::Earley_item::VALUE];
-        return \(undef) if not defined $start_value;
-        return $start_value;
-    }
-
-    $evaler->[Parse::Marpa::Internal::Evaluator::PARSE_COUNT]++;
+    my ( $grammar, ) =
+        @{$recognizer}[ Parse::Marpa::Internal::Recognizer::GRAMMAR, ];
 
     local ($Parse::Marpa::Internal::This::grammar) = $grammar;
+
     my $tracing = $grammar->[Parse::Marpa::Internal::Grammar::TRACING];
-    my $trace_fh;
+    my $trace_fh =
+            $grammar->[Parse::Marpa::Internal::Grammar::TRACE_FILE_HANDLE];
+    my $trace_values;
     my $trace_iteration_changes;
     my $trace_iteration_searches;
     if ($tracing) {
-        $trace_fh =
-            $grammar->[Parse::Marpa::Internal::Grammar::TRACE_FILE_HANDLE];
+        $trace_values =
+            $grammar->[Parse::Marpa::Internal::Grammar::TRACE_VALUES];
         $trace_iteration_changes = $grammar
             ->[Parse::Marpa::Internal::Grammar::TRACE_ITERATION_CHANGES];
         $trace_iteration_searches = $grammar
@@ -582,364 +920,346 @@ sub Parse::Marpa::Evaluator::next {
 
     local ($Data::Dumper::Terse) = 1;
 
-    my $opaque = $grammar->[Parse::Marpa::Internal::Grammar::OPAQUE];
-    clear_values($evaler) if $opaque;
+    my ( $bocage, $tree, $rule_data, $null_values ) = @{$evaler}[
+        Parse::Marpa::Internal::Evaluator::OR_NODES,
+        Parse::Marpa::Internal::Evaluator::TREE,
+        Parse::Marpa::Internal::Evaluator::RULE_DATA,
+        Parse::Marpa::Internal::Evaluator::NULL_VALUES,
+    ];
 
-    # find the "bottom left corner item", by following predecessors,
-    # and causes when there is no predecessor
+    my $max_parses = $grammar->[Parse::Marpa::Internal::Grammar::MAX_PARSES];
+    my $parse_count =
+        $evaler->[Parse::Marpa::Internal::Evaluator::PARSE_COUNT]++;
+    if ( $max_parses > 0 && $parse_count >= $max_parses ) {
+        croak("Maximum parse count ($max_parses) exceeded");
+    }
 
-    EVALUATION: for ( ;; ) {
-        my $item             = $start_item;
-        my $find_left_corner = 1;
+    # Keep returning
+    given ($parse_count) {
 
-        # Look for an item we can (potentially) iterate.
-        ITERATION_CANDIDATE: for ( ;; ) {
+        # When called the first time, create the tree
+        when (0) {
+            $evaler->[Parse::Marpa::Internal::Evaluator::TREE] = $tree = [];
+        }
 
-            # if we set the flag to find the item in the bottom
-            # left hand corner, do so
-            LEFT_CORNER_CANDIDATE: while ($find_left_corner) {
+        # If we are called with empty tree, we've
+        # already returned all the parses.  Patiently keep
+        # returning failure.
+        default { return if @{$tree} == 0; }
 
-                # undefine the values as we go along
-                $item->[Parse::Marpa::Internal::Earley_item::VALUE] = undef;
+    }    # given $tree
 
-                my $predecessor =
-                    $item->[Parse::Marpa::Internal::Earley_item::PREDECESSOR];
+    TREE: while (1) {
 
-                # Follow the predecessors all the way until
-                # just before the prediction.  The prediction
-                # is the item whose "parent" is the same as its
-                # Earley set.
-                if (defined $predecessor
-                    ->[Parse::Marpa::Internal::Earley_item::POINTER] )
-                {
-                    $item = $predecessor;
-                    next LEFT_CORNER_CANDIDATE;
-                }
+        my @traversal_stack;
 
-                # At the far left end, see if we have a cause (or
-                # child) item.  If so, descend.
-                my ( $link_choice, $links ) = @{$item}[
-                    Parse::Marpa::Internal::Earley_item::LINK_CHOICE,
-                    Parse::Marpa::Internal::Earley_item::LINKS,
-                ];
-                last LEFT_CORNER_CANDIDATE if $link_choice > $#$links;
-                $item = $links->[$link_choice]->[1];
-                if ($trace_iteration_searches) {
-                    print $trace_fh
-                        "Seeking left corner at ",
-                        Parse::Marpa::brief_earley_item($item), "\n";
-                }
+        # trace position in tree starting at top of stack (end of array)
+        # will be used (negated) as argument to splice.
+        my $tree_position = 0;
+        my @last_position_by_depth;
+        my @uniterated_leaf_side = ();
 
-            }    # LEFT_CORNER_CANDIDATE
+        # Did we iterate the tree?
+        my $tree_was_iterated = 0;
 
-            # We have our candidate, now try to iterate it,
-            # exhausting the rule choice if necessary
+        POP_TREE_NODE: for my $node ( reverse @{$tree} ) {
 
-            my ($token_choice, $tokens,      $link_choice,
-                $links,        $rule_choice, $rules,
-                )
-                = @{$item}[
-                Parse::Marpa::Internal::Earley_item::TOKEN_CHOICE,
-                Parse::Marpa::Internal::Earley_item::TOKENS,
-                Parse::Marpa::Internal::Earley_item::LINK_CHOICE,
-                Parse::Marpa::Internal::Earley_item::LINKS,
-                Parse::Marpa::Internal::Earley_item::RULE_CHOICE,
-                Parse::Marpa::Internal::Earley_item::RULES,
-                ];
+            $tree_position++;
 
-            # If we can increment the token_choice, this is our
-            # candidate
-            if ( $token_choice < $#$tokens ) {
-                $token_choice++;
-                $item->[Parse::Marpa::Internal::Earley_item::TOKEN_CHOICE] =
-                    $token_choice;
-                last ITERATION_CANDIDATE;
+            my ( $choice, $or_node, $depth ) = @{$node}[
+                Parse::Marpa::Internal::Tree_Node::CHOICE,
+                Parse::Marpa::Internal::Tree_Node::OR_NODE,
+                Parse::Marpa::Internal::Tree_Node::DEPTH,
+            ];
+
+            my $and_nodes =
+                $or_node->[Parse::Marpa::Internal::Or_Node::AND_NODES];
+
+            $choice++;
+
+            if ( $choice >= @{$and_nodes} ) {
+                $last_position_by_depth[$depth] = $tree_position;
+                next POP_TREE_NODE;
             }
 
-            # If we can increment the link_choice, this is our
-            # candidate
-            if ( $link_choice < $#$links ) {
-                $link_choice++;
-                $item->[Parse::Marpa::Internal::Earley_item::LINK_CHOICE] =
-                    $link_choice;
-                last ITERATION_CANDIDATE;
+            if ($trace_iteration_changes) {
+                say {$trace_fh}
+                    'Iteration ',
+                    $choice,
+                    ' tree node ',
+                    $or_node->[Parse::Marpa::Internal::Or_Node::NAME],
+                    or croak('print to trace handle failed');
             }
 
-            # Iterate rule, if possible
-            if ( $rule_choice < $#$rules ) {
-
-                @{$item}[
-                    Parse::Marpa::Internal::Earley_item::RULE_CHOICE,
-                    Parse::Marpa::Internal::Earley_item::LINK_CHOICE,
-                    Parse::Marpa::Internal::Earley_item::TOKEN_CHOICE,
-                    ]
-                    = ( ++$rule_choice, 0, 0, );
-
-                if ($trace_iteration_changes) {
-                    print $trace_fh
-                        "Incremented rule choice for ",
-                        Parse::Marpa::brief_earley_item($item), ", ",
-                        Parse::Marpa::brief_earley_item($item), " to ",
-                        $rule_choice, "\n";
-                }
-
-                last ITERATION_CANDIDATE;
-
-            }
-
-            # This candidate could not be iterated.  Set up to look
-            # for another.
-
-            @{$item}[
-                Parse::Marpa::Internal::Earley_item::VALUE,
-                Parse::Marpa::Internal::Earley_item::RULE_CHOICE,
+            my $new_tree_node;
+            @{$new_tree_node}[
+                Parse::Marpa::Internal::Tree_Node::CHOICE,
+                Parse::Marpa::Internal::Tree_Node::OR_NODE,
+                Parse::Marpa::Internal::Tree_Node::DEPTH,
                 ]
-                = ( undef, 0 );
+                = ( $choice, $or_node, $depth, );
+            push @traversal_stack, $new_tree_node;
 
-            my ( $successor, $effect ) = @{$item}[
-                Parse::Marpa::Internal::Earley_item::SUCCESSOR,
-                Parse::Marpa::Internal::Earley_item::EFFECT,
+            # The iterated part of the tree will have
+            # uniterated parts on the root and leaf side.
+            # The root side will be left on the stack,
+            # when the old nodes are splice'd off.
+            # The leaf side is copied and saved here.
+            my $leaf_side_start_position =
+                max(
+		    grep { defined $_ } @last_position_by_depth[0 .. $depth]
+		);
+            my $nodes_iterated = $tree_position;
+            if ( defined $leaf_side_start_position ) {
+                @uniterated_leaf_side = splice @{$tree},
+                    -$leaf_side_start_position;
+                $nodes_iterated -= $leaf_side_start_position;
+            }
+            splice @{$tree}, -$nodes_iterated;
+
+            if ($trace_iteration_changes) {
+                say {$trace_fh} 'Nodes iterated: ', $nodes_iterated,
+                    '; not iterated on root side: ', scalar @{$tree},
+                    '; not iterated on leaf side: ',
+                    scalar @uniterated_leaf_side
+                    or croak('print to trace handle failed');
+            }
+
+            $tree_was_iterated++;
+
+            last POP_TREE_NODE;
+
+        }    # POP_TREE_NODE
+
+        # First time through, there will be an empty tree,
+        # nothing to iterate, and therefore no new_tree_node.
+        # So get things going with an initial node.
+        if ( $parse_count <= 0 ) {
+
+            my $new_tree_node;
+            @{$new_tree_node}[
+                Parse::Marpa::Internal::Tree_Node::OR_NODE,
+                Parse::Marpa::Internal::Tree_Node::DEPTH,
+                ]
+                = ( $bocage->[0], 0, );
+            @traversal_stack = ($new_tree_node);
+
+        }
+        elsif ( not $tree_was_iterated ) {
+
+            # set the tree to empty
+            # and return failure
+            $tree = [];
+            return;
+
+        }    # not $tree_was_iterated
+
+        # A preorder traversal, to build the tree
+        # Start with the first or-node of the bocage.
+        # The code below assumes the or-node is the first field of the tree node.
+        OR_NODE: while (@traversal_stack) {
+
+            my $new_tree_node = pop @traversal_stack;
+
+            my ( $or_node, $choice, $depth ) = @{$new_tree_node}[
+                Parse::Marpa::Internal::Tree_Node::OR_NODE,
+                Parse::Marpa::Internal::Tree_Node::CHOICE,
+                Parse::Marpa::Internal::Tree_Node::DEPTH,
             ];
+            $choice //= 0;
 
-            $find_left_corner = 0;
+            my $and_node =
+                $or_node->[Parse::Marpa::Internal::Or_Node::AND_NODES]
+                ->[$choice];
 
-            if ( defined $successor ) {
-                $item = $successor;
-                if ($trace_iteration_changes) {
-                    print $trace_fh
-                        "Trying to iterate successor ",
-                        Parse::Marpa::brief_earley_item($item), "\n";
-                }
-
-                # Did the successor have a cause?  If so iterate from
-                # it or the "left corner" below it
-                my ( $link_choice, $links ) = @{$item}[
-                    Parse::Marpa::Internal::Earley_item::LINK_CHOICE,
-                    Parse::Marpa::Internal::Earley_item::LINKS,
+            my ( $predecessor_or_node, $cause_or_node, $closure, $argc,
+                $value_ref, $rule, $position, )
+                = @{$and_node}[
+                Parse::Marpa::Internal::And_Node::PREDECESSOR,
+                Parse::Marpa::Internal::And_Node::CAUSE,
+                Parse::Marpa::Internal::And_Node::CLOSURE,
+                Parse::Marpa::Internal::And_Node::ARGC,
+                Parse::Marpa::Internal::And_Node::VALUE_REF,
+                Parse::Marpa::Internal::And_Node::RULE,
+                Parse::Marpa::Internal::And_Node::POSITION,
                 ];
-                if ( $link_choice <= $#$links ) {
-                    @{$item}[
-                        Parse::Marpa::Internal::Earley_item::VALUE,
-                        Parse::Marpa::Internal::Earley_item::RULE_CHOICE,
-                        ]
-                        = ( undef, 0 );
-                    $item             = $links->[$link_choice]->[1];
-                    $find_left_corner = 1;
-                }
-                next ITERATION_CANDIDATE;
 
+            my $predecessor_tree_node;
+            if ( defined $predecessor_or_node ) {
+                @{$predecessor_tree_node}[
+                    Parse::Marpa::Internal::Tree_Node::OR_NODE,
+                    Parse::Marpa::Internal::Tree_Node::DEPTH
+                    ]
+                    = ( $predecessor_or_node, $depth + 1, );
             }
 
-            # If no more candidates, we are finished with all the
-            # evaluations for this parse
-            return unless defined $effect;
-
-            $item = $effect;
-            if ($trace_iteration_searches) {
-                print $trace_fh
-                    "Trying to iterate effect ",
-                    Parse::Marpa::brief_earley_item($item), "\n";
+            my $cause_tree_node;
+            if ( defined $cause_or_node ) {
+                @{$cause_tree_node}[
+                    Parse::Marpa::Internal::Tree_Node::OR_NODE,
+                    Parse::Marpa::Internal::Tree_Node::DEPTH
+                    ]
+                    = ( $cause_or_node, $depth + 1, );
             }
 
-        }    # ITERATION_CANDIDATE
+            @{$new_tree_node}[
+                Parse::Marpa::Internal::Tree_Node::CHOICE,
+                Parse::Marpa::Internal::Tree_Node::PREDECESSOR,
+                Parse::Marpa::Internal::Tree_Node::CAUSE,
+                Parse::Marpa::Internal::Tree_Node::CLOSURE,
+                Parse::Marpa::Internal::Tree_Node::ARGC,
+                Parse::Marpa::Internal::Tree_Node::RULE,
+                Parse::Marpa::Internal::Tree_Node::VALUE_REF,
+                Parse::Marpa::Internal::Tree_Node::POSITION,
+                ]
+                = (
+                $choice, $predecessor_tree_node, $cause_tree_node, $closure,
+                $argc, $rule, $value_ref, $position,
+                );
 
-        # We've found and iterated an item.
-        # Now try to evaluate it.
-        # First, climb the tree, recalculating
-        # all the successor and effect values.
+            if ($trace_iteration_changes) {
+                my $value_description = "\n";
+                $value_description = '; value=' . Dumper( ${$value_ref} )
+                    if defined $value_ref;
+                print {$trace_fh}
+                    'Pushing tree node ',
+                    $or_node->[Parse::Marpa::Internal::Or_Node::NAME],
+		    "[$choice]: ",
+                    Parse::Marpa::show_dotted_rule($rule, $position),
+		    $value_description
+                    or croak('print to trace handle failed');
+            }
 
-        my $reason = "Iterating";
+            push @{$tree}, $new_tree_node;
+            undef $new_tree_node;
+            push @traversal_stack,
+                grep { defined $_ }
+                ( $predecessor_tree_node, $cause_tree_node );
 
-        STEP_UP_TREE: for ( ;; ) {
+        }    # OR_NODE
 
-            RESET_VALUES: {
+        # Put the uniterated leaf side of the tree back on the stack.
+        push @{$tree}, @uniterated_leaf_side;
 
-                my ($token_choice, $tokens,  $link_choice, $links,
-                    $rule_choice,  $pointer, $item_set
-                    )
-                    = @{$item}[
-                    Parse::Marpa::Internal::Earley_item::TOKEN_CHOICE,
-                    Parse::Marpa::Internal::Earley_item::TOKENS,
-                    Parse::Marpa::Internal::Earley_item::LINK_CHOICE,
-                    Parse::Marpa::Internal::Earley_item::LINKS,
-                    Parse::Marpa::Internal::Earley_item::RULE_CHOICE,
-                    Parse::Marpa::Internal::Earley_item::POINTER,
-                    Parse::Marpa::Internal::Earley_item::SET,
-                    ];
+        my @evaluation_stack;
 
-                if ( $token_choice <= $#$tokens ) {
-                    my ( $predecessor, $value ) =
-                        @{ $tokens->[$token_choice] };
-                    @{$item}[
-                        Parse::Marpa::Internal::Earley_item::VALUE,
-                        Parse::Marpa::Internal::Earley_item::PREDECESSOR,
-                        ]
-                        = ( \$value, $predecessor, );
-                    if ($trace_iteration_changes) {
-                        my $predecessor_set = $predecessor
-                            ->[ Parse::Marpa::Internal::Earley_item::SET, ];
-                        print $trace_fh $reason,
-                            " token choice for ",
-                            Parse::Marpa::brief_earley_item($item), " to ",
-                            $token_choice, ", ",
-                            $pointer->[Parse::Marpa::Internal::Symbol::NAME],
-                            " at ", $predecessor_set, "-", $item_set, " = ",
-                            Dumper($value);
-                    }
-                    weaken( $predecessor
-                            ->[Parse::Marpa::Internal::Earley_item::SUCCESSOR]
-                            = $item );
-                    last RESET_VALUES;
-                }
+        TREE_NODE: for my $node ( reverse @{$tree} ) {
 
-                if ( $link_choice <= $#$links ) {
-                    my ( $predecessor, $cause ) = @{ $links->[$link_choice] };
-                    weaken(
-                        $cause->[Parse::Marpa::Internal::Earley_item::EFFECT]
-                            = $item );
-                    my $value = initialize_children( $cause, $pointer );
-                    @{$item}[
-                        Parse::Marpa::Internal::Earley_item::VALUE,
-                        Parse::Marpa::Internal::Earley_item::PREDECESSOR,
-                        ]
-                        = ( \$value, $predecessor, );
-                    if ($trace_iteration_changes) {
-                        my $predecessor_set = $predecessor
-                            ->[ Parse::Marpa::Internal::Earley_item::SET, ];
-                        print $trace_fh $reason,
-                            " cause choice for ",
-                            Parse::Marpa::brief_earley_item($item), " to ",
-                            $link_choice, ", ",
-                            $pointer->[Parse::Marpa::Internal::Symbol::NAME],
-                            " at ", $predecessor_set, "-", $item_set, " = ",
-                            Dumper($value);
-                    }
-                    weaken( $predecessor
-                            ->[Parse::Marpa::Internal::Earley_item::SUCCESSOR]
-                            = $item );
-                    last RESET_VALUES;
-                }
-
-            }    # RESET_VALUES
-
-            $reason = "Recalculating Parent";
-
-            my ( $successor, $effect ) = @{$item}[
-                Parse::Marpa::Internal::Earley_item::SUCCESSOR,
-                Parse::Marpa::Internal::Earley_item::EFFECT,
+            my ( $closure, $value_ref, $argc ) = @{$node}[
+                Parse::Marpa::Internal::Tree_Node::CLOSURE,
+                Parse::Marpa::Internal::Tree_Node::VALUE_REF,
+                Parse::Marpa::Internal::Tree_Node::ARGC,
             ];
 
-            if ( defined $successor ) {
-                $item = $successor;
-                next STEP_UP_TREE;
-            }
+            if ( defined $value_ref ) {
 
-            # If no successor or effect, we're at the top of the tree
-            last STEP_UP_TREE unless defined $effect;
+                push @evaluation_stack, $value_ref;
 
-            $item = $effect;
+                if ($trace_values) {
+                    print {$trace_fh} 'Pushed value: ',
+                        Dumper( ${$value_ref} )
+                        or croak('print to trace handle failed');
+                }
 
-        }    # STEP_UP_TREE
+            }    # defined $value_ref
 
-        # Initialize everything else left unvalued.
-        finish_evaluation($evaler);
+	    next TREE_NODE unless defined $closure;
 
-        # Rejected evaluations are not yet implemented.
-        # Therefore this evaluation pass succeeded.
+	    if ($trace_values) {
+		my ( $or_node, $rule ) = @{$node}[
+		    Parse::Marpa::Internal::Tree_Node::OR_NODE,
+		    Parse::Marpa::Internal::Tree_Node::RULE,
+		];
+		say {$trace_fh}
+		    'Popping ',
+		    $argc,
+		    ' values to evaluate ',
+		    $or_node->[Parse::Marpa::Internal::Or_Node::NAME],
+		    ', rule: ',
+		    Parse::Marpa::brief_rule($rule);
+	    }
 
-        my $start_value =
-            $start_item->[Parse::Marpa::Internal::Earley_item::VALUE];
+	    my $args =
+		[ map { ${$_} } ( splice @evaluation_stack, -$argc ) ];
 
-        # Semipredication allowed
-        croak("Parse not evaluated") if not defined $start_value;
-        return $start_value;
+	    my $result;
 
-    }    # EVALUATION
+	    my $closure_type = ref $closure;
+
+	    if ($closure_type eq 'CODE') {
+
+                {
+                    my @warnings;
+                    my @caller_return;
+                    local $SIG{__WARN__} = sub {
+                        push @warnings, $_[0];
+                        @caller_return = caller 0;
+                    };
+
+                    $result = eval {
+                        local ($_) = $args;
+                        $closure->( @{$args} );
+                    };
+
+                    my $fatal_error = $EVAL_ERROR;
+                    if ( $fatal_error or @warnings ) {
+                        my $rule =
+                            $node->[ Parse::Marpa::Internal::Tree_Node::RULE,
+                            ];
+                        my $code =
+                            $rule_data
+                            ->[ $rule->[Parse::Marpa::Internal::Rule::ID] ]
+                            ->[Parse::Marpa::Internal::Evaluator::Rule::CODE
+                            ];
+			say {$trace_fh}
+			    'Problems computing value for original rule: ',
+			    Parse::Marpa::brief_original_rule($rule);
+                        Parse::Marpa::Internal::code_problems(
+                            $fatal_error,
+                            \@warnings,
+                            'computing value',
+                            'computing value for rule: '
+                                . Parse::Marpa::brief_rule($rule),
+                            \$code,
+                            \@caller_return
+                        );
+                    }
+                }
+
+            } # when CODE
+
+	    # don't document this behavior -- I'll probably want to
+	    # use non-reference "closure" values for special hacks
+	    # in the future.
+	    elsif ($closure_type eq q{}) { # when not reference
+	        $result = $closure;
+	    } # when not reference
+
+	    else { # when non-code reference
+	        $result = ${$closure};
+	    } # when non-code reference
+
+	    if ($trace_values) {
+		print {$trace_fh} 'Calculated and pushed value: ',
+		    Dumper($result)
+		    or croak('print to trace handle failed');
+	    }
+
+	    push @evaluation_stack, \$result;
+
+        }    # TREE_NODE
+
+        return pop @evaluation_stack;
+
+    }    # TREE
 
     return;
 
 }
 
-sub Parse::Marpa::Evaluator::show {
-    my $evaler = shift;
-    my $text   = "";
-
-    croak("No parse supplied") unless defined $evaler;
-    my $recognizer = $evaler->[Parse::Marpa::Internal::Evaluator::RECOGNIZER];
-
-    my $start_item =
-        $recognizer->[ Parse::Marpa::Internal::Recognizer::START_ITEM, ];
-
-    local ($Data::Dumper::Terse) = 1;
-
-    my $value = $start_item->[Parse::Marpa::Internal::Earley_item::VALUE];
-    croak("Parse not evaluated") unless defined $value;
-
-    $text .= show_derivation($start_item);
-
-}
-
-sub show_derivation {
-    my $item = shift;
-    my $text = "";
-
-    RHS_SYMBOL: for ( ;; ) {
-
-        my $data = 0;
-
-        my ($rules,  $rule_choice,  $links,   $link_choice,
-            $tokens, $token_choice, $pointer, $value,
-            )
-            = @{$item}[
-            Parse::Marpa::Internal::Earley_item::RULES,
-            Parse::Marpa::Internal::Earley_item::RULE_CHOICE,
-            Parse::Marpa::Internal::Earley_item::LINKS,
-            Parse::Marpa::Internal::Earley_item::LINK_CHOICE,
-            Parse::Marpa::Internal::Earley_item::TOKENS,
-            Parse::Marpa::Internal::Earley_item::TOKEN_CHOICE,
-            Parse::Marpa::Internal::Earley_item::POINTER,
-            Parse::Marpa::Internal::Earley_item::VALUE,
-            ];
-
-        last RHS_SYMBOL unless defined $pointer;
-        my $symbol_name = $pointer->[Parse::Marpa::Internal::Symbol::NAME];
-
-        if ( defined $rules and $rule_choice <= $#$rules ) {
-            my $rule = $rules->[$rule_choice];
-            $text
-                .= "[ "
-                . Parse::Marpa::brief_earley_item($item) . "] "
-                . Parse::Marpa::brief_rule($rule) . "\n";
-            $data = 1;
-        }
-
-        if ( $token_choice <= $#$tokens ) {
-            my ( $predecessor, $token ) = @{ $tokens->[$token_choice] };
-            $text
-                .= "[ "
-                . Parse::Marpa::brief_earley_item($item) . "] "
-                . "$symbol_name = "
-                . Dumper($token);
-            $item = $predecessor;
-            next RHS_SYMBOL;
-        }
-
-        $text .= Parse::Marpa::brief_earley_item($item) . "No data\n"
-            unless $data;
-
-        if ( $link_choice <= $#$links ) {
-            my ( $predecessor, $cause ) = @{ $links->[$link_choice] };
-            $text .= show_derivation($cause);
-            $item = $predecessor;
-        }
-
-    }    # RHS_SYMBOL
-
-    $text;
-
-}
-
 1;
+
+__END__
 
 =pod
 
@@ -973,77 +1293,10 @@ Iteration is performed with the C<next> method,
 which returns a reference to the value of the next parse.
 Often only one parse is needed, in which case the C<next> method is called only once.
 
-The evaluator does its work in tables kept
-in the recognizer object.
 Each Marpa recognizer should have only one evaluator using it at any one time.
 If multiple evaluators
 use the same recognizer at the same time,
 they may produce incorrect results.
-
-=head2 Node Memoization
-
-If you accept Marpa's default behavior,
-there will be no node memoization and
-you can safely
-ignore the question of opacity.
-But when multiple parses are evaluated in a parse with expensive rule actions,
-the boost in efficiency from node value memoization can be major.
-
-If the defaults are used, Marpa will mark all its evaluators opaque.
-That is always a safe choice.
-Grammars and recognizers can be marked opaque or transparent.
-
-A recognizer created from an opaque grammar is marked opaque.
-A recognizer created from a grammar marked transparent is marked transparent,
-unless an C<opaque> named argument
-marks the recognizer opaque
-at recognizer creation time.
-A recognizer created from a grammar without a opacity marking is marked opaque,
-unless an C<opaque> named argument
-marks the recognizer transparent
-at recognizer creation time.
-Once a recognizer object has been created,
-its opacity setting cannot be changed.
-
-If a user decides to mark an object transparent,
-it is up to her to make sure all the
-evaluators created from that object are safe for node memoization.
-An evaluator is safe for node memoization only if all of its nodes are
-safe for memoization.
-Node values are computed by Perl 5 code,
-and node memoization follows the same principles as function memoization.
-For a node to be safe for memoization, it must be transparent.
-A node is transparent only
-if it is always safe to substitute a constant value for the node's action.
-
-Here are guidelines for making actions transparent:
-The code must have no side effects.
-The return value should not be a reference.
-The return value must depend completely on the return values of the child nodes.
-All child nodes must be transparent as well.
-Any subroutines or functions must be transparent.
-
-Exceptions to these guidelines can be made, but you have to know what you're doing.
-There's an excellent discussion of memoization
-in L<Mark Jason Dominus's I<Higher Order Perl>|Parse::Marpa::Doc::Bibliography/Dominus 2005>.
-If you're not sure whether your semantics are opaque or not,
-just accept Marpa's default behavior.
-Also, it is always safe to mark a grammar or a recognizer opaque.
-
-Marpa will sometimes mark grammars opaque on its own.
-Marpa often optimizes the evaluation of sequence productions
-by passing a reference to an array between the nodes of the sequence.
-This elminates the need to repeatedly copy the array of sequence values
-as it is built.
-That's a big saving,
-especially if the sequence is long,
-but the reference to the array is shared data,
-and the changes to the array are side effects.
-
-Once an object has been marked opaque, whether by Marpa itself
-or the user, Marpa throws an exception if there is an attempt to mark it transparent.
-Resetting a grammar to transparent will almost always be an oversight,
-and one that would be very hard to debug.
 
 =head2 Null Values
 
@@ -1241,7 +1494,7 @@ There are two child nodes and their values are
 elements 0 and 1 in the C<@$_> array of the action.
 The child value represented by the symbol C<Y>,
 C<< $_->[1] >>, comes from node 4.
-From the table above, we can see that that value was 
+From the table above, we can see that that value was
 "C<Zorro was here>".
 
 The first child value is represented by the symbol C<A>,
@@ -1285,7 +1538,7 @@ On success, returns the evaluator object.
 Failures are thrown as exceptions.
 
 The first, required, argument is a recognizer object.
-The second, optional, argument 
+The second, optional, argument
 will be used as the number of the earleme at which to end parsing.
 If there is no second argument, parsing ends at the default end
 of parsing, which was set in the recognizer.
@@ -1300,8 +1553,12 @@ Successful parses may evaluate to a Perl 5 undefined,
 which the C<next> method will return as a reference to an undefined.
 Failures are thrown as exceptions.
 
-Parses are iterated from rightmost to leftmost.
-The parse order may be manipulated by assigning priorities to the rules and
+Parses are iterated in postorder.
+If a symbol can both match a token and derive a rule,
+the token match takes priority.
+Other alternatives are taken in implementation dependent order.
+When the order is important, it
+may be manipulated by assigning priorities to the rules and
 terminals.
 
 A failed parse does not always show up as an exhausted parse in the recognizer.
@@ -1309,24 +1566,6 @@ Just because the recognizer was active when it was used to create
 the evaluator, does not mean that the input matches the grammar.
 If it does not match, there will be no parses and the C<next> method will
 return undefined the first time it is called.
-
-=head1 IMPLEMENTATION
-
-Marpa, if a grammar optimizes sequences by returning references,
-marks the grammar opaque.
-Marpa gives optimization of sequences priority
-over memoization of node values because
-node value memoization has no payoff unless multiple parses are evaluated,
-which is not the usual case.
-Optimization of sequence evaluation almost always pays off quickly and handsomely.
-
-A possible future extension is to enable the user to 
-label only particular rules opaque, so that node memoization
-can take place on a rule by rule basis.
-But there's something to be said for keeping things simple.
-If a grammar writer is really looking for speed,
-she can let the grammar default to opaque,
-then use side effects and targeted caching and memoization.
 
 =head1 SUPPORT
 
@@ -1336,7 +1575,7 @@ See the L<support section|Parse::Marpa/SUPPORT> in the main module.
 
 Jeffrey Kegler
 
-=head1 COPYRIGHT
+=head1 LICENSE AND COPYRIGHT
 
 Copyright 2007 - 2008 Jeffrey Kegler
 
