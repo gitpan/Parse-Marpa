@@ -102,12 +102,12 @@ ok(!$failure_count, ($total_count-$failure_count) . " of $total_count parse perm
 # vim: expandtab shiftwidth=4:
 
 __DATA__
-semantics are perl5.  version is 0.211.4.  the start symbol is
+semantics are perl5.  version is 0.211.5.  the start symbol is
 S.  the default null value is q{}.  the default action is q{
-     my $v_count = scalar @$_;
+     my $v_count = scalar @_;
      return "" if $v_count <= 0;
-     return $_->[0] if $v_count == 1;
-     "(" . join(";", @$_) . ")";
+     return $_[0] if $v_count == 1;
+     "(" . join(";", @_) . ")";
 }.
 
 S: A, A, A, A.

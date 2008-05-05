@@ -12,14 +12,14 @@ my $value = Parse::Marpa::mdl(
 say $$value;
 
 __DATA__
-semantics are perl5.  version is 0.211.4.  start symbol is Expression.
+semantics are perl5.  version is 0.211.5.  start symbol is Expression.
 
 Expression: Expression, /[*]/, Expression.  priority 200.  q{
-    $_->[0] * $_->[2]
+    $_[0] * $_[2]
 }.
 
 Expression: Expression, /[+]/, Expression.  priority 100.  q{
-    $_->[0] + $_->[2]
+    $_[0] + $_[2]
 }.
 
-Expression: /\d+/.  q{ $_->[0] }.
+Expression: /\d+/.  q{ $_[0] }.

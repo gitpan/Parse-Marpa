@@ -19,19 +19,19 @@ my $new_default_null_value;
 my $new_default_lex_prefix;
 my %strings;
 
-# This file was automatically generated using Parse::Marpa 0.211004
+# This file was automatically generated using Parse::Marpa 0.211005
 $new_semantics = 'perl5';
 
-$new_version = '0.211004';
+$new_version = '0.211005';
 
 $new_start_symbol = "grammar";
 
 $new_default_lex_prefix = qr/(?:[ \t]*(?:\n|(?:\#[^\n]*\n)))*[ \t]*/;
 
 $strings{"concatenate-lines"} =  q{
-    my $v_count = scalar @$_;
+    my $v_count = scalar @_;
     return undef if $v_count <= 0;
-    join("\n", grep { $_ } @$_);
+    join("\n", grep { $_ } @_);
 };
 
 $new_preamble .=  q{
@@ -41,7 +41,7 @@ $new_preamble .=  q{
 push(@$new_rules, {
     lhs => "grammar"
 ,    rhs => ["paragraphs"],
-    action =>   q{ $_->[0] },
+    action =>   q{ $_[0] },
 ,
 ,
 
@@ -49,7 +49,7 @@ push(@$new_rules, {
 push(@$new_rules, {
     lhs => "grammar"
 ,    rhs => ["paragraphs", "whitespace-lines"],
-    action =>   q{ $_->[0] },
+    action =>   q{ $_[0] },
 ,
 ,
 
@@ -104,12 +104,12 @@ push(@$new_rules, {
 ,    rhs => ["non-structural-production-sentences", "production-sentence", "non-structural-production-sentences", "action-sentence:optional", "non-structural-production-sentences"],
     action => 
     q{
-        my $action = $_->[3];
-        my $other_key_value = join(",\n", map { $_ // "" } @{$_}[0,2,4]);
+        my $action = $_[3];
+        my $other_key_value = join(",\n", map { $_ // "" } @_[0,2,4]);
         my $result =
             'push(@$new_rules, '
              . "{\n"
-             . $_->[1] . ",\n"
+             . $_[1] . ",\n"
              . (defined $action ? ($action . ",\n") : "")
              . $other_key_value
              . "\n});"
@@ -140,7 +140,7 @@ push(@$new_rules,
     { lhs => "action-sentence:optional",  rhs => [ "action-sentence" ], 
                      min => 0,
                      max => 1,
-                     action => q{ $_->[0] }
+                     action => q{ scalar @_ ? $_[0] : undef }
              },
  );
 
@@ -158,7 +158,7 @@ push(@$new_rules, {
     lhs => "non-structural-production-sentence"
 ,    rhs => ["priority:k0", "integer", "period"],
     action => 
-q{ q{ priority => } . $_->[1] },
+q{ q{ priority => } . $_[1] },
 ,
 ,
 
@@ -173,7 +173,7 @@ push(@$new_rules, {
     action => 
 q{
     "    action => "
-    . $_->[3]
+    . $_[3]
 },
 ,
 ,
@@ -189,7 +189,7 @@ push(@$new_rules,
     { lhs => "the:k1:optional",  rhs => [ "the:k1" ], 
                      min => 0,
                      max => 1,
-                     action => q{ $_->[0] }
+                     action => q{ scalar @_ ? $_[0] : undef }
              },
  );
 
@@ -199,7 +199,7 @@ push(@$new_rules, {
     action => 
 q{
     "    action => "
-    . $_->[0]
+    . $_[0]
 },
 ,
 ,
@@ -232,7 +232,7 @@ push(@$new_rules, {
 push(@$new_rules, {
     lhs => "definition"
 ,    rhs => ["predefined-setting", "period"],
-    action =>   q{ $_->[0] },
+    action =>   q{ $_[0] },
 ,
 ,
  priority => 1000
@@ -329,7 +329,7 @@ push(@$new_rules, {
     action => 
      q{
          q{$new_semantics = '}
-         . $_->[3]
+         . $_[3]
         . qq{';\n}
 },
 ,
@@ -347,7 +347,7 @@ push(@$new_rules, {
     action => 
 q{
     q{$new_semantics = '}
-    . $_->[0]
+    . $_[0]
     . qq{';\n}
 },
 ,
@@ -360,7 +360,7 @@ push(@$new_rules, {
     action => 
 q{
     q{$new_version = '}
-    . Parse::Marpa::MDL::canonical_version($_->[3])
+    . Parse::Marpa::MDL::canonical_version($_[3])
     . qq{';\n}
 },
 ,
@@ -377,7 +377,7 @@ push(@$new_rules, {
     action => 
 q{
     q{$new_version = '}
-    . Parse::Marpa::MDL::canonical_version($_->[0])
+    . Parse::Marpa::MDL::canonical_version($_[0])
     . qq{';\n}
 },
 ,
@@ -394,7 +394,7 @@ push(@$new_rules, {
     action => 
 q{
     q{$new_start_symbol = "}
-    . $_->[4]
+    . $_[4]
     . qq{";\n}
 },
 ,
@@ -412,7 +412,7 @@ push(@$new_rules, {
     action => 
 q{
     q{$new_start_symbol = }
-    . $_->[0]
+    . $_[0]
     . qq{;\n}
 },
 ,
@@ -425,7 +425,7 @@ push(@$new_rules, {
     action => 
 q{
              q{$new_default_lex_prefix = }
-             . $_->[0]
+             . $_[0]
              . qq{;\n}
 },
 ,
@@ -444,7 +444,7 @@ push(@$new_rules, {
     action => 
 q{
     q{$new_default_lex_prefix = }
-    . $_->[5]
+    . $_[5]
     . qq{;\n}
 },
 ,
@@ -457,7 +457,7 @@ push(@$new_rules, {
     action => 
 q{
              q{$new_default_null_value = }
-             . $_->[0]
+             . $_[0]
              . qq{;\n}
 },
 ,
@@ -475,7 +475,7 @@ push(@$new_rules, {
     action => 
 q{
     q{$new_default_null_value = }
-    . $_->[5]
+    . $_[5]
     . qq{;\n}
 },
 ,
@@ -488,7 +488,7 @@ push(@$new_rules, {
     action => 
 q{
     q{$new_preamble .= }
-    . $_->[3]
+    . $_[3]
     . qq{;\n}
 },
 ,
@@ -506,7 +506,7 @@ push(@$new_rules, {
     action => 
 q{
     q{$new_preamble .= }
-    . $_->[0]
+    . $_[0]
     . qq{;\n}
 },
 ,
@@ -519,7 +519,7 @@ push(@$new_rules, {
     action => 
 q{
     q{$new_lex_preamble .= }
-    . $_->[3]
+    . $_[3]
     . qq{;\n}
 },
 ,
@@ -532,7 +532,7 @@ push(@$new_rules, {
     action => 
 q{
     q{$new_lex_preamble .= }
-    . $_->[0]
+    . $_[0]
     . qq{;\n}
 },
 ,
@@ -563,9 +563,9 @@ push(@$new_rules, {
     action => 
 q{
     '$strings{"'
-    . $_->[0]
+    . $_[0]
     . '"} = '
-    . $_->[2]
+    . $_[2]
     . qq{;\n}
 },
 ,
@@ -578,7 +578,7 @@ push(@$new_rules, {
     action => 
 q{
     q{ $new_default_action = }
-    . $_->[0]
+    . $_[0]
     . qq{;\n}
 },
 ,
@@ -591,7 +591,7 @@ push(@$new_rules, {
     action => 
 q{
     q{ $new_default_action = }
-    . $_->[4]
+    . $_[4]
     . qq{;\n}
 },
 ,
@@ -621,7 +621,7 @@ min => 1,
 push(@$new_rules, {
     lhs => "literal-string"
 ,    rhs => ["q-string"],
-    action =>   q{ $_->[0] },
+    action =>   q{ $_[0] },
 ,
 ,
 
@@ -647,9 +647,9 @@ push(@$new_rules, {
 ,    rhs => ["lhs", "production-copula", "rhs", "period"],
     action => 
 q{
-    $_->[0]
+    $_[0]
     . "\n,"
-    . $_->[2]
+    . $_[2]
 },
 ,
 ,
@@ -679,7 +679,7 @@ push(@$new_rules, {
 min => 1,
 ,
     action => 
-q{ Parse::Marpa::MDL::canonical_symbol_name(join("-", @$_)) },
+q{ Parse::Marpa::MDL::canonical_symbol_name(join("-", @_)) },
 ,
 ,
 
@@ -688,7 +688,7 @@ push(@$new_rules, {
     lhs => "lhs"
 ,    rhs => ["symbol-phrase"],
     action => 
-q{ '    lhs => "' . $_->[0] . q{"} },
+q{ '    lhs => "' . $_[0] . q{"} },
 ,
 ,
 
@@ -709,7 +709,7 @@ separator => "comma",
 min => 1,
 ,
     action => 
-q{ "    rhs => [" . join(", ", @$_) . "]" },
+q{ "    rhs => [" . join(", ", @_) . "]" },
 ,
 ,
 
@@ -720,7 +720,7 @@ push(@$new_rules, {
     action => 
 q{
     q{rhs => ["}
-    . $_->[0]
+    . $_[0]
     . qq{"],\n}
     . qq{min => 1,\n}
 },
@@ -738,7 +738,7 @@ push(@$new_rules, {
     action => 
 q{
     q{rhs => ["}
-    . $_->[1]
+    . $_[1]
     . qq{"],\n}
     . qq{min => 0,\n}
 },
@@ -756,10 +756,10 @@ push(@$new_rules, {
     action => 
 q{
     q{rhs => ["}
-    . $_->[2]
+    . $_[2]
     . qq{"],\n}
     . q{separator => "}
-    . $_->[0]
+    . $_[0]
     . qq{",\n}
     . qq{min => 1,\n}
 },
@@ -777,10 +777,10 @@ push(@$new_rules, {
     action => 
 q{
     q{rhs => ["}
-    . $_->[3]
+    . $_[3]
     . qq{"],\n}
     . q{separator => "}
-    . $_->[1]
+    . $_[1]
     . qq{",\n}
     . qq{min => 0,\n}
 },
@@ -808,7 +808,7 @@ push(@$new_rules, {
     lhs => "mandatory-rhs-element"
 ,    rhs => ["rhs-symbol-specifier"],
     action => 
-q{ q{"} . $_->[0] . q{"} },
+q{ q{"} . $_[0] . q{"} },
 ,
 ,
 
@@ -818,7 +818,7 @@ push(@$new_rules, {
 ,    rhs => ["optional:k15", "rhs-symbol-specifier"],
     action => 
 q{
-     my $symbol_phrase = $_->[1];
+     my $symbol_phrase = $_[1];
      my $optional_symbol_phrase = $symbol_phrase . ":optional";
      our %implicit_rules;
      if (not defined $implicit_rules{$optional_symbol_phrase}) {
@@ -831,7 +831,7 @@ q{
              . q{
                      min => 0,
                      max => 1,
-                     action => q{ $_->[0] }
+                     action => q{ scalar @_ ? $_[0] : undef }
              }
          );
      }
@@ -845,7 +845,7 @@ push(@$new_rules, {
     lhs => "rhs-symbol-specifier"
 ,    rhs => ["symbol-phrase"],
     action => 
-q{ $_->[0] },
+q{ $_[0] },
 ,
 ,
 
@@ -856,7 +856,7 @@ push(@$new_rules, {
     action => 
 q{
     our $regex_data;
-    my $regex = $_->[0];
+    my $regex = $_[0];
     my ($symbol, $new) = Parse::Marpa::MDL::gen_symbol_from_regex($regex, $regex_data);
     if ($new) {
         our @implicit_terminals;
@@ -898,10 +898,10 @@ push(@$new_rules, {
     action => 
 q{
     q{push(@$new_terminals, [ "}
-    . $_->[0]
+    . $_[0]
     . q{" => }
     . "{ regex => "
-    . $_->[2]
+    . $_[2]
     . "}"
     . qq{ ] );\n}
 },
@@ -919,10 +919,10 @@ push(@$new_rules, {
     action => 
 q{
     q{push(@$new_terminals, [ "}
-    . $_->[1]
+    . $_[1]
     . q{" => }
     . "{ action => "
-    . $_->[3]
+    . $_[3]
     . "}"
     . qq{ ] );\n}
 },
@@ -949,7 +949,7 @@ push(@$new_rules, {
     action => 
 q{
     '$strings{ "'
-    . $_->[0]
+    . $_[0]
     . '" }'
 },
 ,
