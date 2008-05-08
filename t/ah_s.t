@@ -62,7 +62,6 @@ sub NextPermute(\@)
 
 my $failure_count = 0;
 my $total_count = 0;
-my @a = sort (0, 1, 2, 3, 4);
 my @answer = (
     "",
     "(lowercase a;;;)",
@@ -71,27 +70,22 @@ my @answer = (
     "(lowercase a;lowercase a;lowercase a;lowercase a)",
 );
 
-PERMUTATION: for (;;) {
-    for my $i (@a) {
-        my $evaler = new Parse::Marpa::Evaluator($recce, $i);
-        my $result = $evaler->next();
-        $total_count++;
-        if ($answer[$i] ne $$result) {
-            diag( "got "
-		. $$result
-		. " expected "
-                . $answer[$i]
-                . " for $i in ("
-                . join(",", @a)
-                . ")\n"
-            );
-            $failure_count++;
-        }
-    }
-    if (not NextPermute(@a)) {
-        last PERMUTATION;
+for my $i (0 .. 4) {
+    my $evaler = new Parse::Marpa::Evaluator($recce, $i);
+    my $result = $evaler->next();
+    $total_count++;
+    if ($answer[$i] ne ${$result}) {
+        diag(
+            'got '
+            . ${$result}
+            . ', expected '
+            . $answer[$i]
+            . "\n"
+        );
+        $failure_count++;
     }
 }
+
 ok(!$failure_count, ($total_count-$failure_count) . " of $total_count parse permutations succeeded");
 
 # Local Variables:
@@ -102,7 +96,7 @@ ok(!$failure_count, ($total_count-$failure_count) . " of $total_count parse perm
 # vim: expandtab shiftwidth=4:
 
 __DATA__
-semantics are perl5.  version is 0.211.5.  the start symbol is
+semantics are perl5.  version is 0.211.6.  the start symbol is
 S.  the default null value is q{}.  the default action is q{
      my $v_count = scalar @_;
      return "" if $v_count <= 0;
