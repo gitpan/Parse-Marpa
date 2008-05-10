@@ -19,10 +19,10 @@ my $new_default_null_value;
 my $new_default_lex_prefix;
 my %strings;
 
-# This file was automatically generated using Parse::Marpa 0.211006
+# This file was automatically generated using Parse::Marpa 0.211007
 $new_semantics = 'perl5';
 
-$new_version = '0.211006';
+$new_version = '0.211007';
 
 $new_start_symbol = "grammar";
 
@@ -196,8 +196,7 @@ push(@$new_rules,
 push(@$new_rules, {
     lhs => "action-sentence"
 ,    rhs => ["action-specifier", "period"],
-    action => 
-q{
+    action =>  q{
     "    action => "
     . $_[0]
 },
@@ -519,7 +518,7 @@ push(@$new_rules, {
     action => 
 q{
     q{$new_lex_preamble .= }
-    . $_[3]
+    . $_[4]
     . qq{;\n}
 },
 ,
@@ -984,7 +983,10 @@ push(@$new_terminals, [ "single-quoted-string" => { action =>  q{
             my $end_pos = pos $$STRING;
             my $match_length = $end_pos - $match_start;
             my $lex_length = $end_pos - $START;
-            return (substr($$STRING, $match_start, $match_length), $lex_length);
+            return (
+                substr($$STRING, $match_start, $match_length),
+                $lex_length
+            );
         }
     }
     return;
@@ -1001,7 +1003,10 @@ push(@$new_terminals, [ "double-quoted-string" => { action =>  q{
             my $end_pos = pos $$STRING;
             my $match_length = $end_pos - $match_start;
             my $lex_length = $end_pos - $START;
-            return (substr($$STRING, $match_start, $match_length), $lex_length);
+            return (
+                substr($$STRING, $match_start, $match_length),
+                $lex_length
+            );
         }
     }
     return;

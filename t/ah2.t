@@ -261,95 +261,64 @@ EOS
 
 my $set1_at_0 = <<'EOS';
 Earley Set 1
-St7@0-1
-  token choice 0 [p=St3@0-0; t=a]
+St7@0-1 [p=St3@0-0; t=a]
 EOS
 
 my $set1_at_1 = <<'EOS';
-St10@0-1
-  link choice 0 [p=St3@0-0; c=St7@0-1]
-St13@0-1
-  link choice 0 [p=St3@0-0; c=St7@0-1]
+St10@0-1 [p=St3@0-0; c=St7@0-1]
+St13@0-1 [p=St3@0-0; c=St7@0-1]
 St1@1-1
-St6@0-1
-  link choice 0 [p=St3@0-0; c=St13@0-1] [p=St3@0-0; c=St10@0-1]
-St12@0-1
-  link choice 0 [p=St11@0-0; c=St13@0-1] [p=St11@0-0; c=St15@0-1]
-St15@0-1
-  link choice 0 [p=St3@0-0; c=St13@0-1] [p=St3@0-0; c=St6@0-1]
+St6@0-1 [p=St3@0-0; c=St13@0-1] [p=St3@0-0; c=St10@0-1]
+St12@0-1 [p=St11@0-0; c=St13@0-1] [p=St11@0-0; c=St15@0-1]
+St15@0-1 [p=St3@0-0; c=St13@0-1] [p=St3@0-0; c=St6@0-1]
 EOS
 
 my $set2_at_1 = <<'EOS';
 Earley Set 2
-St7@1-2
-  token choice 0 [p=St1@1-1; t=a]
+St7@1-2 [p=St1@1-1; t=a]
 EOS
 
 my $set2_at_2 = <<'EOS';
-St9@0-2
-  link choice 0 [p=St13@0-1; c=St7@1-2]
-St10@1-2
-  link choice 0 [p=St1@1-1; c=St7@1-2]
-St4@1-2
-  link choice 0 [p=St1@1-1; c=St7@1-2]
+St9@0-2 [p=St13@0-1; c=St7@1-2]
+St10@1-2 [p=St1@1-1; c=St7@1-2]
+St4@1-2 [p=St1@1-1; c=St7@1-2]
 St2@2-2
-St6@0-2
-  link choice 0 [p=St3@0-0; c=St9@0-2]
-St5@0-2
-  link choice 0 [p=St13@0-1; c=St4@1-2] [p=St13@0-1; c=St10@1-2]
-St6@1-2
-  link choice 0 [p=St1@1-1; c=St4@1-2] [p=St1@1-1; c=St10@1-2]
-St14@0-2
-  link choice 0 [p=St13@0-1; c=St4@1-2] [p=St13@0-1; c=St6@1-2]
-St15@0-2
-  link choice 0 [p=St3@0-0; c=St5@0-2] [p=St3@0-0; c=St6@0-2]
-St12@0-2
-  link choice 0 [p=St11@0-0; c=St14@0-2] [p=St11@0-0; c=St15@0-2]
+St6@0-2 [p=St3@0-0; c=St9@0-2]
+St5@0-2 [p=St13@0-1; c=St4@1-2] [p=St13@0-1; c=St10@1-2]
+St6@1-2 [p=St1@1-1; c=St4@1-2] [p=St1@1-1; c=St10@1-2]
+St14@0-2 [p=St13@0-1; c=St4@1-2] [p=St13@0-1; c=St6@1-2]
+St15@0-2 [p=St3@0-0; c=St5@0-2] [p=St3@0-0; c=St6@0-2]
+St12@0-2 [p=St11@0-0; c=St14@0-2] [p=St11@0-0; c=St15@0-2]
 EOS
 
 my $set3_at_2 = <<'EOS';
 Earley Set 3
-St7@2-3
-  token choice 0 [p=St2@2-2; t=a]
+St7@2-3 [p=St2@2-2; t=a]
 EOS
 
 my $set3_at_3 = <<'EOS';
-St9@1-3
-  link choice 0 [p=St4@1-2; c=St7@2-3]
-St10@2-3
-  link choice 0 [p=St2@2-2; c=St7@2-3]
-St8@2-3
-  link choice 0 [p=St2@2-2; c=St7@2-3]
+St9@1-3 [p=St4@1-2; c=St7@2-3]
+St10@2-3 [p=St2@2-2; c=St7@2-3]
+St8@2-3 [p=St2@2-2; c=St7@2-3]
 St0@3-3
-St5@0-3
-  link choice 0 [p=St13@0-1; c=St9@1-3]
-St6@1-3
-  link choice 0 [p=St1@1-1; c=St9@1-3]
-St5@1-3
-  link choice 0 [p=St4@1-2; c=St8@2-3] [p=St4@1-2; c=St10@2-3]
-St15@0-3
-  link choice 0 [p=St3@0-0; c=St5@0-3]
-St14@0-3
-  link choice 0 [p=St13@0-1; c=St5@1-3] [p=St13@0-1; c=St6@1-3]
-St12@0-3
-  link choice 0 [p=St11@0-0; c=St14@0-3] [p=St11@0-0; c=St15@0-3]
+St5@0-3 [p=St13@0-1; c=St9@1-3]
+St6@1-3 [p=St1@1-1; c=St9@1-3]
+St5@1-3 [p=St4@1-2; c=St8@2-3] [p=St4@1-2; c=St10@2-3]
+St15@0-3 [p=St3@0-0; c=St5@0-3]
+St14@0-3 [p=St13@0-1; c=St5@1-3] [p=St13@0-1; c=St6@1-3]
+St12@0-3 [p=St11@0-0; c=St14@0-3] [p=St11@0-0; c=St15@0-3]
 EOS
 
 my $set4_at_3 = <<'EOS';
 Earley Set 4
-St7@3-4
-  token choice 0 [p=St0@3-3; t=a]
+St7@3-4 [p=St0@3-3; t=a]
 EOS
 
 my $set4_at_4 = <<'EOS';
-St9@2-4
-  link choice 0 [p=St8@2-3; c=St7@3-4]
-St5@1-4
-  link choice 0 [p=St4@1-2; c=St9@2-4]
-St14@0-4
-  link choice 0 [p=St13@0-1; c=St5@1-4]
-St12@0-4
-  link choice 0 [p=St11@0-0; c=St14@0-4]
+St9@2-4 [p=St8@2-3; c=St7@3-4]
+St5@1-4 [p=St4@1-2; c=St9@2-4]
+St14@0-4 [p=St13@0-1; c=St5@1-4]
+St12@0-4 [p=St11@0-0; c=St14@0-4]
 EOS
 
 my $sets_new = $set0_new;
@@ -359,38 +328,38 @@ my $sets_at_2 = $sets_at_1 . $set2_at_2 . $set3_at_2;
 my $sets_at_3 = $sets_at_2 . $set3_at_3 . $set4_at_3;
 my $sets_at_4 = $sets_at_3 . $set4_at_4;
 
-is( $recce->show_status(1),
+is( Parse::Marpa::show_earley_sets($recce, 1),
     "Current Earley Set: 0; Furthest: 0\n" .  $sets_new,
     "Aycock/Horspool Parse Status before parse" );
 
 my $a = $g->get_symbol("a");
 $recce->earleme([$a, "a", 1]);
 
-is( $recce->show_status(1),
+is( Parse::Marpa::show_earley_sets($recce, 1),
     "Current Earley Set: 1; Furthest: 1\n" .  $sets_at_0,
     "Aycock/Horspool Parse Status at 0" );
 
 $recce->earleme([$a, "a", 1]);
 
-is( $recce->show_status(1),
+is( Parse::Marpa::show_earley_sets($recce, 1),
     "Current Earley Set: 2; Furthest: 2\n" .  $sets_at_1,
     "Aycock/Horspool Parse Status at 1" );
 
 $recce->earleme([$a, "a", 1]);
 
-is( $recce->show_status(1),
+is( Parse::Marpa::show_earley_sets($recce, 1),
     "Current Earley Set: 3; Furthest: 3\n" .  $sets_at_2,
     "Aycock/Horspool Parse Status at 2" );
 
 $recce->earleme([$a, "a", 1]);
 
-is( $recce->show_status(1),
+is( Parse::Marpa::show_earley_sets($recce, 1),
     "Current Earley Set: 4; Furthest: 4\n" .  $sets_at_3,
     "Aycock/Horspool Parse Status at 3" );
 
 $recce->end_input();
 
-is( $recce->show_status(1),
+is( Parse::Marpa::show_earley_sets($recce, 1),
     "Current Earley Set: 5; Furthest: 4\n" .  $sets_at_4,
     "Aycock/Horspool Parse Status at 4" );
 
@@ -400,7 +369,7 @@ my @answer = ("", qw[(a;;;) (a;a;;) (a;a;a;) (a;a;a;a)]);
 
 for my $i (0 .. 4) {
     my $evaler = new Parse::Marpa::Evaluator($recce, $i);
-    my $result = $evaler->next();
+    my $result = $evaler->value();
     $total_count++;
     if ($answer[$i] ne ${$result}) {
         diag(

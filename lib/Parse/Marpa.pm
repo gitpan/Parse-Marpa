@@ -7,7 +7,7 @@ no warnings "recursion";
 use strict;
 
 BEGIN {
-    our $VERSION        = '0.211_006';
+    our $VERSION        = '0.211_007';
     our $STRING_VERSION = $VERSION;
     $VERSION = eval $VERSION;
 }
@@ -130,9 +130,9 @@ sub Parse::Marpa::mdl {
     if ( not defined $evaler ) {
         die_with_parse_failure( $text, length($text) );
     }
-    return $evaler->next if not wantarray;
+    return $evaler->value if not wantarray;
     my @values;
-    while ( defined( my $value = $evaler->next() ) ) {
+    while ( defined( my $value = $evaler->value() ) ) {
         push( @values, $value );
     }
     @values;
@@ -1077,12 +1077,12 @@ Graham Barr (C<Scalar::Util>).
 Adam Kennedy patiently corrected me on the finer points of module writing,
 as well as about some issues where I really should have know better.
 
-=head1 COPYRIGHT & LICENSE
+=head1 LICENSE AND COPYRIGHT
 
 Copyright 2007-2008 Jeffrey Kegler, all rights reserved.
 
-This program is free software; you can redistribute it and/or modify it
-under the same terms as Perl itself.
+This program is free software; you can redistribute
+it and/or modify it under the same terms as Perl 5.10.0.
 
 =cut
 

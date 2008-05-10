@@ -72,7 +72,7 @@ my @answer = (
 
 for my $i (0 .. 4) {
     my $evaler = new Parse::Marpa::Evaluator($recce, $i);
-    my $result = $evaler->next();
+    my $result = $evaler->value();
     $total_count++;
     if ($answer[$i] ne ${$result}) {
         diag(
@@ -96,7 +96,7 @@ ok(!$failure_count, ($total_count-$failure_count) . " of $total_count parse perm
 # vim: expandtab shiftwidth=4:
 
 __DATA__
-semantics are perl5.  version is 0.211.6.  the start symbol is
+semantics are perl5.  version is 0.211.7.  the start symbol is
 S.  the default null value is q{}.  the default action is q{
      my $v_count = scalar @_;
      return "" if $v_count <= 0;

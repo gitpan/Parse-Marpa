@@ -4,7 +4,7 @@
 # then hacking it by hand as needed
 # to bootstrap the new self.marpa.
 
-# This file was automatically generated using Parse::Marpa 0.211005
+# This file was automatically generated using Parse::Marpa 0.211007
 # This is the beginning of bootstrap_header.pl
 
 use 5.010_000;
@@ -13,6 +13,7 @@ use warnings;
 use Parse::Marpa;
 use Parse::Marpa::MDL;
 use Carp;
+use Fatal qw(open close);
 use English qw( -no_match_vars ) ;
 
 my %regex;
@@ -39,8 +40,6 @@ usage() unless $argc >= 1 and $argc <= 3;
 my $grammar_file_name = shift @ARGV;
 my $header_file_name = shift @ARGV;
 my $trailer_file_name = shift @ARGV;
-$header_file_name //= "bootstrap_header.pl";
-$trailer_file_name //= "bootstrap_trailer.pl";
 
 our $GRAMMAR;
 open(GRAMMAR, "<", $grammar_file_name) or die("Cannot open $grammar_file_name: $!");
@@ -48,7 +47,7 @@ open(GRAMMAR, "<", $grammar_file_name) or die("Cannot open $grammar_file_name: $
 # This is the end of bootstrap_header.pl
 $new_semantics = 'perl5';
 
-$new_version = '0.211006';
+$new_version = '0.211007';
 
 $new_start_symbol = "grammar";
 
@@ -222,8 +221,7 @@ push(@$new_rules,
 push(@$new_rules, {
     lhs => "action-sentence"
 ,    rhs => ["action-specifier", "period"],
-    action => 
-q{
+    action =>  q{
     "    action => "
     . $_[0]
 },
@@ -545,7 +543,7 @@ push(@$new_rules, {
     action => 
 q{
     q{$new_lex_preamble .= }
-    . $_[3]
+    . $_[4]
     . qq{;\n}
 },
 ,
@@ -1010,7 +1008,10 @@ push(@$new_terminals, [ "single-quoted-string" => { action =>  q{
             my $end_pos = pos $$STRING;
             my $match_length = $end_pos - $match_start;
             my $lex_length = $end_pos - $START;
-            return (substr($$STRING, $match_start, $match_length), $lex_length);
+            return (
+                substr($$STRING, $match_start, $match_length),
+                $lex_length
+            );
         }
     }
     return;
@@ -1027,7 +1028,10 @@ push(@$new_terminals, [ "double-quoted-string" => { action =>  q{
             my $end_pos = pos $$STRING;
             my $match_length = $end_pos - $match_start;
             my $lex_length = $end_pos - $START;
-            return (substr($$STRING, $match_start, $match_length), $lex_length);
+            return (
+                substr($$STRING, $match_start, $match_length),
+                $lex_length
+            );
         }
     }
     return;
@@ -1120,16 +1124,15 @@ my $spec;
 my $evaler = new Parse::Marpa::Evaluator($recce);
 die("No parse") unless $evaler;
 
-our $HEADER;
-my $header;
-{ local($RS) = undef; open(HEADER, "<", $header_file_name); $header = <HEADER>; }
+sub slurp { open(my $fh, '<', shift); local($RS); <$fh>; }
 
-our $TRAILER;
-my $trailer;
-{ local($RS) = undef; open(TRAILER, "<", $trailer_file_name); $trailer = <TRAILER>; }
+my $header = slurp($header_file_name) if $header_file_name;
+my $trailer = slurp($trailer_file_name) if $trailer_file_name;
 
 say "# This file was automatically generated using Parse::Marpa ", $Parse::Marpa::VERSION;
-my $value = $evaler->next();
-print $header, $$value, "\n", $trailer;
+my $value = $evaler->value();
+print $header if defined $header;
+say $$value;
+print $trailer if defined $trailer;
 
 # This is the end of bootstrap_trailer.pl

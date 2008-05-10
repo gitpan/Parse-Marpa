@@ -18,15 +18,9 @@ priorities to the rules.
 
 Add a graf about ambiguous transitions in the Internals document.
 
-=head2 Rename Evaluator::next method to Evaluator::value
-
 =head1 LOWER PRIORITY
 
 =over 4
-
-=item * Prune structures in Grammar.pm, and Recognizer.pm.
-Earley_item structure in particular contains much that is no
-longer used.
 
 =item * Make code clean under perlcritic.
 
@@ -68,14 +62,16 @@ to safely deep copy recognizers.
 =item * Allow alternation?
 
 =item * Add to test set: Basic tests of all types of counted rules.
-The matrix is separated yes vs. no;
-and 0-1, 1-1, 0-2, 0-5, 1-2, 1-5, 0-*, 1-*, 2-*, versus 5-*.
+Eliminate maximums and minimums higher than 1.
+The matrix is separated yes versus no;
+perl5 versus proper separation;
+and 0-1, 1-1, 0-*, versus 1-*.
 Eliminate keep vs. no-keep, right vs. left.
 
 =item * Downgrade version conflict or semantics mismatch to warning?
 
 =item * There are now no Parse::Marpa::Read_Only variables.  Eliminate
-the namespace, and the references to it in the documentation?
+the namespace, and all the references to it in the documentation?
 
 =back
 
@@ -103,12 +99,12 @@ See the L<support section|Parse::Marpa/SUPPORT> in the main module.
 
 Jeffrey Kegler
 
-=head1 COPYRIGHT
+=head1 LICENSE AND COPYRIGHT
 
 Copyright 2007 - 2008 Jeffrey Kegler
 
 This program is free software; you can redistribute
-it and/or modify it under the same terms as Perl itself.
+it and/or modify it under the same terms as Perl 5.10.0.
 
 =cut
 
