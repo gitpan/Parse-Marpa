@@ -75,6 +75,16 @@ sub is_equation_grammar {
         diff(\$display_grammar, \$equation_grammar);
 }
 
+my $equation_show_symbols = slurp('equation_show_symbols.out');
+sub is_equation_show_symbols {
+    return is_file(shift, $equation_show_symbols);
+}
+
+my $equation_show_rules = slurp('equation_show_rules.out');
+sub is_equation_show_rules {
+    return is_file(shift, $equation_show_rules);
+}
+
 my $equation_show_QDFA = slurp('equation_show_QDFA.out');
 sub is_equation_show_QDFA {
     return is_file(shift, $equation_show_QDFA);
@@ -98,12 +108,59 @@ sub is_equation_show_bocage {
 
 my $equation_show_tree = slurp('equation_show_tree.out');
 sub is_equation_show_tree {
-    return is_file(shift, $equation_show_tree);
+    my $display = shift;
+    $display =~ s/CODE [(] 0x \p{IsXDigit}+ [)]/CODE/gxms;
+    my $file = $equation_show_tree;
+    $file =~ s/CODE [(] 0x \p{IsXDigit}+ [)]/CODE/gxms;
+    return is_file($display, $file);
+}
+
+my $equation_trace_values = slurp('equation_trace_values.out');
+sub is_equation_trace_values {
+    return is_file(shift, $equation_trace_values);
 }
 
 my $self_show_rules = slurp('self_show_rules.out');
 sub in_self_show_rules {
     return in_file(shift, $self_show_rules);
+}
+
+my $bin_mdl = slurp('../bin/mdl');
+sub in_bin_mdl {
+    return in_file(shift, $bin_mdl);
+}
+
+my $null_value_grammar = slurp('../example/null_value.marpa');
+sub in_null_value_grammar {
+    return in_file(shift, $null_value_grammar);
+}
+
+my $synopsis_pl = slurp('../example/synopsis.pl');
+sub is_synopsis_pl {
+    return is_file(shift, $synopsis_pl);
+}
+sub in_synopsis_pl {
+    return in_file(shift, $synopsis_pl);
+}
+
+my $ah2_t = slurp('../t/ah2.t');
+sub in_ah2_t {
+    return in_file(shift, $ah2_t);
+}
+
+my $ah_s_t = slurp('../t/ah_s.t');
+sub in_ah_s_t {
+    return in_file(shift, $ah_s_t);
+}
+
+my $equation_s_t = slurp('../t/equation_s.t');
+sub in_equation_s_t {
+    return in_file(shift, $equation_s_t);
+}
+
+my $equation_t = slurp('../t/equation.t');
+sub in_equation_t {
+    return in_file(shift, $equation_t);
 }
 
 package MyParser;

@@ -749,7 +749,7 @@ sub Parse::Marpa::Evaluator::new {
 
 }
 
-sub Parse::Marpa::show_bocage {
+sub Parse::Marpa::Evaluator::show_bocage {
     my $evaler  = shift;
     my $verbose = shift;
 
@@ -768,9 +768,11 @@ sub Parse::Marpa::show_bocage {
 
         my $lhs = $or_node->[Parse::Marpa::Internal::Or_Node::NAME];
 
+	my $index = -1;
         for my $and_node (
             @{ $or_node->[Parse::Marpa::Internal::Or_Node::AND_NODES] } )
         {
+	    $index++;
 
             my ( $predecessor, $cause, $value_ref, $closure,
 		$argc, $rule, $position,
@@ -801,7 +803,7 @@ sub Parse::Marpa::show_bocage {
                 push @rhs, $value_as_string;
             }    # value
 
-            $text .= $lhs . ' ::= ' . join( q{ }, @rhs ) . "\n";
+            $text .= $lhs . '[' . $index . '] ::= ' . join( q{ }, @rhs ) . "\n";
 
             if ($verbose) {
                 $text .= '    item: ' . Parse::Marpa::show_dotted_rule($rule, $position) . "\n";
@@ -821,7 +823,7 @@ sub Parse::Marpa::show_bocage {
     return $text;
 }
 
-sub Parse::Marpa::show_tree {
+sub Parse::Marpa::Evaluator::show_tree {
     my $evaler  = shift;
     my $verbose = shift;
 
@@ -1265,17 +1267,28 @@ Parse::Marpa::Evaluator - Marpa Evaluator Objects
 
 =head1 SYNOPSIS
 
-    my $grammar = new Parse::Marpa::Grammar({ mdl_source => \$mdl });
-    my $recce = new Parse::Marpa::Recognizer({ grammar => $grammar });
-    my $fail_offset = $recce->text(\("2-0*3+1"));
-    croak("Parse failed at offset $fail_offset") if $fail_offset >= 0;
+=begin Parse::Marpa::test_document:
+
+## next 3 displays
+in_equation_s_t($_)
+
+=end Parse::Marpa::test_document:
+
+    my $fail_offset = $recce->text( \('2-0*3+1') );
+    if ( $fail_offset >= 0 ) {
+        die("Parse failed at offset $fail_offset");
+    }
 
     my $evaler = new Parse::Marpa::Evaluator($recce);
+    die("Parse failed") unless $evaler;
 
-    for (my $i = 0; defined(my $value = $evaler->value()); $i++) {
-        croak("Ambiguous parse has extra value: ", $$value, "\n")
-	    if $i > $expected;
-	say "Ambiguous Equation Value $i: ", $$value;
+    for ( my $i = 0; defined( my $value = $evaler->value() ); $i++ ) {
+        if ( $i > $#expected ) {
+            fail( "Ambiguous equation has extra value: " . $$value . "\n" );
+        }
+        else {
+            is( $$value, $expected[$i], "Ambiguous Equation Value $i" );
+        }
     }
 
 =head1 DESCRIPTION
@@ -1310,9 +1323,16 @@ even when the symbol's empty rule is not involved.
 
 For example, in MDL,
 the following says that whenever the symbol C<A> is nulled,
-its value should be a string which expresses surprise.
+its value should be a string that says it is missing.
 
-    A: . q{ 'Oops!  Where did I go!' }.
+=begin Parse::Marpa::test_document:
+
+## next display
+in_null_value_grammar($_)
+
+=end Parse::Marpa::test_document:
+
+    A: . q{'A is missing'}.
 
 Null symbol actions are different from rule actions in another important way.
 Null symbol actions are run at recognizer creation time and the value of the result
@@ -1402,7 +1422,15 @@ and arrange to have that closure run by the parent node.
 
 Suppose a grammar has these rules
 
-    S: A, Y. q{ $_->[0] . ", but " . $_->[1] }. # Call me the start rule
+=begin Parse::Marpa::test_document:
+
+## start display
+## next display
+in_null_value_grammar($_)
+
+=end Parse::Marpa::test_document:
+
+    S: A, Y. q{ $_[0] . ", but " . $_[1] }. # Call me the start rule
     note: you can also call me Rule 0.
 
     A: . q{'A is missing'}. # Call me Rule 1
@@ -1417,6 +1445,14 @@ Suppose a grammar has these rules
 
     Y: /Z/. q{'Zorro was here'}. # Call me Rule 6
 
+
+=begin Parse::Marpa::test_document:
+
+## end display
+in_null_value_grammar($_)
+
+=end Parse::Marpa::test_document:
+
 In the above MDL, the Perl 5 regex "C</Z/>" occurs on the rhs of Rule 6.
 Where a regex is on the rhs of a rule, MDL internally creates a terminal symbol
 to match that regex in the input text.
@@ -1426,6 +1462,12 @@ C</Z/> will be called C<Z>.
 
 If the input text is the Perl 5 string "C<Z>",
 the derivation is as follows:
+
+=begin Parse::Marpa::test_document:
+
+## skip 2 displays
+
+=end Parse::Marpa::test_document:
 
     S -> A Y        (Rule 0)
       -> A Z      (Y produces Z, by Rule 6)
@@ -1445,6 +1487,12 @@ The parse tree can be described as follows:
 Here's a table showing, for each node, its lhs symbol,
 the sentence it derives, and
 its value.
+
+=begin Parse::Marpa::test_document:
+
+## skip 2 displays
+
+=end Parse::Marpa::test_document:
 
                       Symbol      Sentence     Value
                                   Derived
@@ -1523,6 +1571,13 @@ the value of the parse.
 
 =head2 new
 
+=begin Parse::Marpa::test_document:
+
+## next display
+in_equation_s_t($_)
+
+=end Parse::Marpa::test_document:
+
     my $evaler = new Parse::Marpa::Evaluator($recce);
 
 Z<>
@@ -1541,7 +1596,14 @@ of parsing, which was set in the recognizer.
 
 =head2 next
 
-    my $value = $evaler->value();
+=begin Parse::Marpa::test_document:
+
+## next display
+in_ah2_t($_)
+
+=end Parse::Marpa::test_document:
+
+    my $result = $evaler->value();
 
 Iterates the evaluator object, returning a reference to the value of the next parse.
 If there are no more parses, returns undefined.
