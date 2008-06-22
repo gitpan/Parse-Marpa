@@ -28,9 +28,8 @@ use English qw( -no_match_vars );
 # consisting of hedgerows deliberately cultivated
 # as obstacles to cattle and armies.
 
-# Saplings become or-nodes when they grow up.
-
-package Parse::Marpa::Internal::Sapling;
+# Saplings which become or-nodes when they grow up.
+package Parse::Marpa::Internal::Or_Sapling;
 
 use constant NAME     => 0;
 use constant ITEM     => 1;
@@ -467,7 +466,7 @@ sub Parse::Marpa::Evaluator::new {
         last EARLEY_ITEM;
     }
 
-    return unless $start_rule;
+    croak("No start rule in evaluator") unless $start_rule;
 
     @{$recognizer}[
         Parse::Marpa::Internal::Recognizer::START_ITEM,
@@ -529,45 +528,46 @@ sub Parse::Marpa::Evaluator::new {
 
     }    # if $nulling
 
-    my @saplings;
+    my @or_saplings;
     my %or_node_by_name;
     my $start_sapling = [];
     {
         my $name = $start_item->[Parse::Marpa::Internal::Earley_item::NAME];
         my $symbol_id = $start_symbol->[Parse::Marpa::Internal::Symbol::ID];
         $name .= 'L' . $symbol_id;
-        $start_sapling->[Parse::Marpa::Internal::Sapling::NAME] = $name;
+        $start_sapling->[Parse::Marpa::Internal::Or_Sapling::NAME] = $name;
     }
-    $start_sapling->[Parse::Marpa::Internal::Sapling::ITEM] = $start_item;
-    $start_sapling->[Parse::Marpa::Internal::Sapling::SYMBOL] =
+    $start_sapling->[Parse::Marpa::Internal::Or_Sapling::ITEM] = $start_item;
+    $start_sapling->[Parse::Marpa::Internal::Or_Sapling::SYMBOL] =
         $start_symbol;
-    push @saplings, $start_sapling;
+    push @or_saplings, $start_sapling;
 
     my $i = 0;
-    SAPLING: while (1) {
+    OR_SAPLING: while (1) {
 
         my ( $sapling_name, $item, $symbol, $rule, $position ) =
-            @{ $saplings[ $i++ ] }[
-            Parse::Marpa::Internal::Sapling::NAME,
-            Parse::Marpa::Internal::Sapling::ITEM,
-            Parse::Marpa::Internal::Sapling::SYMBOL,
-            Parse::Marpa::Internal::Sapling::RULE,
-            Parse::Marpa::Internal::Sapling::POSITION,
+            @{ $or_saplings[ $i++ ] }[
+            Parse::Marpa::Internal::Or_Sapling::NAME,
+            Parse::Marpa::Internal::Or_Sapling::ITEM,
+            Parse::Marpa::Internal::Or_Sapling::SYMBOL,
+            Parse::Marpa::Internal::Or_Sapling::RULE,
+            Parse::Marpa::Internal::Or_Sapling::POSITION,
             ];
 
-        last SAPLING unless defined $item;
+        last OR_SAPLING unless defined $item;
 
         # If we don't have a current rule, we need to get one or
         # more rules, and deduce the position and a new symbol from
         # them.
-        my @rule_work_list;
+        my @and_saplings;
 
         # If we have a rule and a position, get the current symbol
         if ( defined $position ) {
 
+	    $position--;
             my $symbol =
-                $rule->[Parse::Marpa::Internal::Rule::RHS]->[$position-1];
-            push @rule_work_list, [ $rule, $position, $symbol ];
+                $rule->[Parse::Marpa::Internal::Rule::RHS]->[$position];
+            push @and_saplings, [ $rule, $position, $symbol ];
 
         }
         else {    # if not defined $position
@@ -586,11 +586,11 @@ sub Parse::Marpa::Evaluator::new {
                     $rule_data->[ $rule->[Parse::Marpa::Internal::Rule::ID] ]
                     ->[Parse::Marpa::Internal::Evaluator::Rule::CLOSURE];
 
-                my $last_position = @{$rhs};
-                push @rule_work_list,
+                my $last_position = @{$rhs}-1;
+                push @and_saplings,
                     [
                     $rule,                  $last_position,
-                    $rhs->[$last_position-1], $closure
+                    $rhs->[$last_position], $closure
                     ];
 
             }    # for my $rule
@@ -601,9 +601,9 @@ sub Parse::Marpa::Evaluator::new {
 
         my $item_name = $item->[Parse::Marpa::Internal::Earley_item::NAME];
 
-        RULE: for my $rule_work_item (@rule_work_list) {
+        for my $and_sapling (@and_saplings) {
 
-            my ( $rule, $position, $symbol, $closure ) = @{$rule_work_item};
+            my ( $rule, $position, $symbol, $closure ) = @{$and_sapling};
 
             my ( $rule_id, $rhs ) = @{$rule}[
                 Parse::Marpa::Internal::Rule::ID,
@@ -611,14 +611,14 @@ sub Parse::Marpa::Evaluator::new {
             ];
             my $rule_length = @{$rhs};
 
-            my @work_list;
+            my @or_bud_list;
             if ( $symbol->[Parse::Marpa::Internal::Symbol::NULLING] ) {
                 my $symbol_id = $symbol->[Parse::Marpa::Internal::Symbol::ID];
                 my $null_value = $null_values->[$symbol_id];
-                @work_list = ( [ $item, undef, \$null_value, ] );
+                @or_bud_list = ( [ $item, undef, \$null_value, ] );
             }
             else {
-                @work_list = (
+                @or_bud_list = (
                     (   map { [ $_->[0], undef, \( $_->[1] ) ] } @{
                             $item->[
                                 Parse::Marpa::Internal::Earley_item::TOKENS
@@ -633,13 +633,13 @@ sub Parse::Marpa::Evaluator::new {
                 );
             }
 
-            for my $work_item (@work_list) {
+            for my $or_bud (@or_bud_list) {
 
-                my ( $predecessor, $cause, $value_ref ) = @{$work_item};
+                my ( $predecessor, $cause, $value_ref ) = @{$or_bud};
 
                 my $predecessor_name;
 
-                if ( $position > 1 ) {
+                if ( $position > 0 ) {
 
                     $predecessor_name =
                         $predecessor
@@ -652,17 +652,17 @@ sub Parse::Marpa::Evaluator::new {
 
                         my $sapling = [];
                         @{$sapling}[
-                            Parse::Marpa::Internal::Sapling::NAME,
-                            Parse::Marpa::Internal::Sapling::RULE,
-                            Parse::Marpa::Internal::Sapling::POSITION,
-                            Parse::Marpa::Internal::Sapling::ITEM,
+                            Parse::Marpa::Internal::Or_Sapling::NAME,
+                            Parse::Marpa::Internal::Or_Sapling::RULE,
+                            Parse::Marpa::Internal::Or_Sapling::POSITION,
+                            Parse::Marpa::Internal::Or_Sapling::ITEM,
                             ]
                             = (
-                            $predecessor_name, $rule, $position - 1,
+                            $predecessor_name, $rule, $position,
                             $predecessor,
                             );
 
-                        push @saplings, $sapling;
+                        push @or_saplings, $sapling;
 
                     }    # $predecessor_name ~~ %or_node_by_name
 
@@ -686,13 +686,13 @@ sub Parse::Marpa::Evaluator::new {
 
                         my $sapling = [];
                         @{$sapling}[
-                            Parse::Marpa::Internal::Sapling::NAME,
-                            Parse::Marpa::Internal::Sapling::SYMBOL,
-                            Parse::Marpa::Internal::Sapling::ITEM,
+                            Parse::Marpa::Internal::Or_Sapling::NAME,
+                            Parse::Marpa::Internal::Or_Sapling::SYMBOL,
+                            Parse::Marpa::Internal::Or_Sapling::ITEM,
                             ]
                             = ( $cause_name, $symbol, $cause, );
 
-                        push @saplings, $sapling;
+                        push @or_saplings, $sapling;
 
                     }    # $cause_name ~~ %or_node_by_name
 
@@ -715,9 +715,9 @@ sub Parse::Marpa::Evaluator::new {
 
                 push @and_nodes, $and_node;
 
-            }    # for work_item
+            }    # for my $or_bud
 
-        }    # RULE
+        } # for my $and_sapling
 
         my $or_node = [];
         $or_node->[Parse::Marpa::Internal::Or_Node::NAME] = $sapling_name;
@@ -725,7 +725,7 @@ sub Parse::Marpa::Evaluator::new {
         push @{ $self->[OR_NODES] }, $or_node;
         $or_node_by_name{$sapling_name} = $or_node;
 
-    }    # SAPLING
+    }    # OR_SAPLING
 
     # resolve links in the bocage
     for my $and_node (
@@ -803,17 +803,23 @@ sub Parse::Marpa::Evaluator::show_bocage {
                 push @rhs, $value_as_string;
             }    # value
 
+	    if ($verbose) {
+		$text .= $lhs . ' ::= ' .  $lhs . '[' . $index . ']' . "\n";
+	    }
+
             $text .= $lhs . '[' . $index . '] ::= ' . join( q{ }, @rhs ) . "\n";
 
             if ($verbose) {
-                $text .= '    item: ' . Parse::Marpa::show_dotted_rule($rule, $position) . "\n";
-                $text .= '    argc=' . $argc;
+                $text .= '    rule '
+		    . $rule->[Parse::Marpa::Internal::Rule::ID]
+		    . ': '
+		    . Parse::Marpa::show_dotted_rule($rule, $position+1)
+		    . "\n";
+		$text .= "    rhs length = $argc";
                 if ( defined $closure ) {
-                    $text .= '; closure=' . Dumper($closure);
+		    $text .= "; closure"
                 }
-                else {
-                    $text .= "\n";
-                }
+		$text .= "\n";
             }
 
         }    # for my $and_node;
@@ -856,26 +862,28 @@ sub Parse::Marpa::Evaluator::show_tree {
             .= 'Tree Node: '
             . $or_node->[Parse::Marpa::Internal::Or_Node::NAME]
             . "[$choice]"
-            . "; Depth=$depth; Argc=$argc\n";
+            . "; Depth = $depth; Rhs Length = $argc\n";
         $text
             .= '    Rule: '
-            . Parse::Marpa::show_dotted_rule($rule, $position)
+            . Parse::Marpa::show_dotted_rule($rule, $position+1)
 	    . "\n";
         $text
-            .= '    Predecessor: '
+            .= '    Kernel: '
             . $predecessor->[Parse::Marpa::Internal::Tree_Node::OR_NODE]
 		->[Parse::Marpa::Internal::Or_Node::NAME] . "\n"
             if defined $predecessor;
         $text
-            .= '    Cause: '
+            .= '    Closure: '
             . $cause->[Parse::Marpa::Internal::Tree_Node::OR_NODE]
 		->[Parse::Marpa::Internal::Or_Node::NAME] . "\n"
             if defined $cause;
-        if ( $verbose and defined $value_ref ) {
-            $text .= '    Value: ' . Dumper( ${$value_ref} );
-        }
-        if ( $verbose and defined $closure ) {
-            $text .= "    Closure: $closure\n";
+        if ( $verbose ) {
+            $text .= "    Perl Closure: " . (defined $closure ? 'Y' : 'N');
+	    if (defined $value_ref) {
+		$text .= '; Token: ' . Dumper( ${$value_ref} )
+	    } else {
+		$text .= "\n"
+	    }
         }
 
     }    # $tree_node
@@ -1124,7 +1132,7 @@ sub Parse::Marpa::Evaluator::value {
                     'Pushing tree node ',
                     $or_node->[Parse::Marpa::Internal::Or_Node::NAME],
 		    "[$choice]: ",
-                    Parse::Marpa::show_dotted_rule($rule, $position),
+                    Parse::Marpa::show_dotted_rule($rule, $position+1),
 		    $value_description
                     or croak('print to trace handle failed');
             }
@@ -1274,7 +1282,7 @@ in_equation_s_t($_)
 
 =end Parse::Marpa::test_document:
 
-    my $fail_offset = $recce->text( \('2-0*3+1') );
+    my $fail_offset = $recce->text( '2-0*3+1' );
     if ( $fail_offset >= 0 ) {
         die("Parse failed at offset $fail_offset");
     }
@@ -1581,6 +1589,13 @@ in_equation_s_t($_)
     my $evaler = new Parse::Marpa::Evaluator($recce);
 
 Z<>
+
+=begin Parse::Marpa::test_document:
+
+## next display
+in_misc_pl($_)
+
+=end Parse::Marpa::test_document:
 
     my $evaler = new Parse::Marpa::Evaluator($recce, $location);
 

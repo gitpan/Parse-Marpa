@@ -7,7 +7,7 @@ no warnings "recursion";
 use strict;
 
 BEGIN {
-    our $VERSION        = '0.211_008';
+    our $VERSION        = '0.211_009';
     our $STRING_VERSION = $VERSION;
     $VERSION = eval $VERSION;
 }
@@ -189,7 +189,7 @@ is_synopsis_pl($_)
     say $$value;
 
     __DATA__
-    semantics are perl5.  version is 0.211.8.  start symbol is Expression.
+    semantics are perl5.  version is 0.211.9.  start symbol is Expression.
 
     Expression: Expression, /[*]/, Expression.  priority 200.  q{
         $_[0] * $_[2]
@@ -607,6 +607,13 @@ Non-exceptional failures are described in the documentation for the method which
 =head1 METHODS
 
 =head2 mdl
+
+=begin Parse::Marpa::test_document:
+
+## next 3 displays
+in_misc_pl($_)
+
+=end Parse::Marpa::test_document:
 
     $first_result =
         Parse::Marpa::mdl( \$grammar_description, \$string_to_parse );

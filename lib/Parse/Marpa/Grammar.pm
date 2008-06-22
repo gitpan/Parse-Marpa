@@ -446,6 +446,7 @@ package Parse::Marpa::Internal::Grammar;
 sub Parse::Marpa::Grammar::new {
     my $class = shift;
     my ($args) = @_;
+    $args //= {};
 
     my $grammar = [];
     bless $grammar, $class;
@@ -578,7 +579,7 @@ sub Parse::Marpa::create_compiled_source_grammar {
 # Build a grammar from an MDL description.
 # First arg is the grammar being built.
 # Second arg is ref to string containing the MDL description.
-sub source_grammar {
+sub parse_source_grammar {
     my $grammar        = shift;
     my $source         = shift;
     my $source_options = shift;
@@ -621,7 +622,7 @@ sub source_grammar {
         die_with_parse_failure( $source, $failed_at_earleme );
     }
     my $evaler = new Parse::Marpa::Evaluator($recce);
-    return unless defined $evaler;
+    croak("Marpa Internal error: failed to create evaluator for MDL") unless defined $evaler;
     my $value = $evaler->value();
     raw_grammar_eval( $grammar, $value );
     return;
@@ -630,6 +631,7 @@ sub source_grammar {
 sub Parse::Marpa::Grammar::set {
     my $grammar = shift;
     my ($args) = @_;
+    $args //= {};
 
     local ($Parse::Marpa::Internal::This::grammar) = $grammar;
     my $tracing = $grammar->[Parse::Marpa::Internal::Grammar::TRACING];
@@ -650,7 +652,7 @@ sub Parse::Marpa::Grammar::set {
             unless ref $source eq 'SCALAR';
         croak('Source for grammar undefined')
             if not defined ${$source};
-        source_grammar( $grammar, $source, $args->{'source_options'} );
+        parse_source_grammar( $grammar, $source, $args->{'source_options'} );
         delete $args->{'mdl_source'};
         delete $args->{'source_options'};
     }
@@ -1101,6 +1103,9 @@ sub Parse::Marpa::Grammar::decompile {
     my $compiled_grammar = shift;
     my $trace_fh         = shift;
     $trace_fh //= *STDERR;
+
+    croak("Attempt to decompile undefined grammar")
+        unless defined $compiled_grammar;
 
     my $grammar;
     {
@@ -3565,7 +3570,14 @@ plumbing interface.
 
 =head2 new
 
-    my $grammar = new Parse::Marpa::Grammar({});
+=begin Parse::Marpa::test_document:
+
+## next display
+in_misc_pl($_)
+
+=end Parse::Marpa::test_document:
+
+    my $grammar = new Parse::Marpa::Grammar();
 
 Z<>
 
@@ -3579,7 +3591,7 @@ in_equation_s_t($_)
     my $grammar = new Parse::Marpa::Grammar(
 	{ max_parses => 10, mdl_source => \$source, } );
 
-C<Parse::Marpa::Recognizer::new> has one, required, argument --
+C<Parse::Marpa::Recognizer::new> has one, optional, argument --
 a reference to a hash of named arguments.
 It returns a new grammar object or throws an exception.
 
@@ -3624,7 +3636,7 @@ in_ah_s_t($_)
 The C<set> method takes as its one, required, argument a reference to a hash of named arguments.
 It allows Marpa options, plumbing arguments and the C<mdl_source> named argument
 to be specified for an already existing grammar object.
-It can be used to control the order in which the named arguments are applied.
+It can be used to control the order in which named arguments are applied.
 
 In particular, some
 tracing options need to be turned on prior to specifying the grammar.
@@ -3652,7 +3664,7 @@ It returns the grammar object or throws an exception.
 It is usually not necessary for the user to call C<precompute>.
 The methods which require a precomputed grammar
 (C<compile> and C<Parse::Marpa::Recognizer::new>),
-if passed a grammar on which the precomputations have not been done,
+if passed a grammar on which the precomputation has not been done,
 perform the precomputation themselves on a "just in time" basis.
 But C<precompute> can be useful in debugging and tracing,
 as a way to control precisely when precomputation takes place.
@@ -3675,6 +3687,13 @@ using L<Data::Dumper>.
 On failure, C<compile> throws an exception.
 
 =head2 decompile
+
+=begin Parse::Marpa::test_document:
+
+## next 2 displays
+in_misc_pl($_)
+
+=end Parse::Marpa::test_document:
 
     $grammar = Parse::Marpa::Grammar::decompile($compiled_grammar, $trace_fh);
 
