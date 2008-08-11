@@ -35,7 +35,7 @@ use constant NAME     => 0;
 use constant ITEM     => 1;
 use constant RULE     => 2;
 use constant POSITION => 3;
-use constant SYMBOL   => 4;
+use constant CHILD_LHS_SYMBOL   => 4;
 
 package Parse::Marpa::Internal::And_Node;
 
@@ -400,6 +400,7 @@ sub set_actions {
 
 }    # set_actions
 
+# Returns false if no parse
 sub Parse::Marpa::Evaluator::new {
     my $class         = shift;
     my $recognizer    = shift;
@@ -466,7 +467,7 @@ sub Parse::Marpa::Evaluator::new {
         last EARLEY_ITEM;
     }
 
-    croak("No start rule in evaluator") unless $start_rule;
+    return unless $start_rule;
 
     @{$recognizer}[
         Parse::Marpa::Internal::Recognizer::START_ITEM,
@@ -538,18 +539,18 @@ sub Parse::Marpa::Evaluator::new {
         $start_sapling->[Parse::Marpa::Internal::Or_Sapling::NAME] = $name;
     }
     $start_sapling->[Parse::Marpa::Internal::Or_Sapling::ITEM] = $start_item;
-    $start_sapling->[Parse::Marpa::Internal::Or_Sapling::SYMBOL] =
+    $start_sapling->[Parse::Marpa::Internal::Or_Sapling::CHILD_LHS_SYMBOL] =
         $start_symbol;
     push @or_saplings, $start_sapling;
 
     my $i = 0;
     OR_SAPLING: while (1) {
 
-        my ( $sapling_name, $item, $symbol, $rule, $position ) =
+        my ( $sapling_name, $item, $child_lhs_symbol, $rule, $position ) =
             @{ $or_saplings[ $i++ ] }[
             Parse::Marpa::Internal::Or_Sapling::NAME,
             Parse::Marpa::Internal::Or_Sapling::ITEM,
-            Parse::Marpa::Internal::Or_Sapling::SYMBOL,
+            Parse::Marpa::Internal::Or_Sapling::CHILD_LHS_SYMBOL,
             Parse::Marpa::Internal::Or_Sapling::RULE,
             Parse::Marpa::Internal::Or_Sapling::POSITION,
             ];
@@ -561,8 +562,9 @@ sub Parse::Marpa::Evaluator::new {
         # them.
         my @and_saplings;
 
-        # If we have a rule and a position, get the current symbol
         if ( defined $position ) {
+	    # Kernel or-node: We have a rule and a position.
+	    # get the current symbol
 
 	    $position--;
             my $symbol =
@@ -570,13 +572,14 @@ sub Parse::Marpa::Evaluator::new {
             push @and_saplings, [ $rule, $position, $symbol ];
 
         }
-        else {    # if not defined $position
+        else {
+	    # Closure or-node.
 
-            my $lhs_id = $symbol->[Parse::Marpa::Internal::Symbol::ID];
+            my $child_lhs_id = $child_lhs_symbol->[Parse::Marpa::Internal::Symbol::ID];
             my $state  = $item->[Parse::Marpa::Internal::Earley_item::STATE];
             for my $rule (
                 @{  $state->[Parse::Marpa::Internal::QDFA::COMPLETE_RULES]
-                        ->[$lhs_id];
+                        ->[$child_lhs_id];
                 }
                 )
             {
@@ -589,13 +592,13 @@ sub Parse::Marpa::Evaluator::new {
                 my $last_position = @{$rhs}-1;
                 push @and_saplings,
                     [
-                    $rule,                  $last_position,
-                    $rhs->[$last_position], $closure
+			$rule,                  $last_position,
+			$rhs->[$last_position], $closure
                     ];
 
             }    # for my $rule
 
-        }    # not defined $position
+        }    # closure or-node
 
         my @and_nodes;
 
@@ -687,7 +690,7 @@ sub Parse::Marpa::Evaluator::new {
                         my $sapling = [];
                         @{$sapling}[
                             Parse::Marpa::Internal::Or_Sapling::NAME,
-                            Parse::Marpa::Internal::Or_Sapling::SYMBOL,
+                            Parse::Marpa::Internal::Or_Sapling::CHILD_LHS_SYMBOL,
                             Parse::Marpa::Internal::Or_Sapling::ITEM,
                             ]
                             = ( $cause_name, $symbol, $cause, );
@@ -1344,11 +1347,11 @@ in_null_value_grammar($_)
 
     A: . q{'A is missing'}.
 
-Null symbol actions are different from rule actions in another important way.
+Null symbol actions are evaluated differently from rule actions.
 Null symbol actions are run at evaluator creation time and the value of the result
 at that point
 becomes fixed as the null symbol value.
-This is different from rule actions.
+This is not the case with rule actions.
 During the creation of the evaluator object,
 rule actions are B<compiled into closures>.
 During parse evaluation,
@@ -1480,10 +1483,10 @@ the derivation is as follows:
 =end Parse::Marpa::test_document:
 
     S -> A Y      (Rule 0)
-      -> A Z      (Y produces Z, by Rule 6)
-      -> B C Z    (A produces B C, by Rule 2)
-      -> B Z      (C produces the empty string, by Rule 4)
-      -> Z        (B produces the empty string, by Rule 3)
+      -> A "Z"    (Y produces "Z", by Rule 6)
+      -> B C "Z"  (A produces B C, by Rule 2)
+      -> B "Z"    (C produces the empty string, by Rule 4)
+      -> "Z"      (B produces the empty string, by Rule 3)
 
 The parse tree can be described as follows:
 
@@ -1492,7 +1495,7 @@ The parse tree can be described as follows:
 	    Node 2: B (matches empty string)
 	    Node 3: C (matches empty string)
 	Node 4: Y (1 child, node 5)
-	    Node 5: Z (terminal node)
+	    Node 5: "Z" (terminal node)
 
 Here's a table showing, for each node, its lhs symbol,
 the sentence it derives, and
@@ -1504,15 +1507,15 @@ its value.
 
 =end Parse::Marpa::test_document:
 
-                      Symbol      Sentence     Value
-                                  Derived
+                        Symbol      Sentence     Value
+                                    Derived
 
-    Node 0:              S         Z           "A is missing, but Zorro is here"
-        Node 1:          A         empty       "A is missing"
-	    Node 2:      B         empty       No value
-	    Node 3:      C         empty       No value
-	Node 4:          Y         Z           "Zorro was here"
-	    Node 5:      Z         Z           "Z"
+    Node 0:                S         "Z"         "A is missing, but Zorro is here"
+        Node 1:            A         empty       "A is missing"
+	    Node 2:        B         empty       No value
+	    Node 3:        C         empty       No value
+	Node 4:            Y         "Z"         "Zorro was here"
+	    Node 5:        -         "Z"         "Z"
 
 In this derivation,
 nodes 1, 2 and 3 derive the empty sentence.
@@ -1545,7 +1548,7 @@ represents (rule 0).
 
 Rule 0's action uses the values of its child nodes.
 There are two child nodes and their values are
-elements 0 and 1 in the C<@$_> array of the action.
+elements 0 and 1 in the C<@_> array of the action.
 The child value represented by the symbol C<Y>,
 C<< $_[1] >>, comes from node 4.
 From the table above, we can see that that value was
@@ -1632,7 +1635,7 @@ When the order of parses is important,
 it may be manipulated by assigning priorities to the rules and
 terminals.
 If a symbol can both match a token and derive a rule,
-the token match alway takes priority.
+the token match always takes priority.
 Otherwise the parse order is implementation dependent.
 
 A failed parse does not always show up as an exhausted parse in the recognizer.

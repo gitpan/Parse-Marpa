@@ -7,7 +7,7 @@ no warnings "recursion";
 use strict;
 
 BEGIN {
-    our $VERSION        = '0.211_010';
+    our $VERSION        = '0.211_011';
     our $STRING_VERSION = $VERSION;
     $VERSION = eval $VERSION;
 }
@@ -18,6 +18,38 @@ use Parse::Marpa::Grammar;
 use Parse::Marpa::Recognizer;
 use Parse::Marpa::Evaluator;
 use Parse::Marpa::Lex;
+
+use Carp;
+our @CARP_NOT = qw(
+Parse::Marpa
+Parse::Marpa::Evaluator
+Parse::Marpa::Grammar
+Parse::Marpa::Internal
+Parse::Marpa::Internal::And_Node
+Parse::Marpa::Internal::Earley_item
+Parse::Marpa::Internal::Evaluator
+Parse::Marpa::Internal::Evaluator::Rule
+Parse::Marpa::Internal::Grammar
+Parse::Marpa::Internal::Interface
+Parse::Marpa::Internal::LR0_item
+Parse::Marpa::Internal::Lex
+Parse::Marpa::Internal::NFA
+Parse::Marpa::Internal::Or_Node
+Parse::Marpa::Internal::Or_Sapling
+Parse::Marpa::Internal::Phase
+Parse::Marpa::Internal::QDFA
+Parse::Marpa::Internal::Recognizer
+Parse::Marpa::Internal::Rule
+Parse::Marpa::Internal::Source_Eval
+Parse::Marpa::Internal::Source_Raw
+Parse::Marpa::Internal::Symbol
+Parse::Marpa::Internal::This
+Parse::Marpa::Internal::Tree_Node
+Parse::Marpa::Lex
+Parse::Marpa::MDL
+Parse::Marpa::Read_Only
+Parse::Marpa::Recognizer
+);
 
 # Maybe MDL will be optional someday, but not today
 use Parse::Marpa::MDL;
@@ -158,8 +190,9 @@ Parse::Marpa - Earley's algorithm with LR(0) precomputation
 =head1 BEWARE: THIS RELEASE IS FOR DEVELOPERS ONLY
 
 This is a developer's release, not for use by non-developers.
-I use these releases to avail myself of the cpantesters results,
-and to test the release process itself.
+I use these releases because I want to see
+results from the cpantesters,
+and because I want to test the release process itself.
 
 Of course, it's open source, and you're entitled to appoint yourself
 a developer if you insist on it.  But that will usually not be a reasonable
@@ -189,7 +222,7 @@ is_synopsis_pl($_)
     say $$value;
 
     __DATA__
-    semantics are perl5.  version is 0.211.10.  start symbol is Expression.
+    semantics are perl5.  version is 0.211.11.  start symbol is Expression.
 
     Expression: Expression, /[*]/, Expression.  priority 200.  q{
         $_[0] * $_[2]
@@ -232,20 +265,22 @@ inaccessble rules and unproductive rules.
 Marpa parses left- and right-recursive grammars and ambiguous grammars.
 
 Marpa's one restriction is that it won't parse infinitely ambiguous grammars.
-Since nobody ever really wants a program to go into an infinite loop,
-trying to produce an infinite
-number of parse trees, that is not exactly a big restriction.
-This only happens in grammars with cycles --
+Since a user seldom wants a program to loop forever
+in an attempt to produce an infinite
+number of parse trees,
+that is not a big restriction.
+Infinite ambiguity only happens in grammars with cycles --
 cases where a symbol string non-trivially derives exactly
-the symbol string, resulting in a never-ending string
-of derivation.
+the same symbol string.
+A cycle in a grammar creates a situation where the same
+derivation steps might be repeated over and over again without end.
 
 Empty productions are often necessary to express a language in a natural way.
 Inaccessible rules and unproductive rules aren't useful, but they cause no
 real harm.
 
 So long as they are not infinitely ambiguous,
-ambiguous grammars are actually a Marpa specialty.
+ambiguous grammars are a Marpa specialty.
 (An ambiguous grammar is one for which there is some input
 which has more than one parse tree.)
 Ambiguity is often useful even if you are only interested in one parse.
@@ -286,30 +321,28 @@ See L<below|/"mdl"> for more detail about the C<mdl> static method.
 
 =head2 Parsing Terminology
 
-Peppered through these documents are a lot of parsing terms.
-These are are all either explained in these documents
+The parsing terms in
+these documents
+are either explained in these documents
 or are in standard use.
-
-But just because a term is in standard use in the parsing
-literature doesn't mean it will be familiar, or that
-you remember exactly what it meant.
-So to server as a reminder,
-I give all these standard terms I use in L<Parse::Marpa::Doc::Parse_Terms>,
-with definitions for them as they apply in the Marpa context.
-The <parse terms document|Parse::Marpa::Doc::Parse_Terms> is
+However, just because a parsing term is in "standard use"
+doesn't mean it will be familiar.
+Even if you've studied parsing,
+you might not have run across that particular term,
+or might not remember exactly what it meant.
+I define all the terms I treat as "standard" in L<Parse::Marpa::Doc::Parse_Terms>.
+The L<parse terms document|Parse::Marpa::Doc::Parse_Terms> is
 designed for skimming:
 the B<defining uses> of the terms are all in boldface.
-If you are already comfortable with parsing terminology,
-you can skip it entirely.
 
 If you want an
-an introduction to parsing concepts,
+introduction to parsing concepts,
 the chapter on parsing in
 L<Mark Jason Dominus's
 I<Higher Order Perl>|Parse::Marpa::Doc::Bibliography/"Dominus 2005">
 is an excellent description of them in the Perl context.
 Online,
-L<Wikipedia|Parse::Marpa::Doc::Bibliography/"Wikipedia"> is an excellent place to start.
+L<Wikipedia|Parse::Marpa::Doc::Bibliography/"Wikipedia"> is a good place to start.
 
 =head2 Semantic Actions
 
@@ -327,7 +360,7 @@ and can be used to initialize that namespace.
 
 Lex actions are run in a special namespace devoted to lex actions.
 The special lex preamble action
-and can be used to initialize that namespace.
+can be used to initialize that namespace.
 
 The result of an action is the result of running its Perl 5 code string.
 From L<the synopsis|"SYNOPSIS">, here's a rule for an expression that does addition:
@@ -365,7 +398,7 @@ If not explicitly set, C<default_null_value> is a Perl 5 undefined.
 Every symbol can have its own null symbol value.
 In cases where a null symbol derives other null symbols,
 only the value of the symbol highest in the null derivation is used.
-For more details, and examples, see L<Parse::Marpa::Evaluator/"Null Symbol Values">.
+For details and examples, see L<Parse::Marpa::Evaluator/"Null Symbol Values">.
 
 =head2 Lexing
 
@@ -406,36 +439,34 @@ Here's all you should need to get started:
 
 =over 4
 
-=item * Read the MDL document.
+=item * Read this document up to this point.
 
-=item * Read this document to this point.
+=item * Read
+L<the MDL document|Parse::Marpa::Doc::MDL>.
 
-=item * Read the L</"METHODS"> section of this document.
+=item * Read the L</"METHODS">
+and the
+L</"LICENSE AND COPYRIGHT">
+sections of this document.
 
-=item * Skim the L</"OPTIONS"> of this document for anything relevant to your application.
-
-=item * Skim the L</"BUGS"> of this document for anything relevant to your application.
-
-=item * Look over the legalese and administrivia at the end, as appropriate.
+=item * Skim the L</"OPTIONS"> and
+L</"BUGS"> sections of this document for anything relevant to your application.
 
 =item * Remember that the L<Parse::Marpa::Doc::Parse_Terms> document is there, in case
 the parsing vocabulary gets a bit thick.
 
 =item * If you want help debugging a grammar, want to get into advanced uses,
 or just are curious to learn more,
-look at L<the next section|/"Reading the Other Documents">.
+look at
+L<Parse::Marpa::Doc::Diagnostics>.
 
 =back
 
-=head2 Reading the Other Documents
-
-L<Parse::Marpa::Doc::Diagnostics>
-describes techniques for tracing and debugging grammars and actions,
-including the Marpa options and methods available.
+=head2 What is in the Other Documents
 
 As you get into advanced applications of Marpa,
 the first places to look will be the
-the documents for the various phases of Marpa parsing:
+documents for the various phases of Marpa parsing:
 L<Parse::Marpa::Grammar>,
 L<Parse::Marpa::Recognizer>,
 and L<Parse::Marpa::Evaluator>.
@@ -463,7 +494,7 @@ Details about sources (books, web pages and articles) referred to in these docum
 or used in the writing of Marpa
 are collected in
 L<Parse::Marpa::Doc::Bibliography>.
-L<Parse::Marpa::Doc::To_Do> is the list of things that will or might be done to
+L<Parse::Marpa::Doc::To_Do> is the list of things that might be done to
 Marpa in the future.
 
 =head2 Phases
@@ -493,7 +524,7 @@ evaluators are created from recognizers.
 
 Grammar objects (C<Parse::Marpa::Grammar>) are created first.
 They may be created with rules or empty.
-Rules may be added to them after they have been created.
+Rules may be added to grammar objects after they have been created.
 After all the rules have been added, but before it is used to create a recognizer,
 a grammar must be precomputed.
 Details on grammar objects and methods can be found at L<Parse::Marpa::Grammar>.
@@ -519,7 +550,7 @@ see L<Parse::Marpa::Recognizer>.
 Currently, Marpa fully supports only non-streaming or "offline" input.
 Marpa will also parse streamed inputs,
 but the methods to find completed parses in a streamed input 
-are still experimental.
+are still under construction.
 
 =head3 Evaluators
 
@@ -655,10 +686,11 @@ and C<Parse::Marpa::Recognizer>
 objects are created,
 with the C<Parse::Marpa::Grammar::set> method, and
 with the C<Parse::Marpa::mdl> static method.
-Except as noted, recognizer objects inherit the Marpa option settings
-of the grammar from which they were created,
-and evaluator objects inherit the Marpa option settings
-of the recognizer from which they were created.
+Except as noted,
+a recognizer object inherits the Marpa option settings
+of the grammar from which it was created,
+and an evaluator object inherits the Marpa option settings
+of the recognizer from which it was created.
 
 Options for debugging and tracing are described in
 L<a separate document on diagnostics|Parse::Marpa::Doc::Diagnostics>.
@@ -861,7 +893,7 @@ and itself results in a warning.
 
 Inaccessible and unproductive rules sometimes indicate errors in the grammar
 design.
-But a user may have plans for them,
+But a user may have plans for these rules,
 may wish to keep them as notes,
 or may simply wish to deal with them later.
 
@@ -872,7 +904,7 @@ or may simply wish to deal with them later.
 =head2 Exports and Object Orientation
 
 Marpa exports nothing by default,
-and allow no optional exports.
+and allows no optional exports.
 Use of object orientation in Marpa is superficial.
 Only grammars, recognizers and evaluators are objects,
 and they are not designed to be inherited.
@@ -880,7 +912,7 @@ and they are not designed to be inherited.
 =head2 Speed
 
 Speed seems very good for an Earley's implementation.
-In fact, current performance limits are more often a function of the lexing
+Current performance limits are more often a function of the lexing
 than of the Marpa parse engine.
 
 =head3 Ambiguous Lexing
@@ -932,20 +964,19 @@ Marpa allows grammars to be expressed in their most natural form.
 It's ideal where programmer time is important relative to running time.
 Right now, special-purpose needs are often addressed with regexes.
 This works wonderfully if the grammar involved is regular, but
-I suspect that by now,
-many thousands of man-years have been spent trying to shoehorn non-regular
+thousands of man-years have been spent trying to shoehorn non-regular
 grammars into Perl 5 regexes.
 
 Marpa is a good alternative to
 parsers that backtrack.
 Marpa finds every possible parse the first time through.
 Backtracking is a gamble,
-and one you often find you've made against the odds.
+and one often made against the odds.
 
 Some grammars have constructs to control backtracking.
 This control comes at a high price.
 Solutions with these constructs built into them are
-as unreadable as anything in the world of programming gets,
+as unreadable as anything in the world of programming,
 and fragile in the face of change to boot.
 
 If you know your grammar will be LALR or regular,
@@ -982,29 +1013,29 @@ In his time (the 11th century AD) Indian Buddhism was
 at its height.  A generation of scholars was devoting
 itself to producing Tibetan versions of Buddhism's Sanskrit scriptures.
 Marpa became the greatest of them,
-and today he is known simply as Marpa Lotsawa: "Marpa the Translator".
+and today is known as Marpa Lotsawa: "Marpa the Translator".
 
 Translation in the 11th century was not a job for the indoors type.
 A translator needed to study in India,
 with the teachers who had the
 texts and could explain them.
-The easiest way to get to India
-from Marpa's home in Tibet's
-Lhotrak Valley
-ran across two hundred difficult and lawless miles of Tibet to
-the three-mile high Khala Chela Pass
-and up to its summit.
-
-Once atop Khala Chela,
-Nalanda University was still four hundred miles away,
-but it was all downhill.
+From Marpa's home in Tibet's
+Lhotrak Valley,
+the best way across the Himalayas to India was over
+the Khala Chela Pass.
+To reach the Khala Chela's
+three-mile high summit,
+Marpa had to cross two hundred lawless miles of Tibet.
+Once a pilgrim crested the Himalayas,
+the road to Nalanda University was all downhill.
 Eager to reach their destination,
-early travelers from Tibet had descended straight to the hot plains.
-But this last part of the journey had turned out to be by far
+the first travelers from Tibet had descended the four hundred miles straight to the hot plains.
+
+The last part of the journey had turned out to be by far
 the most deadly.
 Almost no germs live in the cold,
-thin air of Tibet,
-and pilgrims who didn't stop to acclimatize themselves
+thin air of Tibet.
+Pilgrims who didn't stop to acclimatize themselves
 reached the great Buddhist center
 with no immunity to India's diseases.
 Several large expeditions reached Nalanda
@@ -1013,7 +1044,7 @@ only to have every single member die within weeks.
 =head2 Blatant Plug
 
 There's more about Marpa in my novel, B<The God Proof>, in which
-his studies, travels and adventures are a major subplot.  B<The God
+his studies, travels and adventures are a subplot.  B<The God
 Proof> centers around Kurt GE<ouml>del's proof of God's existence.
 Yes, I<that> Kurt GE<ouml>del, and yes, he really did work out a
 God Proof (it's in his I<Collected Works>, Vol. 3, pp. 403-404).
@@ -1114,8 +1145,10 @@ In writing the Pure Perl version of Marpa, I benefited from studying
 the work of Francois Desarmenien (C<Parse::Yapp>), 
 Damian Conway (C<Parse::RecDescent>) and
 Graham Barr (C<Scalar::Util>).
-Adam Kennedy patiently corrected me on the finer points of module writing,
-as well as about some issues where I really should have know better.
+Adam Kennedy patiently instructed me
+in module writing,
+both on the finer points and
+on issues about which I really should have know better.
 
 =head1 LICENSE AND COPYRIGHT
 

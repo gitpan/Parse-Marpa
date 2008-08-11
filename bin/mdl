@@ -1,4 +1,4 @@
-#!/usr/local/ActivePerl-5.10/bin/perl
+#!/bin/env perl
 use 5.010_000;
 use strict;
 use warnings;
@@ -205,13 +205,16 @@ sub do_parse {
     }
 
     if ( $fail_location >= 0 ) {
-        print STDERR Parse::Marpa::show_location( "Parse failed",
+        print STDERR Parse::Marpa::show_location( "Parsing failed",
             \$text_to_parse, $fail_location );
         exit 1;
     }
 
     my $evaler = new Parse::Marpa::Evaluator($recce);
-    croak("Input not recognized by grammar") unless $evaler;
+    if (not $evaler) {
+	say STDERR "Input not recognized by grammar";
+	exit 1;
+    }
 
     if (defined $show_bocage_flag) {
 	print $evaler->show_bocage($show_bocage_flag);
