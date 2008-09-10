@@ -67,6 +67,7 @@ use constant HAS_CHAF_LHS  => 13;      # has CHAF internal symbol as lhs?
 use constant HAS_CHAF_RHS  => 14;      # has CHAF internal symbol on rhs?
 use constant PRIORITY      => 15;      # rule priority
 use constant CODE          => 16;      # code used to create closure
+use constant CYCLE         => 17;      # is this rule part of a cycle?
 
 package Parse::Marpa::Internal::NFA;
 
@@ -151,6 +152,8 @@ use constant ALLOW_RAW_SOURCE         => 42;
 use constant PHASE                    => 43;    # the grammar's phase
 use constant INTERFACE                => 44;    # the grammar's interface
 use constant START_STATES => 45;    # ref to array of the start states
+use constant CYCLE_ACTION => 46;    # ref to array of the start states
+use constant CYCLE_DEPTH  => 47;    # depth to which to follow cycles
 
 package Parse::Marpa::Internal::Interface;
 
@@ -498,10 +501,14 @@ sub Parse::Marpa::Grammar::new {
     $grammar->[Parse::Marpa::Internal::Grammar::DEFAULT_LEX_SUFFIX] = q{};
     $grammar->[Parse::Marpa::Internal::Grammar::AMBIGUOUS_LEX]      = 1;
     $grammar->[Parse::Marpa::Internal::Grammar::TRACE_RULES]        = 0;
+    $grammar->[Parse::Marpa::Internal::Grammar::TRACE_VALUES]       = 0;
+    $grammar->[Parse::Marpa::Internal::Grammar::TRACE_ITERATIONS]   = 0;
     $grammar->[Parse::Marpa::Internal::Grammar::LOCATION_CALLBACK] =
         q{ 'Earleme ' . $earleme };
     $grammar->[Parse::Marpa::Internal::Grammar::OPAQUE]     = undef;
     $grammar->[Parse::Marpa::Internal::Grammar::WARNINGS]   = 1;
+    $grammar->[Parse::Marpa::Internal::Grammar::CYCLE_ACTION]   = 'warn';
+    $grammar->[Parse::Marpa::Internal::Grammar::CYCLE_DEPTH]    = 1;
     $grammar->[Parse::Marpa::Internal::Grammar::CODE_LINES] = undef;
     $grammar->[Parse::Marpa::Internal::Grammar::PHASE] =
         Parse::Marpa::Internal::Phase::NEW;
@@ -813,10 +820,12 @@ sub Parse::Marpa::Grammar::set {
                 }
             }
             when ('trace_values') {
+		croak("trace_values must be set to a number >= 0")
+		    unless $value =~ /^\d+$/;
                 $grammar->[Parse::Marpa::Internal::Grammar::TRACE_VALUES] =
-                    $value;
+                    $value + 0;
                 if ($value) {
-                    say $trace_fh "Setting $option option";
+                    say $trace_fh "Setting $option option to $value";
                     $grammar->[Parse::Marpa::Internal::Grammar::TRACING] = 1;
                 }
             }
@@ -863,11 +872,13 @@ sub Parse::Marpa::Grammar::set {
                 }
             }
             when ('trace_iterations') {
+		croak("trace_iterations must be set to a number >= 0")
+		    unless $value =~ /^\d+$/;
                 $grammar->[
                     Parse::Marpa::Internal::Grammar::TRACE_ITERATIONS]
-                    = $value;
+                    = $value + 0;
                 if ($value) {
-                    say $trace_fh "Setting $option option";
+                    say $trace_fh "Setting $option option to $value";
                     $grammar->[Parse::Marpa::Internal::Grammar::TRACING] = 1;
                 }
             }
@@ -896,27 +907,23 @@ sub Parse::Marpa::Grammar::set {
             }
             when ('opaque') {
                 croak( 'the opaque option has been removed');
-                # croak( "$option option not allowed in ",
-                    # Parse::Marpa::Internal::Phase::description($phase) )
-                    # if $phase >= Parse::Marpa::Internal::Phase::EVALED;
-                # given ($value) {
-                    # when (1) {
-                        # $grammar->[Parse::Marpa::Internal::Grammar::OPAQUE] =
-                            # 1;
-                    # }
-                    # when (0) {
-                        # my $old_opaque = $grammar
-                            # ->[Parse::Marpa::Internal::Grammar::OPAQUE];
-                        # if ( defined $old_opaque and $old_opaque ) {
-                            # croak(
-                                # "opaque cannot be unset once it has been set"
-                            # );
-                        # }
-                        # $grammar->[Parse::Marpa::Internal::Grammar::OPAQUE] =
-                            # 0;
-                    # }
-                    # default { croak("opaque must be set to either 0 or 1"); };
-                # }
+            }
+            when ('cycle_action') {
+                say $trace_fh
+                    qq{"cycle_action" option is useless after grammar is precomputed}
+                    if $value
+                        && $phase
+                        >= Parse::Marpa::Internal::Phase::PRECOMPUTED;
+		croak("$option must be 'warn', 'quiet' or 'fatal'")
+		    unless $value =~ /^(warn|quiet|fatal)$/;
+                $grammar->[Parse::Marpa::Internal::Grammar::CYCLE_ACTION] =
+                    $value;
+            }
+            when ('cycle_depth') {
+		croak("cycle_depth must be set to a number > 0")
+		    unless $value =~ /^\d+$/ and $value > 0;
+                $grammar->[Parse::Marpa::Internal::Grammar::CYCLE_DEPTH] =
+                    $value;
             }
             when ('warnings') {
                 say $trace_fh
@@ -1039,12 +1046,12 @@ sub Parse::Marpa::Grammar::precompute {
     set_start( $grammar, $start ) or return $grammar;
 
     accessible($grammar);
-    detect_cycle($grammar);
     if ( $grammar->[Parse::Marpa::Internal::Grammar::ACADEMIC] ) {
         setup_academic_grammar($grammar);
     }
     else {
         rewrite_as_CHAF($grammar);
+	detect_cycle($grammar);
     }
     create_NFA($grammar);
     create_QDFA($grammar);
@@ -2621,22 +2628,42 @@ sub nullable {
 
 }
 
+# This assumes the grammar has been rewritten into CHAF form.
 sub detect_cycle {
     my $grammar = shift;
-    my ( $rules, $symbols, ) = @{$grammar}[
+    my ( $rules, $symbols, $cycle_action, $trace_fh) = @{$grammar}[
         Parse::Marpa::Internal::Grammar::RULES,
         Parse::Marpa::Internal::Grammar::SYMBOLS,
+        Parse::Marpa::Internal::Grammar::CYCLE_ACTION,
+	Parse::Marpa::Internal::Grammar::TRACE_FILE_HANDLE,
     ];
-    my @unit_derivation;
 
-    # initialize the unit derivation matrix from the rules
+    my $cycle_is_fatal = 1;
+    my $warn_on_cycle = 1;
+    given ($cycle_action) {
+	when ('warn') { $cycle_is_fatal = 0; }
+	when ('quiet') {
+	    $cycle_is_fatal = 0;
+	    $warn_on_cycle = 0;
+	}
+    }
+
+    my @unit_derivation; # for the unit derivation matrix
+    my @new_unit_derivations; # a list of new unit derivations
+    my @unit_rules; # a list of the unit rules
+
+    # initialize the unit derivations from the rules
     RULE: for my $rule (@{$rules}) {
-        next RULE unless $rule->[Parse::Marpa::Internal::Rule::ACCESSIBLE];
-        next RULE unless $rule->[Parse::Marpa::Internal::Rule::PRODUCTIVE];
+        next RULE if not $rule->[Parse::Marpa::Internal::Rule::USEFUL];
         my $rhs = $rule->[Parse::Marpa::Internal::Rule::RHS];
         my $non_nullable_symbol;
+
+	# Only one empty rule is allowed in a CHAF grammar -- a nulling
+	# start rule -- this takes care of that exception.
+	next RULE unless scalar @{$rhs};
+
         for my $rhs_symbol (@{$rhs}) {
-            if ( not $rhs->[Parse::Marpa::Internal::Symbol::NULLABLE] ) {
+            if ( not $rhs_symbol->[Parse::Marpa::Internal::Symbol::NULLABLE] ) {
 
                 # if we have two non-nullables on the RHS in this rule,
                 # it can never amount to a unit rule and we can ignore it
@@ -2646,75 +2673,85 @@ sub detect_cycle {
             }
         }    # for $rhs_symbol
 
-        # at this point we must be in a rule with zero or one non-nullable on the RHS
+	# Above we've eliminated all rules with two or more non-nullables
+	# on the RHS.  So here we have a rule with at most one non-nullable
+	# on the RHS.
 
-        my $lhs_id =
+	next RULE unless defined $non_nullable_symbol;
+
+        my $start_id =
             $rule->[Parse::Marpa::Internal::Rule::LHS]
             ->[Parse::Marpa::Internal::Symbol::ID];
+	my $derived_id = $non_nullable_symbol->[Parse::Marpa::Internal::Symbol::ID];
 
-        if ( defined $non_nullable_symbol ) {
+	# Keep track of our unit rules
+	push(@unit_rules, [ $rule, $start_id, $derived_id ]);
 
-            # if we have one non-nullable symbol, it's the only one that can
-            # appear in a unit derivation
-
-            $unit_derivation[$lhs_id]
-                [ $non_nullable_symbol->[Parse::Marpa::Internal::Symbol::ID] ]
-                = 1;
-            next RULE;
-        }
-
-        # at this point *ALL* rhs symbols must be nullable, meaning every one
-        # of them can be in a unit derivation
-        for my $rhs_symbol (@{$rhs}) {
-            $unit_derivation[$lhs_id]
-                [ $rhs_symbol->[Parse::Marpa::Internal::Symbol::ID] ] = 1;
-        }
+	$unit_derivation[$start_id][$derived_id] = 1;
+	push(@new_unit_derivations, [ $start_id, $derived_id ]);
 
     }
 
-    # Now take the transitive closure of the unit derivation matrix until we
-    # either find a cycle, or
-    # complete it without having found a cycle
 
-    my $previous_count = -1;
+    # Now find the transitive closure of the unit derivation matrix
+    CLOSURE_LOOP: while (my $new_unit_derivation = shift @new_unit_derivations) {
 
-    CLOSURE_LOOP: while (1) {
+	my ($start_id, $derived_id) = @{$new_unit_derivation};
+	ID: for my $id (0 .. $#{$symbols}) {
+	    # does the derived symbol derive this id?
+	    # if not, no new derivation, and continue looping
+	    next ID if not $unit_derivation[$derived_id][$id];
 
-        my $current_count = 0;
-        my @lhs_ids =
-            grep { exists $unit_derivation[$_] } ( 0 .. $#{$symbols} );
-        for my $lhs_id (@lhs_ids) {
+	    # also, if we've already recorded this unit derivation,
+	    # skip it
+	    next ID if $unit_derivation[$start_id][$id];
 
-            my $rhs_vector = $unit_derivation[$lhs_id];
-            my @rhs_ids =
-                grep { exists $rhs_vector->[$_] } ( 0 .. $#{$symbols} );
-            $current_count += scalar @rhs_ids;
-            my @new_rhs_ids;
-            for my $rhs_id (@rhs_ids) {
-
-                # Is this our cycle?
-                if ( $lhs_id == $rhs_id ) {
-                    my $symbol_name =
-                        $symbols->[$lhs_id]
-                        ->[Parse::Marpa::Internal::Symbol::NAME];
-                    croak( 'Cycle in grammar, symbol = ', $symbol_name );
-                }
-                next unless exists $unit_derivation[$rhs_id];
-                my $new_rhs_vector = $unit_derivation[$rhs_id];
-                my @new_rhs_ids =
-                    grep { exists $new_rhs_vector->[$_] } ( 0 .. $#{$symbols} );
-                for my $new_rhs_id (@new_rhs_ids) {
-                    $unit_derivation[$lhs_id][$new_rhs_id] = 1;
-                }
-            }
-        }
-
-        last CLOSURE_LOOP if $current_count == $previous_count;
-        $previous_count = $current_count;
+	    $unit_derivation[$start_id][$id] = 1;
+	    push(@new_unit_derivations, [$start_id, $id]);
+	}
 
     }
 
-}    # sub detect_cycles
+    my $cycle_count = 0;
+
+    # produce a list of the rules which cycle
+    RULE: while (my $unit_rule_data = pop @unit_rules) {
+
+	my ($rule, $start_symbol_id, $derived_symbol_id) = @{$unit_rule_data};
+
+        if (
+	    $start_symbol_id == $derived_symbol_id
+	    || $unit_derivation[$derived_symbol_id][$start_symbol_id]
+	)
+	{
+	    $cycle_count++;
+	    $rule->[Parse::Marpa::Internal::Rule::CYCLE] = 1;
+
+	    my $warning_rule;
+
+	    my $original_rule = $rule->[Parse::Marpa::Internal::Rule::ORIGINAL_RULE];
+	    if (defined $original_rule)
+	    {
+		if (not $original_rule->[Parse::Marpa::Internal::Rule::CYCLE]) {
+		   $original_rule->[Parse::Marpa::Internal::Rule::CYCLE] = 1;
+		   $warning_rule = $original_rule;
+		}
+	    } else {
+		# always warn if there's no original rule
+	        $warning_rule = $rule;
+	    }
+
+	    print {$trace_fh}
+		    "Cycle found involving rule: ",
+		    Parse::Marpa::show_rule($warning_rule)
+	        if $warn_on_cycle and defined $warning_rule;
+	}
+    }
+
+    croak( 'Cycle in grammar, fatal error' )
+       if $cycle_count and $cycle_is_fatal;
+
+}    # sub detect_cycle
 
 sub create_NFA {
     my $grammar = shift;
@@ -3171,9 +3208,10 @@ sub alias_symbol {
     # turn the original symbol into a non-nullable with a reference to the new alias
     @{$nullable_symbol}[
         Parse::Marpa::Internal::Symbol::NULLABLE,
+        Parse::Marpa::Internal::Symbol::NULLING,
         Parse::Marpa::Internal::Symbol::NULL_ALIAS
         ]
-        = ( 0, $alias );
+        = ( 0, 0, $alias );
     return $alias;
 }
 
@@ -3632,7 +3670,7 @@ a reference to a hash of named arguments.
 It returns a new grammar object or throws an exception.
 
 Named arguments can be Marpa options.
-For these see L<Parse::Marpa/OPTIONS>.
+For these see L<Parse::Marpa::Doc::Options>.
 In addition to the Marpa options,
 the C<mdl_source> named argument
 and the named arguments of the plumbing interface are allowed.

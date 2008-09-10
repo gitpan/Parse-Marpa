@@ -1054,10 +1054,14 @@ is that of the original symbol with the nulling tag ("C<[]>") suffixed.
 When the nulling variant is used,
 it must be nulled.
 
-The newly introduced nulling symbols will not appear on any left hand sides.
+The newly introduced nulling symbols will not appear on any left hand sides,
+with one exception:
+grammars that allow a null parse
+will have a nulling start rule.
+Except for the nulling start symbol,
 Marpa marks nulling symbols internally and
-recognizes them directly.
-It does not need empty rules.
+recognizes them directly,
+without the need of empty rules.
 
 Rules with proper nullables on the rhs
 have to be replaced with
@@ -1317,7 +1321,7 @@ is_equation_grammar($_);
 =end Parse::Marpa::test_document:
 
 
-    semantics are perl5.  version is 0.214.0.
+    semantics are perl5.  version is 0.215.1.
 
     start symbol is E.
 
@@ -1529,11 +1533,11 @@ is_equation_trace_values($_);
 
 =end Parse::Marpa::test_document:
 
-    Pushed value: '2'
+    Pushed value from S4@0-1L0: '2'
     Popping 1 values to evaluate S4@0-1L0, rule: 1: e -> number
     Calculated and pushed value: '2==2'
-    Pushed value: '+'
-    Pushed value: '2'
+    Pushed value from S5@0-2R0:2: '+'
+    Pushed value from S4@2-3L0: '2'
     Popping 1 values to evaluate S4@2-3L0, rule: 1: e -> number
     Calculated and pushed value: '2==2'
     Popping 3 values to evaluate S6@0-3L0, rule: 0: e -> e op e

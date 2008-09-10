@@ -4,6 +4,7 @@ use warnings;
 use ExtUtils::MakeMaker;
 
 WriteMakefile(
+    NO_META             => 1,
     NAME                => 'Parse::Marpa',
     AUTHOR              => 'Jeffrey Kegler',
     VERSION_FROM        => 'lib/Parse/Marpa.pm',
@@ -26,6 +27,8 @@ WriteMakefile(
 	    => '$(INST_LIB)/Parse/Marpa/Doc/Parse_Terms.pod',
 	'lib/Parse/Marpa/Doc/Plumbing.pod'
 	    => '$(INST_LIB)/Parse/Marpa/Doc/Plumbing.pod',
+	'lib/Parse/Marpa/Doc/Options.pod'
+	    => '$(INST_LIB)/Parse/Marpa/Doc/Options.pod',
 	'lib/Parse/Marpa/Doc/MDL.pod'
 	    => '$(INST_LIB)/Parse/Marpa/Doc/MDL.pod',
 	'lib/Parse/Marpa/Doc/To_Do.pod'
