@@ -1,9 +1,10 @@
+package Parse::Marpa::Internal;
+
 use 5.010_000;
 
 use warnings;
 no warnings "recursion";
 use strict;
-use integer;
 
 =begin Implementation:
 
@@ -19,176 +20,267 @@ what in C would be structures.
 # It's all integers, except for the version number
 use integer;
 
-package Parse::Marpa::Internal::Symbol;
+package Parse::Marpa::Internal;
 
-use constant ID              => 0;
-use constant NAME            => 1;
-use constant LHS             => 2;     # rules with this as the lhs,
-                                       # as a ref to an array of rule refs
-use constant RHS             => 3;     # rules with this in the rhs,
-                                       # as a ref to an array of rule refs
-use constant ACCESSIBLE      => 4;     # reachable from start symbol?
-use constant PRODUCTIVE      => 5;     # reachable from input symbol?
-use constant START           => 6;     # is one of the start symbols?
-use constant REGEX           => 7;     # regex, for terminals; undef otherwise
-use constant NULLING         => 8;     # always is null?
-use constant NULLABLE        => 9;     # can match null?
-use constant NULL_VALUE      => 10;    # value when null
-use constant NULL_ALIAS      => 11;    # for a non-nullable symbol,
-                                       # ref of a its nulling alias,
-                                       # if there is one
-                                       # otherwise undef
-use constant TERMINAL        => 12;    # terminal?
-use constant CLOSURE         => 13;    # closure to do lexing
-use constant PRIORITY        => 14;    # order, for lexing
-use constant COUNTED         => 15;    # used on rhs of counted rule?
-use constant ACTION          => 16;    # lexing action specified by user
-use constant PREFIX          => 17;    # lexing prefix specified by user
-use constant SUFFIX          => 18;    # lexing suffix specified by user
-use constant IS_CHAF_NULLING => 19;    # if CHAF nulling lhs, ref to array
-                                       # of rhs symbols
+use Parse::Marpa::Offset Symbol =>
+    # basic data
+    qw(ID NAME),
+    # evaluator data
+    qw(IS_CHAF_NULLING NULL_ALIAS NULLING),
+    # recognizer data
+    qw(
+        ACTION PREFIX SUFFIX
+        REGEX PRIORITY TERMINAL
+    ),
+    # temporary data
+    qw(
+        LHS RHS ACCESSIBLE PRODUCTIVE START
+        NULLABLE NULL_VALUE
+        CLOSURE
+        COUNTED
+    );
+
+package Parse::Marpa::Internal::Symbol;
+use constant LAST_EVALUATOR_FIELD => Parse::Marpa::Internal::Symbol::NULLING;
+use constant LAST_RECOGNIZER_FIELD => Parse::Marpa::Internal::Symbol::TERMINAL;
+package Parse::Marpa::Internal;
+
+# LHS             - rules with this as the lhs,
+#                   as a ref to an array of rule refs
+# RHS             - rules with this in the rhs,
+#                   as a ref to an array of rule refs
+# ACCESSIBLE      - reachable from start symbol?
+# PRODUCTIVE      - reachable from input symbol?
+# START           - is one of the start symbols?
+# REGEX           - regex, for terminals; undef otherwise
+# NULLING         - always is null?
+# NULLABLE        - can match null?
+# NULL_VALUE      - value when null
+# NULL_ALIAS      - for a non-nullable symbol,
+#                   ref of a its nulling alias,
+#                   if there is one
+#                   otherwise undef
+# TERMINAL        - terminal?
+# CLOSURE         - closure to do lexing
+# PRIORITY        - order, for lexing
+# COUNTED         - used on rhs of counted rule?
+# ACTION          - lexing action specified by user
+# PREFIX          - lexing prefix specified by user
+# SUFFIX          - lexing suffix specified by user
+# IS_CHAF_NULLING - if CHAF nulling lhs, ref to array
+#                   of rhs symbols
+
+use Parse::Marpa::Offset Rule =>
+    # basic data
+    qw(ID NAME LHS RHS
+    ),
+    # evaluator data
+    qw(
+        USEFUL ACTION
+        CODE CYCLE
+        HAS_CHAF_LHS HAS_CHAF_RHS
+    ),
+    # temporary data
+    qw(
+        ORIGINAL_RULE
+        PRIORITY
+        NULLABLE ACCESSIBLE PRODUCTIVE NULLING
+    );
 
 package Parse::Marpa::Internal::Rule;
+use constant LAST_EVALUATOR_FIELD => Parse::Marpa::Internal::Rule::HAS_CHAF_RHS;
+use constant LAST_RECOGNIZER_FIELD => Parse::Marpa::Internal::Rule::HAS_CHAF_RHS;
+package Parse::Marpa::Internal;
 
-use constant ID            => 0;
-use constant NAME          => 1;
-use constant LHS           => 2;       # ref of the left hand symbol
-use constant RHS           => 3;       # array of symbol refs
-use constant NULLABLE      => 4;       # can match null?
-use constant ACCESSIBLE    => 5;       # reachable from start symbol?
-use constant PRODUCTIVE    => 6;       # reachable from input symbol?
-use constant NULLING       => 7;       # always matches null?
-use constant USEFUL        => 8;       # use this rule in NFA?
-use constant ACTION        => 9;       # action for this rule
-                                       # as specified by user
-use constant CLOSURE       => 10;      # closure for evaluating this rule
-use constant ORIGINAL_RULE => 11;      # for a rewritten rule, the original
-use constant HAS_CHAF_LHS  => 13;      # has CHAF internal symbol as lhs?
-use constant HAS_CHAF_RHS  => 14;      # has CHAF internal symbol on rhs?
-use constant PRIORITY      => 15;      # rule priority
-use constant CODE          => 16;      # code used to create closure
-use constant CYCLE         => 17;      # is this rule part of a cycle?
+=begin Implementation:
 
-package Parse::Marpa::Internal::NFA;
+LHS - ref of the left hand symbol
+RHS - array of symbol refs
+NULLABLE - can match null?
+ACCESSIBLE - reachable from start symbol?
+PRODUCTIVE - reachable from input symbol?
+NULLING - always matches null?
+USEFUL - use this rule in NFA?
+ACTION - action for this rule as specified by user
+CLOSURE - closure for evaluating this rule
+ORIGINAL_RULE - for a rewritten rule, the original
+HAS_CHAF_LHS  - has CHAF internal symbol as lhs?
+HAS_CHAF_RHS - has CHAF internal symbol on rhs?
+PRIORITY - rule priority
+CODE - code used to create closure
+CYCLE - is this rule part of a cycle?
 
-use constant ID         => 0;
-use constant NAME       => 1;
-use constant ITEM       => 2;          # an LR(0) item
-use constant TRANSITION => 3;          # the transitions, as a hash
-                                       # from symbol name to NFA states
-use constant AT_NULLING => 4;          # dot just before a nullable symbol?
-use constant COMPLETE   => 5;          # rule is complete?
-use constant PRIORITY   => 6;          # rule priority
+=end Implementation:
+
+=cut
+
+use Parse::Marpa::Offset NFA =>
+    qw(ID NAME ITEM TRANSITION AT_NULLING COMPLETE PRIORITY);
+
+=begin Implementation:
+
+ITEM - an LR(0) item
+TRANSITION - the transitions, as a hash from symbol name to NFA states
+AT_NULLING - dot just before a nullable symbol?
+COMPLETE - rule is complete?
+PRIORITY - rule priority
+
+=end Implementation:
+
+=cut
+
+use Parse::Marpa::Offset QDFA =>
+    # basic data
+    qw(ID NAME TAG),
+    # evaluator data
+    qw(COMPLETE_RULES START_RULE),
+    # recognizer data
+    qw(TRANSITION COMPLETE_LHS
+        RESET_ORIGIN PRIORITY
+    ),
+    # temporary data
+    qw(NFA_STATES
+    );
 
 package Parse::Marpa::Internal::QDFA;
+use constant LAST_EVALUATOR_FIELD => Parse::Marpa::Internal::QDFA::START_RULE;
+use constant LAST_RECOGNIZER_FIELD => Parse::Marpa::Internal::QDFA::PRIORITY;
+package Parse::Marpa::Internal;
 
-use constant ID             => 0;
-use constant NAME           => 1;
-use constant NFA_STATES     => 2;   # in an QDFA: an array of NFA states
-use constant TRANSITION     => 3;   # the transitions, as a hash
-                                    # from symbol name to references to arrays
-                                    # of QDFA states
-use constant COMPLETE_LHS   => 4;   # an array of the lhs's of complete rules
-use constant COMPLETE_RULES => 5;   # an array of lists of the complete rules,
-                                    # indexed by lhs
-use constant START_RULE     => 6;   # the start rule
-use constant TAG            => 7;   # implementation-independant tag
-use constant RESET_ORIGIN   => 9;   # reset origin for this state?
-use constant PRIORITY       => 10;  # priority of this state
+=begin Implementation:
 
-package Parse::Marpa::Internal::LR0_item;
+NFA_STATES     - in an QDFA: an array of NFA states
+TRANSITION     - the transitions, as a hash
+               - from symbol name to references to arrays
+               - of QDFA states
+COMPLETE_LHS   - an array of the lhs's of complete rules
+COMPLETE_RULES - an array of lists of the complete rules,
+               - indexed by lhs
+START_RULE     - the start rule
+TAG            - implementation-independant tag
+RESET_ORIGIN   - reset origin for this state?
+PRIORITY       - priority of this state
 
-use constant RULE     => 0;
-use constant POSITION => 1;
+=end Implementation:
+
+=cut
+
+use Parse::Marpa::Offset LR0_item => qw(RULE POSITION);
+
+use Parse::Marpa::Offset Grammar =>
+    # basic data
+    qw(
+        ID NAME
+        RULES SYMBOLS QDFA
+        PHASE DEFAULT_ACTION
+        TRACE_FILE_HANDLE TRACING
+    ),
+    # evaluator data
+    qw(
+        DEFAULT_NULL_VALUE
+        CYCLE_ACTION CYCLE_DEPTH
+        TRACE_ITERATIONS
+        TRACE_ACTIONS TRACE_VALUES
+        MAX_PARSES
+        PREAMBLE
+    ),
+    # recognizer data
+    qw(
+        PROBLEMS
+        ACADEMIC
+        DEFAULT_LEX_PREFIX DEFAULT_LEX_SUFFIX AMBIGUOUS_LEX
+        TRACE_LEX_MATCHES TRACE_COMPLETIONS TRACE_LEX_TRIES
+        SYMBOL_HASH
+        START_STATES
+        LEX_PREAMBLE
+    ),
+    # temporary data
+    qw(
+        RULE_HASH
+        START NFA
+        QDFA_BY_NAME NULLABLE_SYMBOL
+        TRACE_RULES
+        LOCATION_CALLBACK
+        WARNINGS VERSION CODE_LINES SEMANTICS
+        TRACE_STRINGS TRACE_PREDEFINEDS TRACE_PRIORITIES
+        ALLOW_RAW_SOURCE INTERFACE
+    );
 
 package Parse::Marpa::Internal::Grammar;
+use constant LAST_EVALUATOR_FIELD => Parse::Marpa::Internal::Grammar::PREAMBLE;
+use constant LAST_RECOGNIZER_FIELD => Parse::Marpa::Internal::Grammar::LEX_PREAMBLE;
+package Parse::Marpa::Internal;
 
-use constant ID   => 0;             # number of this grammar
-use constant NAME => 1;             # namespace special to this grammar
-     # it should only be used BEFORE compilation, because it's not
-     # guaranteed unique after decompilation
-use constant RULES           => 2;    # array of rule refs
-use constant SYMBOLS         => 3;    # array of symbol refs
-use constant RULE_HASH       => 4;    # hash by name of rule refs
-use constant SYMBOL_HASH     => 5;    # hash by name of symbol refs
-use constant START           => 6;    # ref to start symbol
-use constant NFA             => 7;    # array of states
-use constant QDFA            => 8;    # array of states
-use constant QDFA_BY_NAME    => 9;    # hash from QDFA name to QDFA reference
-use constant NULLABLE_SYMBOL => 10;   # array of refs of the nullable symbols
-use constant ACADEMIC        => 11;   # true if this is a textbook grammar,
-                                      # for checking the NFA and QDFA, and NOT
-                                      # for actual Earley parsing
-use constant DEFAULT_NULL_VALUE => 12; # default value for nulling symbols
-use constant DEFAULT_ACTION     => 13; # action for rules without one
-use constant DEFAULT_LEX_PREFIX => 14; # default prefix for lexing
-use constant DEFAULT_LEX_SUFFIX => 15; # default suffix for lexing
-use constant AMBIGUOUS_LEX      => 16; # lex ambiguously?
-use constant TRACE_RULES        => 17;
-use constant TRACE_FILE_HANDLE  => 18;
-use constant LOCATION_CALLBACK  => 19; # default callback for showing location
-use constant OPAQUE             => 20; # default for opacity
-use constant PROBLEMS           => 21; # fatal problems
-use constant PREAMBLE           => 22; # evaluation preamble
-use constant LEX_PREAMBLE       => 23; # lex preamble
-use constant WARNINGS           => 24; # print warnings about grammar?
-use constant VERSION    => 25; # Marpa version this grammar was compiled from
-use constant CODE_LINES => 26; # max lines to display on failure
-use constant SEMANTICS  => 27; # semantics (currently perl5 only)
-use constant TRACING    => 28; # master flag, set if any tracing is being done
-     # (to control overhead for non-tracing processes)
-use constant TRACE_STRINGS     => 29; # trace strings defined in marpa grammar
-use constant TRACE_PREDEFINEDS => 30; # trace predefineds in marpa grammar
-use constant TRACE_PRIORITIES  => 31;
-use constant TRACE_LEX_TRIES   => 32;
-use constant TRACE_LEX_MATCHES => 33;
-use constant TRACE_ITERATIONS  => 35;
-use constant TRACE_COMPLETIONS        => 37;
-use constant TRACE_ACTIONS            => 38;
-use constant TRACE_VALUES             => 39;
-use constant MAX_PARSES               => 40;
-use constant ONLINE                   => 41;
-use constant ALLOW_RAW_SOURCE         => 42;
-use constant PHASE                    => 43;    # the grammar's phase
-use constant INTERFACE                => 44;    # the grammar's interface
-use constant START_STATES => 45;    # ref to array of the start states
-use constant CYCLE_ACTION => 46;    # ref to array of the start states
-use constant CYCLE_DEPTH  => 47;    # depth to which to follow cycles
+=begin Implementation:
 
-package Parse::Marpa::Internal::Interface;
+ID                 - number of this grammar
+NAME               - namespace special to this grammar
+                     it should only be used BEFORE compilation, because it's not
+                     guaranteed unique after decompilation
+RULES              - array of rule refs
+SYMBOLS            - array of symbol refs
+RULE_HASH          - hash by name of rule refs
+SYMBOL_HASH        - hash by name of symbol refs
+START              - ref to start symbol
+NFA                - array of states
+QDFA               - array of states
+QDFA_BY_NAME       - hash from QDFA name to QDFA reference
+NULLABLE_SYMBOL    - array of refs of the nullable symbols
+ACADEMIC           - true if this is a textbook grammar,
+                   - for checking the NFA and QDFA, and NOT
+                   - for actual Earley parsing
+DEFAULT_NULL_VALUE - default value for nulling symbols
+DEFAULT_ACTION     - action for rules without one
+DEFAULT_LEX_PREFIX - default prefix for lexing
+DEFAULT_LEX_SUFFIX - default suffix for lexing
+AMBIGUOUS_LEX      - lex ambiguously?
+LOCATION_CALLBACK  - default callback for showing location
+PROBLEMS - fatal problems
+PREAMBLE - evaluation preamble
+LEX_PREAMBLE - lex preamble
+WARNINGS - print warnings about grammar?
+VERSION - Marpa version this grammar was stringified from
+CODE_LINES - max lines to display on failure
+SEMANTICS - semantics (currently perl5 only)
+TRACING - master flag, set if any tracing is being done
+    (to control overhead for non-tracing processes)
+TRACE_STRINGS - trace strings defined in marpa grammar
+TRACE_PREDEFINEDS - trace predefineds in marpa grammar
+PHASE - the grammar's phase
+INTERFACE - the grammar's interface
+START_STATES - ref to array of the start states
+CYCLE_ACTION - ref to array of the start states
+CYCLE_DEPTH - depth to which to follow cycles
+
+=end Implementation:
+
+=cut
 
 # values for grammar interfaces
-use constant RAW => 0;
-use constant MDL => 1;
+use Parse::Marpa::Offset Interface => qw(RAW MDL);
 
-sub description {
+sub Parse::Marpa::Internal::Interface::description {
     my $interface = shift;
     given ($interface) {
-        when (RAW) { return 'raw interface' }
-        when (MDL) { return 'Marpa Description Language interface' }
+        when (Parse::Marpa::Internal::Interface::RAW) { return 'raw interface' }
+        when (Parse::Marpa::Internal::Interface::MDL) { return 'Marpa Description Language interface' }
     }
     return 'unknown interface';
 }
 
-package Parse::Marpa::Internal::Phase;
-
 # values for grammar phases
-use constant NEW         => 0;
-use constant RULES       => 1;
-use constant PRECOMPUTED => 2;
-use constant COMPILED    => 3;
-use constant EVALED      => 4;
-use constant IN_USE      => 5;
+use Parse::Marpa::Offset Phase =>
+    qw(NEW RULES PRECOMPUTED RECOGNIZING RECOGNIZED EVALUATING);
 
-sub description {
+sub Parse::Marpa::Internal::Phase::description {
     my $phase = shift;
     given ($phase) {
-        when (NEW)         { return 'grammar without rules' }
-        when (RULES)       { return 'grammar with rules entered' }
-        when (PRECOMPUTED) { return 'precomputed grammar' }
-        when (COMPILED)    { return 'compiled grammar' }
-        when (EVALED)      { return 'evaled grammar' }
-        when (IN_USE)      { return 'in use grammar' }
+        when (Parse::Marpa::Internal::Phase::NEW)         { return 'grammar without rules' }
+        when (Parse::Marpa::Internal::Phase::RULES)       { return 'grammar with rules entered' }
+        when (Parse::Marpa::Internal::Phase::PRECOMPUTED) { return 'precomputed grammar' }
+        when (Parse::Marpa::Internal::Phase::RECOGNIZING) { return 'grammar being recognized' }
+        when (Parse::Marpa::Internal::Phase::RECOGNIZED)  { return 'recognized grammar' }
+        when (Parse::Marpa::Internal::Phase::EVALUATING) { return 'grammar being evaluated' }
     }
     return 'unknown phase';
 }
@@ -505,7 +597,6 @@ sub Parse::Marpa::Grammar::new {
     $grammar->[Parse::Marpa::Internal::Grammar::TRACE_ITERATIONS]   = 0;
     $grammar->[Parse::Marpa::Internal::Grammar::LOCATION_CALLBACK] =
         q{ 'Earleme ' . $earleme };
-    $grammar->[Parse::Marpa::Internal::Grammar::OPAQUE]     = undef;
     $grammar->[Parse::Marpa::Internal::Grammar::WARNINGS]   = 1;
     $grammar->[Parse::Marpa::Internal::Grammar::CYCLE_ACTION]   = 'warn';
     $grammar->[Parse::Marpa::Internal::Grammar::CYCLE_DEPTH]    = 1;
@@ -518,17 +609,16 @@ sub Parse::Marpa::Grammar::new {
     $grammar->[Parse::Marpa::Internal::Grammar::RULE_HASH]    = {};
     $grammar->[Parse::Marpa::Internal::Grammar::QDFA_BY_NAME] = {};
     $grammar->[Parse::Marpa::Internal::Grammar::MAX_PARSES]   = -1;
-    $grammar->[Parse::Marpa::Internal::Grammar::ONLINE]       = 0;
 
     return $grammar->set($args);
 }
 
 sub Parse::Marpa::show_source_grammar_status {
     my $status =
-        $Parse::Marpa::Internal::compiled_source_grammar ? 'Compiled' : 'Raw';
-    if ($Parse::Marpa::Internal::compiled_eval_error) {
-        $status .= "\nCompiled source had error:\n"
-            . $Parse::Marpa::Internal::compiled_eval_error;
+        $Parse::Marpa::Internal::stringified_source_grammar ? 'Stringified' : 'Raw';
+    if ($Parse::Marpa::Internal::stringified_eval_error) {
+        $status .= "\nStringified source had error:\n"
+            . $Parse::Marpa::Internal::stringified_eval_error;
     }
     return $status;
 }
@@ -596,9 +686,9 @@ sub die_with_parse_failure {
 # Also, forcing the user to be specific about the fact he's doing bootstrapping,
 # seems like a good idea in itself.
 
-sub Parse::Marpa::create_compiled_source_grammar {
+sub Parse::Marpa::stringify_source_grammar {
 
-    # Overwrite the existing compiled source grammar, if we already have one
+    # Overwrite the existing stringified source grammar, if we already have one
     # This allows us to bootstrap in a new version
 
     my $raw_source_grammar = Parse::Marpa::Internal::raw_source_grammar();
@@ -611,7 +701,7 @@ sub Parse::Marpa::create_compiled_source_grammar {
         );
     }
     $raw_source_grammar->precompute();
-    return $raw_source_grammar->compile();
+    return $raw_source_grammar->stringify();
 }
 
 # Build a grammar from an MDL description.
@@ -626,15 +716,15 @@ sub parse_source_grammar {
         $grammar->[Parse::Marpa::Internal::Grammar::TRACE_FILE_HANDLE];
     my $allow_raw_source =
         $grammar->[Parse::Marpa::Internal::Grammar::ALLOW_RAW_SOURCE];
-    if ( not defined $Parse::Marpa::Internal::compiled_source_grammar ) {
+    if ( not defined $Parse::Marpa::Internal::stringified_source_grammar ) {
         if ($allow_raw_source) {
-            $Parse::Marpa::Internal::compiled_source_grammar =
-                Parse::Marpa::create_compiled_source_grammar();
+            $Parse::Marpa::Internal::stringified_source_grammar =
+                Parse::Marpa::stringify_source_grammar();
         }
         else {
-            my $eval_error = $Parse::Marpa::Internal::compiled_eval_error
+            my $eval_error = $Parse::Marpa::Internal::stringified_eval_error
                 // 'no eval error';
-            croak( "No compiled source grammar:\n", $eval_error );
+            croak( "No stringified source grammar:\n", $eval_error );
         }
     }
 
@@ -648,8 +738,8 @@ sub parse_source_grammar {
     $source_options //= {};
 
     my $recce = new Parse::Marpa::Recognizer(
-        {   compiled_grammar =>
-                $Parse::Marpa::Internal::compiled_source_grammar,
+        {   stringified_grammar =>
+                $Parse::Marpa::Internal::stringified_source_grammar,
             trace_file_handle => $trace_fh,
             %{$source_options}
         }
@@ -659,7 +749,8 @@ sub parse_source_grammar {
     if ( $failed_at_earleme >= 0 ) {
         die_with_parse_failure( $source, $failed_at_earleme );
     }
-    my $evaler = new Parse::Marpa::Evaluator($recce);
+    $recce->end_input();
+    my $evaler = new Parse::Marpa::Evaluator( { recce => $recce } );
     croak("Marpa Internal error: failed to create evaluator for MDL") unless defined $evaler;
     my $value = $evaler->value();
     raw_grammar_eval( $grammar, $value );
@@ -681,6 +772,12 @@ sub Parse::Marpa::Grammar::set {
     my $phase     = $grammar->[Parse::Marpa::Internal::Grammar::PHASE];
     my $interface = $grammar->[Parse::Marpa::Internal::Grammar::INTERFACE];
 
+    my $precompute = 1;
+    if (exists $args->{precompute}) {
+        $precompute = $args->{precompute};
+        delete $args->{precompute};
+    }
+
     # value of source needs to be a *REF* to a string
     my $source = $args->{'mdl_source'};
     if ( defined $source ) {
@@ -693,6 +790,8 @@ sub Parse::Marpa::Grammar::set {
         parse_source_grammar( $grammar, $source, $args->{'source_options'} );
         delete $args->{'mdl_source'};
         delete $args->{'source_options'};
+        $phase = $grammar->[Parse::Marpa::Internal::Grammar::PHASE] =
+            Parse::Marpa::Internal::Phase::RULES;
     }
 
     while ( my ( $option, $value ) = each %{$args} ) {
@@ -709,7 +808,7 @@ sub Parse::Marpa::Grammar::set {
                     "$option option not allowed after grammar is precomputed")
                     if $phase >= Parse::Marpa::Internal::Phase::PRECOMPUTED;
                 add_user_rules( $grammar, $value );
-                $grammar->[Parse::Marpa::Internal::Grammar::PHASE] =
+                $phase = $grammar->[Parse::Marpa::Internal::Grammar::PHASE] =
                     Parse::Marpa::Internal::Phase::RULES;
             }
             when ('terminals') {
@@ -724,7 +823,7 @@ sub Parse::Marpa::Grammar::set {
                     "$option option not allowed after grammar is precomputed")
                     if $phase >= Parse::Marpa::Internal::Phase::PRECOMPUTED;
                 add_user_terminals( $grammar, $value );
-                $grammar->[Parse::Marpa::Internal::Grammar::PHASE] =
+                $phase = $grammar->[Parse::Marpa::Internal::Grammar::PHASE] =
                     Parse::Marpa::Internal::Phase::RULES;
             }
             when ('start') {
@@ -743,7 +842,7 @@ sub Parse::Marpa::Grammar::set {
             when ('default_null_value') {
                 croak( "$option option not allowed in ",
                     Parse::Marpa::Internal::Phase::description($phase) )
-                    if $phase >= Parse::Marpa::Internal::Phase::EVALED;
+                    if $phase >= Parse::Marpa::Internal::Phase::RECOGNIZING;
                 $grammar
                     ->[Parse::Marpa::Internal::Grammar::DEFAULT_NULL_VALUE] =
                     $value;
@@ -751,7 +850,7 @@ sub Parse::Marpa::Grammar::set {
             when ('default_action') {
                 croak( "$option option not allowed in ",
                     Parse::Marpa::Internal::Phase::description($phase) )
-                    if $phase >= Parse::Marpa::Internal::Phase::EVALED;
+                    if $phase >= Parse::Marpa::Internal::Phase::RECOGNIZING;
                 $grammar->[Parse::Marpa::Internal::Grammar::DEFAULT_ACTION] =
                     $value;
             }
@@ -789,7 +888,7 @@ sub Parse::Marpa::Grammar::set {
                     say $trace_fh "Setting $option option";
                     say $trace_fh
                         "Warning: setting $option option after semantics were finalized"
-                        if $phase >= Parse::Marpa::Internal::Phase::EVALED;
+                        if $phase >= Parse::Marpa::Internal::Phase::RECOGNIZING;
                     $grammar->[Parse::Marpa::Internal::Grammar::TRACING] = 1;
                 }
             }
@@ -921,7 +1020,7 @@ sub Parse::Marpa::Grammar::set {
             }
             when ('cycle_depth') {
 		croak("cycle_depth must be set to a number > 0")
-		    unless $value =~ /^\d+$/ and $value > 0;
+		    unless defined $value and $value =~ /^\d+$/ and $value > 0;
                 $grammar->[Parse::Marpa::Internal::Grammar::CYCLE_DEPTH] =
                     $value;
             }
@@ -933,12 +1032,6 @@ sub Parse::Marpa::Grammar::set {
                         >= Parse::Marpa::Internal::Phase::PRECOMPUTED;
                 $grammar->[Parse::Marpa::Internal::Grammar::WARNINGS] =
                     $value;
-            }
-            when ('online') {
-                croak( "$option option not allowed in ",
-                    Parse::Marpa::Internal::Phase::description($phase) )
-                    if $phase >= Parse::Marpa::Internal::Phase::EVALED;
-                $grammar->[Parse::Marpa::Internal::Grammar::ONLINE] = $value;
             }
             when ('code_lines') {
                 $grammar->[Parse::Marpa::Internal::Grammar::CODE_LINES] =
@@ -971,14 +1064,14 @@ sub Parse::Marpa::Grammar::set {
             when ('lex_preamble') {
                 croak( "$option option not allowed in ",
                     Parse::Marpa::Internal::Phase::description($phase) )
-                    if $phase >= Parse::Marpa::Internal::Phase::EVALED;
+                    if $phase >= Parse::Marpa::Internal::Phase::RECOGNIZING;
                 $grammar->[Parse::Marpa::Internal::Grammar::LEX_PREAMBLE] =
                     $value;
             }
             when ('preamble') {
                 croak( "$option option not allowed in ",
                     Parse::Marpa::Internal::Phase::description($phase) )
-                    if $phase >= Parse::Marpa::Internal::Phase::EVALED;
+                    if $phase >= Parse::Marpa::Internal::Phase::RECOGNIZING;
                 $grammar->[Parse::Marpa::Internal::Grammar::PREAMBLE] =
                     $value;
             }
@@ -986,6 +1079,10 @@ sub Parse::Marpa::Grammar::set {
                 croak("$_ is not an available Marpa option");
             }
         }
+    }
+
+    if ($precompute and $phase == Parse::Marpa::Internal::Phase::RULES) {
+        $grammar->precompute();
     }
 
     return $grammar;
@@ -1029,6 +1126,12 @@ sub Parse::Marpa::Grammar::precompute {
     }
 
     my $phase = $grammar->[Parse::Marpa::Internal::Grammar::PHASE];
+    # Be idempotent.  If the grammar is already precomputed, just
+    # return success without doing anything.
+    if (  $phase >= Parse::Marpa::Internal::Phase::PRECOMPUTED ) {
+        return $grammar;
+    }
+
     if ( $phase >= Parse::Marpa::Internal::Phase::PRECOMPUTED ) {
         croak(
             "Attempt to precompute grammar in inappropriate state\nAttempt to precompute ",
@@ -1072,6 +1175,19 @@ sub Parse::Marpa::Grammar::precompute {
 
     $grammar->[Parse::Marpa::Internal::Grammar::PHASE] =
         Parse::Marpa::Internal::Phase::PRECOMPUTED;
+
+
+    # $#{$grammar} = Parse::Marpa::Internal::Grammar::LAST_RECOGNIZER_FIELD;
+    # for my $symbol (@{$grammar->[ Parse::Marpa::Internal::Grammar::SYMBOLS ]}) {
+    #     $#{$symbol} = Parse::Marpa::Internal::Symbol::LAST_RECOGNIZER_FIELD;
+    # }
+    # for my $rule (@{$grammar->[ Parse::Marpa::Internal::Grammar::RULES ]}) {
+    #     $#{$rule} = Parse::Marpa::Internal::Rule::LAST_EVALUATOR_FIELD;
+    # }
+    # for my $QDFA (@{$grammar->[ Parse::Marpa::Internal::Grammar::QDFA ]}) {
+    #     $#{$QDFA} = Parse::Marpa::Internal::QDFA::LAST_RECOGNIZER_FIELD;
+    # }
+
     $grammar;
 }
 
@@ -1088,10 +1204,11 @@ sub Parse::Marpa::Grammar::show_problems {
     return "Grammar has no problems\n";
 }
 
-# Deep Copy Grammar
+# Convert Grammar into string form
 #
 # Note: copying strengthens weak refs
-sub Parse::Marpa::Grammar::compile {
+#
+sub Parse::Marpa::Grammar::stringify {
     my $grammar = shift;
 
     my $tracing = $grammar->[Parse::Marpa::Internal::Grammar::TRACING];
@@ -1102,24 +1219,19 @@ sub Parse::Marpa::Grammar::compile {
     }
 
     my $phase = $grammar->[Parse::Marpa::Internal::Grammar::PHASE];
-    if (   $phase > Parse::Marpa::Internal::Phase::COMPILED
-        or $phase < Parse::Marpa::Internal::Phase::RULES )
+    if (   $phase != Parse::Marpa::Internal::Phase::PRECOMPUTED )
     {
         croak(
-            "Attempt to compile grammar in inappropriate state\nAttempt to compile ",
+            "Attempt to stringify grammar in inappropriate state\nAttempt to stringify ",
             Parse::Marpa::Internal::Phase::description($phase)
         );
-    }
-
-    if ( $phase == Parse::Marpa::Internal::Phase::RULES ) {
-        Parse::Marpa::Grammar::precompute($grammar);
     }
 
     my $problems = $grammar->[Parse::Marpa::Internal::Grammar::PROBLEMS];
     if ($problems) {
         croak(
             Parse::Marpa::Grammar::show_problems($grammar),
-            "Attempt to compile grammar with fatal problems\n",
+            "Attempt to stringify grammar with fatal problems\n",
             'Marpa cannot proceed'
         );
     }
@@ -1132,18 +1244,18 @@ sub Parse::Marpa::Grammar::compile {
     return \( $d->Dump() );
 }
 
-# First arg is compiled grammar
+# First arg is stringified grammar
 # Second arg (optional) is trace file handle, either saved and restored
 # If not trace file handle supplied, it reverts to the default, STDERR
 #
-# Returns the decompiled grammar
-sub Parse::Marpa::Grammar::decompile {
-    my $compiled_grammar = shift;
+# Returns the unstringified grammar
+sub Parse::Marpa::Grammar::unstringify {
+    my $stringified_grammar = shift;
     my $trace_fh         = shift;
     $trace_fh //= *STDERR;
 
-    croak("Attempt to decompile undefined grammar")
-        unless defined $compiled_grammar;
+    croak("Attempt to unstringify undefined grammar")
+        unless defined $stringified_grammar;
 
     my $grammar;
     {
@@ -1154,14 +1266,14 @@ sub Parse::Marpa::Grammar::decompile {
             push @warnings, $warning;
             @caller_return = caller 0;
         };
-        eval ${$compiled_grammar};
+        eval ${$stringified_grammar};
         my $fatal_error = $@;
         if ( $fatal_error or @warnings ) {
             Parse::Marpa::Internal::code_problems(
                 $fatal_error, \@warnings,
-                'decompiling gramar',
-                'decompiling gramar',
-                $compiled_grammar, \@caller_return
+                'unstringifying grammar',
+                'unstringifying grammar',
+                $stringified_grammar, \@caller_return
             );
         }
     }
@@ -1184,11 +1296,19 @@ sub Parse::Marpa::Grammar::decompile {
         $symbol->[Parse::Marpa::Internal::Symbol::LHS] = undef;
         $symbol->[Parse::Marpa::Internal::Symbol::RHS] = undef;
     }
-    $grammar->[Parse::Marpa::Internal::Grammar::PHASE] =
-        Parse::Marpa::Internal::Phase::COMPILED;
 
     return $grammar;
 
+}
+
+sub Parse::Marpa::Grammar::clone {
+    my $grammar = shift;
+    my $trace_fh = shift;
+
+    my $stringified_grammar = Parse::Marpa::Grammar::stringify($grammar);
+    $trace_fh //= $grammar->[Parse::Marpa::Internal::Grammar::TRACE_FILE_HANDLE];
+    $grammar =
+        Parse::Marpa::Grammar::unstringify( $stringified_grammar, $trace_fh );
 }
 
 sub Parse::Marpa::show_symbol {
@@ -1938,9 +2058,6 @@ sub add_rules_from_hash {
             if exists $rule_hash->{$rule_key};
         $rule_hash->{$rule_key} = 1;
     }
-
-    # The following rules make evaluations opaque
-    $grammar->[Parse::Marpa::Internal::Grammar::OPAQUE] = 1;
 
     my $rule_action;
     given ($action) {
@@ -3603,39 +3720,51 @@ Users who want the last word in control can use the plumbing directly,
 but they will lose a lot of convenience and maintainability.
 Those who need the ultimate in efficiency can get the best of both worlds by
 using MDL to create a grammar,
-then compiling that grammar,
-as L<described below|"compile">.
-The MDL parser itself uses a compiled MDL file.
+then stringifying it,
+as L<described below|"Stringifying">.
+The MDL parser itself uses a stringified MDL file.
+
+=head2 Precomputation
 
 Marpa needs to do extensive precompution on grammars
 before they can be passed on to a recognizer or an evaluator.
-The user rarely needs to perform this precomputation explicitly.
-The methods which require precomputed grammars
-(C<compile> and C<Parse::Marpa::Recognizer::new>),
-do the precomputation themselves on a just-in-time basis.
+The user usually does not need to perform this precomputation explicitly.
+By default, in any method call that adds rules or terminal to a grammar,
+precomputation is done automatically.
 
-For situations where the user needs to control the state of the grammar precisely,
-such as debugging or tracing,
-there is a method that explicitly precomputes a grammar: C<precompute>.
 Once a grammar has been precomputed, it is frozen against many kinds of
 changes.
 For example, you cannot add rules to a precomputed grammar.
+When the user wishes to build a grammar over several method calls,
+the default behavior of automatic precomputation is undesirable.
+Automatic precomputation can be turned off with the C<precompute> method option.
+There is also a C<precompute> method, which
+explicitly precomputes a grammar.
+With the C<precompute> method option and the C<precompute> method, the user
+can dictate exactly when precomputation takes place.
 
-For their private use,
-Marpa recognizers make a deep copy of the the grammar used to create them.
-The deep copy is done by B<compiling> the grammar, then B<decompiling> the grammar.
+=head2 Cloning
 
-Grammar compilation in Marpa means turning the grammar into a string with
-Marpa's C<compile> method.
-Since a compiled grammar is a string, it can be handled as one.
-It can, for instance, be written to a file.
+By default,
+Marpa recognizers make a clone of the the grammar used to create them.
+This allows several recognizers to be created from the same grammar,
+without risk of one recognizer modifying the data in a way that
+interferes with another.
+Cloning can be overriden by using the C<clone> option to the C<new> and C<set> methods.
 
-Marpa's C<decompile> static method takes a compiled grammar,
+=head2 Stringifying
+
+Marpa can turn the grammar into a string with
+Marpa's C<stringify> method.
+A stringified grammar is a string in every sense and
+can, for instance, be written to a file.
+
+Marpa's C<unstringify> static method takes a stringified grammar,
 C<eval>'s it,
 then tweaks it a bit to create a properly set-up grammar object.
-A subsequent Marpa process can read this file, C<decompile> the string,
+A subsequent Marpa process can read this file, C<unstringify> the string,
 and continue the parse.
-This would eliminate the overhead both of parsing MDL and of precomputation.
+Using a stringified grammar eliminates the overhead both of parsing MDL and of precomputation.
 As mentioned, where efficiency is a major consideration, this will
 usually be better than using the
 plumbing interface.
@@ -3672,8 +3801,9 @@ It returns a new grammar object or throws an exception.
 Named arguments can be Marpa options.
 For these see L<Parse::Marpa::Doc::Options>.
 In addition to the Marpa options,
-the C<mdl_source> named argument
-and the named arguments of the plumbing interface are allowed.
+the C<mdl_source> named argument,
+the C<precompute> named argument,
+and the named arguments of the plumbing interface are also allowed.
 For details of the plumbing and its named arguments, see L<Parse::Marpa::Doc::Plumbing>.
 
 The value of the C<mdl_source> named argument should be
@@ -3682,6 +3812,13 @@ the grammar in the L<Marpa Demonstration Language|Parse::Marpa::MDL>.
 Either the C<mdl_source> named argument or the plumbing arguments may be used
 to build a grammar,
 but both cannot be used to build the same grammar object.
+
+The value of the C<precompute> named argument is interpreted as a Boolean.
+If true, and if any rules or terminals were added to the grammar in the method
+call, then the grammar is precomputed.
+This is the default behavior.
+If, in a C<new> or C<set> method call, the C<precompute> named argument is set to a false value,
+precomputation will not be done by that method call.
 
 In the C<new> and C<set> methods,
 a Marpa option can be specified both directly,
@@ -3708,15 +3845,20 @@ in_ah_s_t($_)
     $grammar->set( { mdl_source => \$source } );
 
 The C<set> method takes as its one, required, argument a reference to a hash of named arguments.
-It allows Marpa options, plumbing arguments and the C<mdl_source> named argument
+It allows Marpa options,
+the C<precompute> named argument,
+the C<mdl_source> named argument,
+and the plumbing arguments
 to be specified for an already existing grammar object.
-It can be used to control the order in which named arguments are applied.
+The effect of these arguments is as described above
+for L<the C<new> method call|"new">.
 
+The C<set> method call can be used to control the order in which named arguments are applied.
 In particular, some
 tracing options need to be turned on prior to specifying the grammar.
 To do this, a new grammar object can be created with the trace options set,
 but without a grammar specification.
-At this point, tracing will be in effect,
+Once the constructor returns, tracing will be in effect,
 and the C<set> method can be used to specify the grammar,
 using either the C<mdl_source> named argument or the plumbing
 arguments.
@@ -3735,15 +3877,15 @@ in_ah_s_t($_)
 The C<precompute> method performs Marpa's precomputations on a grammar.
 It returns the grammar object or throws an exception.
 
-It is usually not necessary for the user to call C<precompute>.
-The methods which require a precomputed grammar
-(C<compile> and C<Parse::Marpa::Recognizer::new>),
-if passed a grammar on which the precomputation has not been done,
-perform the precomputation themselves on a "just in time" basis.
-But C<precompute> can be useful in debugging and tracing,
-as a way to control precisely when precomputation takes place.
+It is usually not necessary for the user to call C<precompute> explicitly.
+Precomputation is done automatically by the C<new> and C<set> methods
+when any rule or terminal is added to a grammar.
+The C<precompute> method, along with the C<precompute> option to
+the C<new> and C<set> methods is used to override the default
+behavior.
+For more details, see L<above|"Precomputation">.
 
-=head2 compile
+=head2 stringify
 
 =begin Parse::Marpa::test_document:
 
@@ -3752,15 +3894,16 @@ in_bin_mdl($_)
 
 =end Parse::Marpa::test_document:
 
-    my $compiled_grammar = $grammar->compile();
+    my $stringified_grammar = $grammar->stringify();
 
-The C<compile> method takes as its single argument a grammar object, and "compiles" it.
-It returns a reference to the compiled grammar.
-The compiled grammar is a string which was created 
+The C<stringify> method takes as its single argument a grammar object
+and converts it into a string.
+It returns a reference to the string.
+The string is created 
 using L<Data::Dumper>.
-On failure, C<compile> throws an exception.
+On failure, C<stringify> throws an exception.
 
-=head2 decompile
+=head2 unstringify
 
 =begin Parse::Marpa::test_document:
 
@@ -3769,32 +3912,47 @@ in_misc_pl($_)
 
 =end Parse::Marpa::test_document:
 
-    $grammar = Parse::Marpa::Grammar::decompile($compiled_grammar, $trace_fh);
+    $grammar = Parse::Marpa::Grammar::unstringify($stringified_grammar, $trace_fh);
 
-    $grammar = Parse::Marpa::Grammar::decompile($compiled_grammar);
+    $grammar = Parse::Marpa::Grammar::unstringify($stringified_grammar);
 
-The C<decompile> static method takes a reference to a compiled grammar as its first
+The C<unstringify> static method takes a reference to a stringified grammar as its first
 argument.
 Its second, optional, argument is a file handle.
-The file handle argument will be used both as the decompiled grammar's trace file handle,
-and for any trace messages produced by C<decompile> itself.
-C<decompile> returns the decompiled grammar object unless it throws an
+The file handle argument will be used both as the unstringified grammar's trace file handle,
+and for any trace messages produced by C<unstringify> itself.
+C<unstringify> returns the unstringified grammar object unless it throws an
 exception.
 
 If the trace file handle argument is omitted,
 it defaults to C<STDERR>
-and the decompiled grammar's trace file handle reverts to the default for a new
+and the unstringified grammar's trace file handle reverts to the default for a new
 grammar, which is also C<STDERR>.
 The trace file handle argument is necessary because in the course of compilation,
 the grammar's original trace file handle may have been lost.
-For example, a compiled grammar can be written to a file and emailed.
+For example, a stringified grammar can be written to a file and emailed.
 Marpa cannot rely on finding the original trace file handle available and open
-when a compiled grammar is decompiled.
+when a stringified grammar is unstringified.
 
-When Marpa deep copies grammars internally, it uses the C<compile> and C<decompile> methods.
+When Marpa deep copies grammars internally, it uses the C<stringify> and C<unstringify> methods.
 To preserve the trace file handle of the original grammar,
 Marpa first copies the handle to a temporary,
-then restores the handle using the C<trace_file_handle> argument of C<decompile>.
+then restores the handle using the C<trace_file_handle> argument of C<unstringify>.
+
+=head2 clone
+
+=begin Parse::Marpa::test_document:
+
+## next 2 displays
+in_misc_pl($_)
+
+=end Parse::Marpa::test_document:
+
+    my $cloned_grammar = $grammar->clone();
+
+The C<clone> method creates a useable copy of a grammar object.
+It returns a successfully cloned grammar object,
+or throws an exception.
 
 =head1 SUPPORT
 

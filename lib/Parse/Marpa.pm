@@ -1,13 +1,13 @@
-use 5.010_000;
-
 package Parse::Marpa;
+
+use 5.010_000;
 
 use warnings;
 no warnings "recursion";
 use strict;
 
 BEGIN {
-    our $VERSION        = '0.218000';
+    our $VERSION        = '0.219_001';
     our $STRING_VERSION = $VERSION;
     $VERSION = eval $VERSION;
 }
@@ -106,13 +106,13 @@ package Parse::Marpa::Internal;
 
 use Carp;
 
-our $compiled_eval_error;
+our $stringified_eval_error;
 
 BEGIN {
     eval "use Parse::Marpa::Source $Parse::Marpa::STRING_VERSION";
-    $compiled_eval_error = $@;
-    undef $Parse::Marpa::Internal::compiled_source_grammar
-        if $compiled_eval_error;
+    $stringified_eval_error = $@;
+    undef $Parse::Marpa::Internal::stringified_source_grammar
+        if $stringified_eval_error;
 }
 
 package Parse::Marpa::Read_Only;
@@ -151,14 +151,22 @@ sub Parse::Marpa::mdl {
 
     my $g =
         new Parse::Marpa::Grammar( { mdl_source => $grammar, %{$options} } );
-    my $recce = new Parse::Marpa::Recognizer( { grammar => $g } );
+    my $recce = new Parse::Marpa::Recognizer( {
+        grammar => $g,
+        clone => 0
+    } );
 
     my $failed_at_earleme = $recce->text($text);
     if ( $failed_at_earleme >= 0 ) {
         die_with_parse_failure( $text, $failed_at_earleme );
     }
 
-    my $evaler = new Parse::Marpa::Evaluator($recce);
+    $recce->end_input();
+
+    my $evaler = new Parse::Marpa::Evaluator( {
+        recce => $recce,
+        clone => 0,
+    } );
     if ( not defined $evaler ) {
         die_with_parse_failure( $text, length($text) );
     }
@@ -211,7 +219,7 @@ is_synopsis_pl($_)
     say $$value;
 
     __DATA__
-    semantics are perl5.  version is 0.218.0.  start symbol is Expression.
+    semantics are perl5.  version is 0.219.1.  start symbol is Expression.
 
     Expression: Expression, /[*]/, Expression.  priority 200.  q{
         $_[0] * $_[2]
@@ -465,6 +473,8 @@ They may be created with rules or empty.
 Rules may be added to grammar objects after they have been created.
 After all the rules have been added, but before it is used to create a recognizer,
 a grammar must be precomputed.
+Precomputation is usually done automatically,
+when rules are added, but this behavior can be fine-tuned.
 Details on grammar objects and methods can be found at L<Parse::Marpa::Grammar>.
 
 =head3 Recognizers
@@ -485,14 +495,9 @@ that is, its structure according to the grammar has not been determined.
 For more details on recognizer objects and methods,
 see L<Parse::Marpa::Recognizer>.
 
-Currently, Marpa fully supports only non-streaming or "offline" input.
-Marpa will also parse streamed inputs,
-but the methods to find completed parses in a streamed input 
-are still under construction.
-
 =head3 Evaluators
 
-In offline mode, once input is completed,
+Once the end of input is recognized,
 an evaluator object (C<Parse::Marpa::Evaluator>) can be created.
 For each recognizer, only one evaluator object can
 be in use at any one time.
@@ -520,7 +525,7 @@ Porcelain interfaces use the plumbing indirectly.
 The plumbing is efficient,
 but MDL is easier to read, write and maintain.
 Users seeking efficiency are usually better off
-using compiled MDL.
+using stringified MDL.
 The documentation for the plumbing
 is L<Parse::Marpa::Doc::Plumbing>.
 
@@ -660,12 +665,14 @@ One with a customized lexer would be faster yet.
 
 If MDL's parsing speed
 becomes an issue for a particular grammar,
-that grammar can be precompiled.
-Subsequent runs of the precompiled grammar don't incur the overhead of either
-MDL parsing or precomputation.
-Marpa uses precompilation internally.
+that grammar can be precomputed and stringified.
+A recognizer can then be created
+from the precomputed string grammar.
+Using a grammar in the form of a precomputed string avoids 
+the overhead of both MDL parsing and precomputation.
+Marpa uses stringified grammars internally.
 When you use MDL to specify a grammar to Marpa,
-Marpa uses a precompiled grammar to parse the MDL.
+Marpa uses a stringified grammar to parse the MDL.
 
 =head3 Comparison with other Parsers
 

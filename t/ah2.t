@@ -14,6 +14,7 @@ BEGIN {
 }
 
 my $grammar = new Parse::Marpa::Grammar({
+    precompute => 0,
     start => "S",
     rules => [
         [ "S", [qw/A A A A/] ],
@@ -360,7 +361,7 @@ is( $recce->show_earley_sets(1),
 $recce->end_input();
 
 is( $recce->show_earley_sets(1),
-    "Current Earley Set: 5; Furthest: 4\n" .  $sets_at_4,
+    "At End of Input\n" .  $sets_at_4,
     "Aycock/Horspool Parse Status at 4" );
 
 my $failure_count = 0;
@@ -368,7 +369,10 @@ my $total_count = 0;
 my @answer = ("", qw[(a;;;) (a;a;;) (a;a;a;) (a;a;a;a)]);
 
 for my $i (0 .. 4) {
-    my $evaler = new Parse::Marpa::Evaluator($recce, $i);
+    my $evaler = new Parse::Marpa::Evaluator( {
+        recce => $recce,
+        end => $i
+    } );
     my $result = $evaler->value();
     $total_count++;
     if ($answer[$i] ne ${$result}) {

@@ -29,59 +29,32 @@ use English qw( -no_match_vars );
 # as obstacles to cattle and armies.
 
 # Saplings which become or-nodes when they grow up.
-package Parse::Marpa::Internal::Or_Sapling;
 
-use constant NAME             => 0;
-use constant ITEM             => 1;
-use constant RULE             => 2;
-use constant POSITION         => 3;
-use constant CHILD_LHS_SYMBOL => 4;
+package Parse::Marpa::Internal;
 
-package Parse::Marpa::Internal::And_Node;
+use Parse::Marpa::Offset Or_Sapling =>
+    qw(NAME ITEM RULE POSITION CHILD_LHS_SYMBOL);
 
-use constant PREDECESSOR => 0;
-use constant CAUSE       => 1;
-use constant VALUE_REF   => 2;
-use constant PERL_CLOSURE     => 3;
-use constant ARGC        => 4;
-use constant RULE        => 5;
-use constant POSITION    => 6;
+use Parse::Marpa::Offset And_Node =>
+    qw(PREDECESSOR CAUSE VALUE_REF PERL_CLOSURE ARGC RULE POSITION);
 
-package Parse::Marpa::Internal::Or_Node;
+use Parse::Marpa::Offset Or_Node =>
+    qw(NAME AND_NODES IS_CLOSURE);
 
-use constant NAME       => 0;
-use constant AND_NODES  => 1;
-use constant IS_CLOSURE => 2; # is this a closure or-node?
+# IS_CLOSURE - is this a closure or-node?
 
-package Parse::Marpa::Internal::Tree_Node;
+use Parse::Marpa::Offset Tree_Node =>
+    qw(OR_NODE CHOICE PREDECESSOR CAUSE DEPTH PERL_CLOSURE ARGC VALUE_REF RULE POSITION PARENT);
 
-use constant OR_NODE     => 0;
-use constant CHOICE      => 1;
-use constant PREDECESSOR => 2;
-use constant CAUSE       => 3;
-use constant DEPTH       => 4;
-use constant PERL_CLOSURE     => 6;
-use constant ARGC        => 7;
-use constant VALUE_REF   => 8;
-use constant RULE        => 9;
-use constant POSITION    => 10;
-use constant PARENT      => 11;
+use Parse::Marpa::Offset
+    Evaluator => qw(RECOGNIZER PARSE_COUNT OR_NODES TREE RULE_DATA PACKAGE NULL_VALUES CYCLES);
 
-package Parse::Marpa::Internal::Evaluator::Rule;
-
-use constant CODE    => 0;
-use constant PERL_CLOSURE => 1;
+# PARSE_COUNT  number of parses in an ambiguous parse
+# TREE         current evaluation tree
 
 package Parse::Marpa::Internal::Evaluator;
 
-use constant RECOGNIZER  => 0;
-use constant PARSE_COUNT => 1;    # number of parses in an ambiguous parse
-use constant OR_NODES    => 2;
-use constant TREE        => 3;    # current evaluation tree
-use constant RULE_DATA   => 4;
-use constant PACKAGE     => 5;
-use constant NULL_VALUES => 6;
-use constant CYCLES      => 7;
+use Parse::Marpa::Offset Rule => qw(CODE PERL_CLOSURE);
 
 use Scalar::Util qw(weaken);
 use Data::Dumper;
@@ -406,30 +379,59 @@ sub set_actions {
 # Returns false if no parse
 sub Parse::Marpa::Evaluator::new {
     my $class         = shift;
-    my $recognizer    = shift;
-    my $parse_set_arg = shift;
+    my $args          = shift;
+
     my $self          = bless [], $class;
 
-    my $recognizer_class = ref $recognizer;
-    my $right_class      = 'Parse::Marpa::Recognizer';
-    croak(
-        "Don't parse argument is class: $recognizer_class; should be: $right_class"
-    ) unless $recognizer_class eq $right_class;
+    my $recce;
+    RECCE_ARG_NAME: for my $recce_arg_name (qw(recognizer recce)) {
+        my $arg_value = $args->{$recce_arg_name};
+        delete $args->{$recce_arg_name};
+        next RECCE_ARG_NAME unless defined $arg_value;
+        croak('recognizer specified twice') if defined $recce;
+        $recce = $arg_value;
+    }
+    croak('No recognizer specified') unless defined $recce;
 
-    defined $recognizer->[Parse::Marpa::Internal::Recognizer::EVALUATOR]
-        and croak('Recognizer already in use by Evaluator');
+    my $recce_class = ref $recce;
+    croak("${class}::new() recognizer arg has wrong class: $recce_class")
+        unless $recce_class eq 'Parse::Marpa::Recognizer';
 
-    weaken( $recognizer->[Parse::Marpa::Internal::Recognizer::EVALUATOR] =
-            $self );
+    my $parse_set_arg = $args->{end};
+    delete $args->{end};
 
-    my ( $grammar, $earley_sets, ) = @{$recognizer}[
+    my $clone_arg = $args->{clone};
+    delete $args->{clone};
+    my $clone = $clone_arg // 1;
+
+    if ($clone) {
+        $recce = $recce->clone();
+    }
+
+    my ( $grammar, $earley_sets, ) = @{$recce}[
         Parse::Marpa::Internal::Recognizer::GRAMMAR,
         Parse::Marpa::Internal::Recognizer::EARLEY_SETS,
     ];
 
+    my $phase
+        = $grammar->[Parse::Marpa::Internal::Grammar::PHASE];
+
+    # croak('Recognizer already in use by Evaluator')
+        # if $phase == Parse::Marpa::Internal::Phase::EVALUATING;
+    croak("Attempt to evaluate grammar in wrong phase: ", Parse::Marpa::Internal::Phase::description($phase))
+        unless $phase >= Parse::Marpa::Internal::Phase::RECOGNIZED;
+
     local ($Parse::Marpa::Internal::This::grammar) = $grammar;
 
-    my $tracing = $grammar->[Parse::Marpa::Internal::Grammar::TRACING];
+    $self->[Parse::Marpa::Internal::Evaluator::RECOGNIZER] = $recce;
+
+    $self->set( $args );
+
+    $grammar->[Parse::Marpa::Internal::Grammar::PHASE]
+        = Parse::Marpa::Internal::Phase::EVALUATING;
+
+    my $tracing
+        = $grammar->[Parse::Marpa::Internal::Grammar::TRACING];
     my $trace_fh;
     my $trace_iterations;
 
@@ -442,12 +444,8 @@ sub Parse::Marpa::Evaluator::new {
 
     local ($Data::Dumper::Terse) = 1;
 
-    my $online = $grammar->[Parse::Marpa::Internal::Grammar::ONLINE];
-    if ( not $online ) {
-        Parse::Marpa::Recognizer::end_input($recognizer);
-    }
     my $default_parse_set =
-        $recognizer->[Parse::Marpa::Internal::Recognizer::DEFAULT_PARSE_SET];
+        $recce->[Parse::Marpa::Internal::Recognizer::DEFAULT_PARSE_SET];
 
     $self->[Parse::Marpa::Internal::Evaluator::PARSE_COUNT] = 0;
     $self->[Parse::Marpa::Internal::Evaluator::OR_NODES]    = [];
@@ -473,13 +471,11 @@ sub Parse::Marpa::Evaluator::new {
 
     return unless $start_rule;
 
-    @{$recognizer}[
+    @{$recce}[
         Parse::Marpa::Internal::Recognizer::START_ITEM,
         Parse::Marpa::Internal::Recognizer::CURRENT_PARSE_SET,
         ]
         = ( $start_item, $current_parse_set );
-
-    $self->[Parse::Marpa::Internal::Evaluator::RECOGNIZER] = $recognizer;
 
     state $parse_number = 0;
     my $package = $self->[Parse::Marpa::Internal::Evaluator::PACKAGE] =
@@ -913,8 +909,8 @@ sub Parse::Marpa::Evaluator::show_tree {
 sub Parse::Marpa::Evaluator::set {
     my $evaler     = shift;
     my $args = shift;
-    my $recognizer = $evaler->[Parse::Marpa::Internal::Evaluator::RECOGNIZER];
-    my ( $grammar, ) = @{$recognizer}[ Parse::Marpa::Internal::Recognizer::GRAMMAR, ];
+    my $recce = $evaler->[Parse::Marpa::Internal::Evaluator::RECOGNIZER];
+    my ( $grammar, ) = @{$recce}[ Parse::Marpa::Internal::Recognizer::GRAMMAR, ];
     Parse::Marpa::Grammar::set( $grammar, $args );
 }
 
@@ -1388,7 +1384,7 @@ in_equation_s_t($_)
         die("Parse failed at offset $fail_offset");
     }
 
-    my $evaler = new Parse::Marpa::Evaluator($recce);
+    my $evaler = new Parse::Marpa::Evaluator( { recognizer => $recce } );
     die("Parse failed") unless $evaler;
 
     for ( my $i = 0; defined( my $value = $evaler->value() ); $i++ ) {
@@ -1413,10 +1409,8 @@ which returns a reference to the value of the next parse.
 Often only the first parse is needed,
 in which case the C<value> method can be called just once.
 
-Each Marpa recognizer should have only one evaluator using it at any one time.
-If multiple evaluators
-use the same recognizer at the same time,
-they may produce incorrect results.
+By default, the C<new> constructor clones the recognizer, so that
+multiple evaluators do not interfere with each other.
 
 =head2 Null Values
 
@@ -1678,6 +1672,26 @@ A parse has the value of its start symbol,
 so "C<A is missing, but Zorro was here>" is also
 the value of the parse.
 
+=head2 Cloning
+
+The C<new> constructor requires a recognizer object to be one of its arguments.
+By default, the C<new> constructor clones the recognizer object.
+This is done so that evaluators do not interfere with each other by
+modifying the same data.
+Cloning is the default behavior, and is always safe.
+
+While safe, cloning does impose an overhead in memory and time.
+This can be avoided by using the C<clone> option with the C<new>
+constructor.
+Not cloning is safe if you know that the recognizer object will not be shared by another evaluator.
+You must also be sure that the
+underlying grammar object is not being shared by multiple recognizers.
+
+It is very common for a Marpa program to have a simple
+structure, where no more than one recognizer is created from any grammar,
+and no more than one evaluator is created from any recognizer.
+When this is the case, cloning is unnecessary.
+
 =head1 METHODS
 
 =head2 new
@@ -1689,7 +1703,9 @@ in_equation_s_t($_)
 
 =end Parse::Marpa::test_document:
 
-    my $evaler = new Parse::Marpa::Evaluator($recce);
+    my $evaler = new Parse::Marpa::Evaluator(
+      { recognizer => $recce }
+    );
 
 Z<>
 
@@ -1700,24 +1716,43 @@ in_misc_pl($_)
 
 =end Parse::Marpa::test_document:
 
-    my $evaler = new Parse::Marpa::Evaluator($recce, $location);
+    my $evaler = new Parse::Marpa::Evaluator( {
+        recce => $recce,
+        end => $location,
+        clone => 0,
+    } );
 
-Creates an evaluator object.
-On success, returns the evaluator object.
-Failures are thrown as exceptions.
+The C<new> method's one, required, argument is a hash reference of named
+arguments.
+The C<new> method either returns a new evaluator object or throws an exception.
+The C<recognizer> option is required,
+Its value must be a recognizer object which has finished recognizing a text.
+The C<recce> option is a synonym for the the C<recognizer> option.
 
-The first, required, argument is a recognizer object.
-The second, optional, argument
-will be used as the number of the earleme at which to end parsing.
-If there is no second argument, parsing ends at the default end
-of parsing, which was set in the recognizer.
+By default,
+parsing ends at the default end of parsing,
+which was set in the recognizer.
+If an C<end> option is specified, 
+it will be used as the number of the earleme at which to end parsing.
+
+If the C<clone> argument is set to 1,
+C<new> clones the recognizer object, so that multiple
+evaluators do not interfere with each other's data.
+This is the default and is always safe.
+If C<clone> is set to 0, the evaluator will work directly with
+the recognizer object which was its argument.
+See L<above|/"Cloning"> for more detail.
+
+Marpa options can also
+be named arguments to C<new>.
+For these, see L<Parse::Marpa::Doc::Options>.
 
 =head2 set
 
 =begin Parse::Marpa::test_document:
 
 ## next display
-in_cycle2_t($_)
+in_misc_pl($_)
 
 =end Parse::Marpa::test_document:
 

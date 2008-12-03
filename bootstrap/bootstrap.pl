@@ -47,7 +47,7 @@ open(GRAMMAR, "<", $grammar_file_name) or die("Cannot open $grammar_file_name: $
 # This is the end of bootstrap_header.pl
 $new_semantics = 'perl5';
 
-$new_version = '0.218000';
+$new_version = '0.219001';
 
 $new_start_symbol = "grammar";
 
@@ -1072,14 +1072,25 @@ my $g = new Parse::Marpa::Grammar({
     rules => $new_rules,
     terminals => $new_terminals,
     warnings => 1,
+    precompute => 0,
 });
 
-$g->set({default_lex_prefix => $new_default_lex_prefix})
-    if defined $new_default_lex_prefix;
-$g->set({default_action => $new_default_action})
-    if defined $new_default_action;
-$g->set({default_null_value => $new_default_null_value})
-    if defined $new_default_null_value;
+$g->set({
+    default_lex_prefix => $new_default_lex_prefix,
+    precompute => 0,
+}) if defined $new_default_lex_prefix;
+
+$g->set({
+    default_action => $new_default_action,
+    precompute => 0,
+}) if defined $new_default_action;
+
+$g->set({
+    default_null_value => $new_default_null_value,
+    precompute => 0,
+}) if defined $new_default_null_value;
+
+$g->precompute();
 
 my $recce = new Parse::Marpa::Recognizer({
    grammar=> $g,
@@ -1123,7 +1134,9 @@ my $spec;
     }
 }
 
-my $evaler = new Parse::Marpa::Evaluator($recce);
+$recce->end_input();
+
+my $evaler = new Parse::Marpa::Evaluator( { recce => $recce } );
 die("No parse") unless $evaler;
 
 sub slurp { open(my $fh, '<', shift); local($RS); <$fh>; }
