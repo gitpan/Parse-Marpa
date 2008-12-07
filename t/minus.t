@@ -5,9 +5,12 @@ use 5.010_000;
 
 use strict;
 use warnings;
-use lib "../lib";
 
 use Test::More tests => 11;
+
+use lib "lib";
+use lib "t/lib";
+use Marpa::Test;
 
 BEGIN {
 	use_ok( 'Parse::Marpa' );
@@ -26,6 +29,7 @@ my $g = new Parse::Marpa::Grammar({
     # Set max_parses to 20 in case there's an infinite loop.
     # This is for debugging, after all
     max_parses => 20,
+    strip => 0,
 
     rules => [
 	[ "E", [qw/E Minus E/],
@@ -84,7 +88,7 @@ my $recce = new Parse::Marpa::Recognizer({
     grammar => $g,
 });
 
-is( $g->show_rules(), <<'END_RULES', "Minuses Equation Rules" );
+Marpa::Test::is( $g->show_rules(), <<'END_RULES', "Minuses Equation Rules" );
 0: E -> E Minus E
 1: E -> E MinusMinus
 2: E -> MinusMinus E
@@ -93,7 +97,7 @@ is( $g->show_rules(), <<'END_RULES', "Minuses Equation Rules" );
 5: E['] -> E
 END_RULES
 
-is( $g->show_ii_QDFA(), <<'END_QDFA', "Minuses Equation QDFA" );
+Marpa::Test::is( $g->show_ii_QDFA(), <<'END_QDFA', "Minuses Equation QDFA" );
 Start States: St0; St5
 St0: predict; 1,5,8,11,14
 E ::= . E Minus E

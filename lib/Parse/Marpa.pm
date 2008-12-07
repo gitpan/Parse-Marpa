@@ -7,9 +7,7 @@ no warnings "recursion";
 use strict;
 
 BEGIN {
-    our $VERSION        = '0.220000';
-    our $STRING_VERSION = $VERSION;
-    $VERSION = eval $VERSION;
+    our $VERSION        = '0.221_000';
 }
 
 use integer;
@@ -109,7 +107,7 @@ use Carp;
 our $stringified_eval_error;
 
 BEGIN {
-    eval "use Parse::Marpa::Source $Parse::Marpa::STRING_VERSION";
+    eval "use Parse::Marpa::Source $Parse::Marpa::VERSION";
     $stringified_eval_error = $@;
     undef $Parse::Marpa::Internal::stringified_source_grammar
         if $stringified_eval_error;
@@ -219,7 +217,7 @@ is_synopsis_pl($_)
     say $$value;
 
     __DATA__
-    semantics are perl5.  version is 0.220.0.  start symbol is Expression.
+    semantics are perl5.  version is 0.221_000.  start symbol is Expression.
 
     Expression: Expression, /[*]/, Expression.  priority 200.  q{
         $_[0] * $_[2]

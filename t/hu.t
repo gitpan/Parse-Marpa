@@ -1,9 +1,12 @@
 use 5.010_000;
 use strict;
 use warnings;
-use lib "../lib";
 
 use Test::More tests => 9;
+
+use lib "lib";
+use lib "t/lib";
+use Marpa::Test;
 
 BEGIN {
 	use_ok( 'Parse::Marpa' );
@@ -17,6 +20,7 @@ BEGIN {
 my $g = new Parse::Marpa::Grammar({
     precompute => 0,
     start => "S'",
+    strip => 0,
     rules => [
         [ "S'", [qw/S c/] ],
         [ "S",  [qw/S A/] ],
@@ -37,7 +41,7 @@ $g->set({
 
 $g->precompute();
 
-is($g->show_rules(), <<'EOS', "Hopcroft/Ullman Rules");
+Marpa::Test::is($g->show_rules(), <<'EOS', "Hopcroft/Ullman Rules");
 0: S' -> S c
 1: S -> S A
 2: S -> A
@@ -45,20 +49,20 @@ is($g->show_rules(), <<'EOS', "Hopcroft/Ullman Rules");
 4: A -> a b
 EOS
 
-is($g->show_symbols(), <<'EOS', "Hopcroft/Ullman Symbols");
-0: S', lhs=[0], rhs=[]
-1: S, lhs=[1 2], rhs=[0 1 3]
-2: c, lhs=[], rhs=[0] terminal
-3: A, lhs=[3 4], rhs=[1 2]
-4: a, lhs=[], rhs=[3 4] terminal
-5: b, lhs=[], rhs=[3 4] terminal
+Marpa::Test::is($g->show_symbols(), <<'EOS', "Hopcroft/Ullman Symbols");
+0: S', lhs=[0] rhs=[]
+1: S, lhs=[1 2] rhs=[0 1 3]
+2: c, lhs=[] rhs=[0] terminal
+3: A, lhs=[3 4] rhs=[1 2]
+4: a, lhs=[] rhs=[3 4] terminal
+5: b, lhs=[] rhs=[3 4] terminal
 EOS
 
-is($g->show_nullable_symbols(), "", "Hopcroft/Ullman Nullable Symbols");
-is($g->show_nulling_symbols(), "", "Hopcroft/Ullman Nulling Symbols");
-is($g->show_productive_symbols(), 'A S S\' a b c', "Hopcroft/Ullman Productive Symbols");
-is($g->show_accessible_symbols(), 'A S S\' a b c', "Hopcroft/Ullman Accessible Symbols");
-is($g->show_NFA(), <<'EOS', "Hopcroft/Ullman NFA");
+Marpa::Test::is($g->show_nullable_symbols(), "", "Hopcroft/Ullman Nullable Symbols");
+Marpa::Test::is($g->show_nulling_symbols(), "", "Hopcroft/Ullman Nulling Symbols");
+Marpa::Test::is($g->show_productive_symbols(), 'A S S\' a b c', "Hopcroft/Ullman Productive Symbols");
+Marpa::Test::is($g->show_accessible_symbols(), 'A S S\' a b c', "Hopcroft/Ullman Accessible Symbols");
+Marpa::Test::is($g->show_NFA(), <<'EOS', "Hopcroft/Ullman NFA");
 S0: /* empty */
  empty => S1
 S1: S' ::= . S c
@@ -93,7 +97,7 @@ S14: A ::= a . b
 S15: A ::= a b .
 EOS
 
-is( $g->show_ii_QDFA(), <<'EOS', "Hopcroft/Ullman QDFA");
+Marpa::Test::is( $g->show_ii_QDFA(), <<'EOS', "Hopcroft/Ullman QDFA");
 Start States: St0; St7
 St0: 1
 S' ::= . S c

@@ -4,9 +4,10 @@
 use 5.010_000;
 use strict;
 use warnings;
-use lib "../lib";
-
+use lib "lib";
+use lib "t/lib";
 use Test::More tests => 8;
+use Marpa::Test;
 
 BEGIN {
     use_ok('Parse::Marpa');
@@ -22,7 +23,8 @@ my $g = new Parse::Marpa::Grammar({
         [ "E" ],
     ],
     academic => 1,
-    precompute => 0
+    precompute => 0,
+    strip => 0.
 });
 
 $g->set({
@@ -31,7 +33,7 @@ $g->set({
     ],
 });
 
-is( $g->show_rules(), <<'EOS', "Aycock/Horspool Rules" );
+Marpa::Test::is( $g->show_rules(), <<'EOS', "Aycock/Horspool Rules" );
 0: S' -> S /* nullable */
 1: S -> A A A A /* nullable */
 2: A -> a
@@ -39,24 +41,24 @@ is( $g->show_rules(), <<'EOS', "Aycock/Horspool Rules" );
 4: E -> /* empty nullable nulling */
 EOS
 
-is( $g->show_symbols(), <<'EOS', "Aycock/Horspool Symbols" );
-0: S', lhs=[0], rhs=[] nullable
-1: S, lhs=[1], rhs=[0] nullable
-2: A, lhs=[2 3], rhs=[1] nullable
-3: a, lhs=[], rhs=[2] terminal
-4: E, lhs=[4], rhs=[3] nullable nulling
+Marpa::Test::is( $g->show_symbols(), <<'EOS', "Aycock/Horspool Symbols" );
+0: S', lhs=[0] rhs=[] nullable
+1: S, lhs=[1] rhs=[0] nullable
+2: A, lhs=[2 3] rhs=[1] nullable
+3: a, lhs=[] rhs=[2] terminal
+4: E, lhs=[4] rhs=[3] nullable nulling
 EOS
 
-is( $g->show_nullable_symbols(),
+Marpa::Test::is( $g->show_nullable_symbols(),
     "A E S S'", "Aycock/Horspool Nullable Symbols" );
-is( $g->show_nulling_symbols(),
+Marpa::Test::is( $g->show_nulling_symbols(),
     "E", "Aycock/Horspool Nulling Symbols" );
-is( $g->show_productive_symbols(),
+Marpa::Test::is( $g->show_productive_symbols(),
     "A E S S' a", "Aycock/Horspool Productive Symbols" );
-is( $g->show_accessible_symbols(),
+Marpa::Test::is( $g->show_accessible_symbols(),
     "A E S S' a", "Aycock/Horspool Accessible Symbols" );
 
-is( $g->show_NFA(), <<'EOS', "Aycock/Horspool NFA" );
+Marpa::Test::is( $g->show_NFA(), <<'EOS', "Aycock/Horspool NFA" );
 S0: /* empty */
  empty => S1
 S1: S' ::= . S

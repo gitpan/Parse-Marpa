@@ -19,10 +19,10 @@ my $new_default_null_value;
 my $new_default_lex_prefix;
 my %strings;
 
-# This file was automatically generated using Parse::Marpa 0.22
+# This file was automatically generated using Parse::Marpa 0.221_000
 $new_semantics = 'perl5';
 
-$new_version = '0.220000';
+$new_version = '0.221_000';
 
 $new_start_symbol = "grammar";
 
@@ -345,7 +345,7 @@ push(@$new_rules, {
     action => 
 q{
     q{$new_version = '}
-    . Parse::Marpa::MDL::canonical_version($_[3])
+    . $_[3]
     . qq{';\n}
 },
 ,
@@ -362,7 +362,7 @@ push(@$new_rules, {
     action => 
 q{
     q{$new_version = '}
-    . Parse::Marpa::MDL::canonical_version($_[0])
+    . $_[0]
     . qq{';\n}
 },
 ,
@@ -1016,7 +1016,7 @@ push(@$new_terminals, [ "double-quoted-string" => { action =>  q{
     return;
 }} ] );
 
-push(@$new_terminals, [ "version-number" => { regex => qr/(\d+\.)*\d+/} ] );
+push(@$new_terminals, [ "version-number" => { regex => qr/\d+\.[\d_.]+\d/} ] );
 
 push(@$new_terminals, [ "symbol-word" => { regex => qr/[a-zA-Z_][a-zA-Z0-9_-]*/} ] );
 

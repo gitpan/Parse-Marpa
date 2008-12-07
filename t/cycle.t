@@ -3,11 +3,13 @@
 use 5.010_000;
 use strict;
 use warnings;
-use lib "../lib";
 use English qw( -no_match_vars );
 use Fatal qw(open close chdir);
 
 use Test::More tests => 7;
+use lib "lib";
+use lib "t/lib";
+use Marpa::Test;
 
 BEGIN {
     use_ok('Parse::Marpa');
@@ -18,7 +20,7 @@ $example_dir = "../example" unless -d $example_dir;
 chdir($example_dir);
 
 my $mdl_header = <<'EOF';
-semantics are perl5.  version is 0.220.0.
+semantics are perl5.  version is 0.221_000.
 start symbol is S.
 default action is q{join(q{ }, @_)}.
 
@@ -100,9 +102,9 @@ EOS
       \('123456'),
       '1 2 3 4 5 6',
       <<'EOS'
-Cycle found involving rule: 3: c -> w d x /* !useful */
-Cycle found involving rule: 2: b -> v c /* !useful */
-Cycle found involving rule: 1: a -> b t u /* !useful */
+Cycle found involving rule: 3: c -> w d x
+Cycle found involving rule: 2: b -> v c
+Cycle found involving rule: 1: a -> b t u
 Cycle found involving rule: 5: e -> s
 Cycle found involving rule: 4: d -> e
 Cycle found involving rule: 0: s -> a
@@ -121,8 +123,8 @@ EOS
             trace_file_handle => *MEMORY,
         }
     );
-    is($$value, $expected);
-    is($trace, $expected_trace);
+    Marpa::Test::is($$value, $expected);
+    Marpa::Test::is($trace, $expected_trace);
 }
 
 # Local Variables:
