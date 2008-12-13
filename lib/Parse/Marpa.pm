@@ -7,7 +7,7 @@ no warnings "recursion";
 use strict;
 
 BEGIN {
-    our $VERSION        = '0.221_001';
+    our $VERSION        = '0.222000';
 }
 
 use integer;
@@ -227,7 +227,7 @@ is_synopsis_pl($_)
     say $$value;
 
     __DATA__
-    semantics are perl5.  version is 0.221_001.  start symbol is Expression.
+    semantics are perl5.  version is 0.222000.  start symbol is Expression.
 
     Expression: Expression, /[*]/, Expression.  priority 200.  q{
         $_[0] * $_[2]
@@ -250,7 +250,7 @@ is_synopsis_pl($_)
 If you can write a grammar in BNF, Marpa will generate a parser for it.
 That means Marpa parses
 left- and right-recursive grammars; all ambiguous grammars,
-including infinitely ambiguous ones;
+including infinitely ambiguous grammars;
 grammars with empty rules;
 and grammars with useless rules.
 
@@ -429,12 +429,10 @@ For more detail see L<Parse::Marpa::Grammar/"Tokens and Earlemes">.
 
 =head2 Lack of Backward Compatibility
 
-While this module is in alpha,
-versions may not be backward compatible.
+Marpa versions may not be backward compatible.
 MDL protects users by requiring the version to be specified,
 and by insisting on an exact match with Marpa's version number.
 This strict version regime is the same as that being considered for Perl 6.
-Nonetheless, Marpa's version matching may become less strict once it goes beta.
 
 =head2 Phases
 
