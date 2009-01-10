@@ -7,7 +7,7 @@ use Parse::Marpa;
 
 my $mdl_source = <<END;
 semantics are perl5.
-version is 1.000000.
+version is 1.001_000.
 start symbol is S.
 
 S: Document.
@@ -28,7 +28,7 @@ $grammar = Parse::Marpa::Grammar::unstringify($stringified_grammar, $trace_fh);
 
 $grammar = Parse::Marpa::Grammar::unstringify($stringified_grammar);
 
-my $new_lex_preamble = q{};
+my $new_lex_preamble = q{1};
 
 my $recce = new Parse::Marpa::Recognizer({
    grammar=> $grammar,

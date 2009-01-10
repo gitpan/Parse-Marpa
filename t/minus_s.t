@@ -1,3 +1,5 @@
+#!perl
+#
 use 5.010_000;
 
 # An ambiguous equation,
@@ -5,10 +7,13 @@ use 5.010_000;
 
 use strict;
 use warnings;
-use lib "../lib";
+use lib 'lib';
+use lib 't/lib';
+use Carp;
 use English qw( -no_match_vars ) ;
 
 use Test::More tests => 10;
+use Marpa::Test;
 
 BEGIN {
 	use_ok( 'Parse::Marpa' );
@@ -16,7 +21,7 @@ BEGIN {
 
 my $grammar_source; { local($RS) = undef; $grammar_source = <DATA> };
 
-my $text = "6-----1";
+my $text = '6-----1';
 
 my @values = Parse::Marpa::mdl(\$grammar_source, \$text, { max_parses => 30 });
 
@@ -34,10 +39,10 @@ my @expected = (
 my $expected_count = @expected;
 my $values_count = @values;
 
-is($expected_count, $values_count, "Expected number of values");
+Marpa::Test::is($expected_count, $values_count, 'Expected number of values');
 
-for (my $i = 0; $i <= $#expected; $i++) {
-    is(${$values[$i]}, $expected[$i], "Minuses Equation Value $i");
+for my $i ( 0 .. $#expected ) {
+    Marpa::Test::is(${$values[$i]}, $expected[$i], "Minuses Equation Value $i");
 }
 
 # Local Variables:
@@ -55,7 +60,7 @@ for (my $i = 0; $i <= $#expected; $i++) {
 # a start symbol that appears repeatedly on the RHS.
 
 __DATA__
-semantics are perl5.  version is 1.000000.
+semantics are perl5.  version is 1.001_000.
 
 the start symbol is E.
 

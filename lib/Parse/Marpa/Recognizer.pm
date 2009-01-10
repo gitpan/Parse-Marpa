@@ -199,26 +199,24 @@ sub set_lexers {
                 my $closure;
                 {
                     my @warnings;
-                    my @caller_return;
                     local $SIG{__WARN__} = sub {
-                        push @warnings, $_[0];
-                        @caller_return = caller 0;
+                        push @warnings, [ $_[0], (caller 0) ];
                     };
 
 		    ## no critic (BuiltinFunctions::ProhibitStringyEval)
                     $closure = eval $code;
 		    ## use critic
 
-                    my $fatal_error = $EVAL_ERROR;
-                    if ( $fatal_error or @warnings ) {
-                        Parse::Marpa::Internal::code_problems(
-                            $fatal_error,
-                            \@warnings,
-                            'compiling action',
-                            "compiling action for $name",
-                            \$code,
-                            \@caller_return
-                        );
+                    if ( not $closure or @warnings ) {
+                        my $fatal_error = $EVAL_ERROR;
+                        Parse::Marpa::Internal::code_problems({
+                            eval_ok => $closure,
+                            fatal_error => $fatal_error,
+                            warnings => \@warnings,
+                            where => 'compiling action',
+                            long_where => "compiling action for $name",
+                            code => \$code,
+                        });
                     }
                 }
 
@@ -299,26 +297,26 @@ sub prepare_grammar_for_recognizer {
 
     if ( defined $lex_preamble ) {
         my @warnings;
-        my @caller_return;
         local $SIG{__WARN__} = sub {
-            push @warnings, $_[0];
-            @caller_return = caller 0;
+            push @warnings, [ $_[0], (caller 0) ];
         };
 
-	## no critic (BuiltinFunctions::ProhibitStringyEval)
-        eval
+        my $code =
 	    'package ' . $package . ";\n"
 	    . $lex_preamble;
+	## no critic (BuiltinFunctions::ProhibitStringyEval)
+        my $eval_ok = eval $code;
 	## use critic
 
-        my $fatal_error = $EVAL_ERROR;
-        if ( $fatal_error or @warnings ) {
-            Parse::Marpa::Internal::code_problems(
-                $fatal_error, \@warnings,
-                'evaluating lex preamble',
-                'evaluating lex preamble',
-                \$lex_preamble, \@caller_return
-            );
+        if (not $eval_ok or @warnings ) {
+            my $fatal_error = $EVAL_ERROR;
+            Parse::Marpa::Internal::code_problems({
+                eval_ok => $eval_ok,
+                fatal_error => $fatal_error,
+                warnings => \@warnings,
+                where => 'evaluating lex preamble',
+                code => \$code,
+            });
         }
     }
 
@@ -476,27 +474,29 @@ sub Parse::Marpa::Recognizer::unstringify {
     my $trace_fh         = shift;
     $trace_fh //= *STDERR;
 
-    croak("Attempt to unstringify undefined recognizer")
+    croak('Attempt to unstringify undefined recognizer')
         unless defined $stringified_recce;
 
     my $recce;
     {
         my @warnings;
-        my @caller_return;
         local $SIG{__WARN__} = sub {
-            my $warning = $_[0];
-            push @warnings, $warning;
-            @caller_return = caller 0;
+            push @warnings, [ $_[0], (caller 0) ];
         };
-        eval ${$stringified_recce};
-        my $fatal_error = $@;
-        if ( $fatal_error or @warnings ) {
-            Parse::Marpa::Internal::code_problems(
-                $fatal_error, \@warnings,
-                'unstringifying recognizer',
-                'unstringifying recognizer',
-                $stringified_recce, \@caller_return
-            );
+
+        ## no critic (BuiltinFunctions::ProhibitStringyEval)
+        my $eval_ok = eval ${$stringified_recce};
+        ## use critic
+
+        if (not $eval_ok or @warnings ) {
+            my $fatal_error = $EVAL_ERROR;
+            Parse::Marpa::Internal::code_problems({
+                eval_ok => $eval_ok,
+                fatal_error => $fatal_error,
+                warnings => \@warnings,
+                where => 'unstringifying recognizer',
+                code => $stringified_recce,
+            });
         }
     }
 
@@ -514,9 +514,17 @@ sub Parse::Marpa::Recognizer::clone {
     my $grammar = $recce->[Parse::Marpa::Internal::Recognizer::GRAMMAR];
     my $trace_fh = $grammar->[Parse::Marpa::Internal::Grammar::TRACE_FILE_HANDLE];
 
+    if ($#{$recce} > Parse::Marpa::Internal::Recognizer::LAST_EVALUATOR_FIELD)
+    {
+       croak(
+           "Cloning of unstripped recognizers not yet implemented\n",
+           "Strip the recognizer or turn off cloning\n"
+        );
+    }
     my $stringified_recce = Parse::Marpa::Recognizer::stringify($recce);
-    $recce =
-        Parse::Marpa::Recognizer::unstringify( $stringified_recce, $trace_fh );
+    # say $$stringified_recce;
+    # exit 0;
+    return Parse::Marpa::Recognizer::unstringify( $stringified_recce, $trace_fh );
 
 }
 
@@ -629,7 +637,7 @@ sub Parse::Marpa::Recognizer::earleme {
     local ($Parse::Marpa::Internal::This::grammar) = $grammar;
     my $phase = $grammar->[Parse::Marpa::Internal::Grammar::PHASE];
     if ($phase >= Parse::Marpa::Internal::Phase::RECOGNIZED) {
-        croak("New earlemes not allowed after end of input");
+        croak('New earlemes not allowed after end of input');
     }
 
     # lexables not checked -- don't use prediction here
@@ -646,14 +654,14 @@ sub Parse::Marpa::Recognizer::earleme {
 sub Parse::Marpa::Recognizer::text {
     my $parse     = shift;
     my $input     = shift;
-    my $length    = shift;
+    my $input_length    = shift;
     croak(
         'Parse::Marpa::Recognizer::text() third argument not yet implemented')
-        if defined $length;
+        if defined $input_length;
 
     my $input_ref;
     given (ref $input) {
-    when ('') { $input_ref = \$input; }
+    when (q{}) { $input_ref = \$input; }
     when ('SCALAR') { $input_ref = $input; }
     default {
 	croak(
@@ -673,7 +681,7 @@ sub Parse::Marpa::Recognizer::text {
     local ($Parse::Marpa::Internal::This::grammar) = $grammar;
     my $phase = $grammar->[Parse::Marpa::Internal::Grammar::PHASE];
     if ($phase >= Parse::Marpa::Internal::Phase::RECOGNIZED) {
-        croak("More text not allowed after end of input");
+        croak('More text not allowed after end of input');
     }
 
     my $tracing = $grammar->[Parse::Marpa::Internal::Grammar::TRACING];
@@ -694,10 +702,10 @@ sub Parse::Marpa::Recognizer::text {
         Parse::Marpa::Internal::Grammar::AMBIGUOUS_LEX,
     ];
 
-    $length = length ${$input_ref} unless defined $length;
+    $input_length = length ${$input_ref} unless defined $input_length;
 
     pos ${$input_ref} = 0;
-    POS: for (my $pos = 0; $pos < $length; $pos++) {
+    POS: for my $pos (0 .. ($input_length-1)) {
         my @alternatives;
 
         # NOTE: Often the number of the earley set, and the idea of
@@ -781,27 +789,24 @@ sub Parse::Marpa::Recognizer::text {
             my ( $match, $length );
             {
                 my @warnings;
-                my @caller_return;
                 local $SIG{__WARN__} = sub {
-                    push @warnings, $_[0];
-                    @caller_return = caller 0;
+                    push @warnings, [ $_[0], (caller 0) ];
                 };
-                eval {
-                    ( $match, $length ) = $lex_closure->( $input_ref, $pos );
+                my $eval_ok = eval {
+                    ( $match, $length ) = $lex_closure->( $input_ref, $pos ); 1;
                 };
-                my $fatal_error = $EVAL_ERROR;
-                if ( $fatal_error or @warnings ) {
-                    Parse::Marpa::Internal::code_problems(
-                        $fatal_error,
-                        \@warnings,
-                        'user supplied lexer',
-                        'user supplied lexer for '
+                if (not $eval_ok or @warnings ) {
+                    my $fatal_error = $EVAL_ERROR;
+                    Parse::Marpa::Internal::code_problems({
+                        eval_ok => $eval_ok,
+                        fatal_error => $fatal_error,
+                        warnings => \@warnings,
+                        where => 'user supplied lexer',
+                        long_where => 'user supplied lexer for '
                             . $lexable->[Parse::Marpa::Internal::Symbol::NAME]
                             . " at $pos",
-                        \(  $lexable->[Parse::Marpa::Internal::Symbol::ACTION]
-                        ),
-                        \@caller_return
-                    );
+                        code => \(  $lexable->[Parse::Marpa::Internal::Symbol::ACTION] ),
+                    });
                 }
             }
 
@@ -929,10 +934,13 @@ sub scan_set {
         return !$exhausted;
     }
 
-    # Rewrite this as while loop
-    EARLEY_ITEM: for (my $ix = 0; $ix < @{$earley_set}; $ix++ ) {
+    # Important: more earley sets can be added in the loop
+    my $earley_set_ix = -1;
+    EARLEY_ITEM: while (1) {
 
-        my $earley_item = $earley_set->[$ix];
+        my $earley_item = $earley_set->[++$earley_set_ix];
+        last EARLEY_ITEM unless defined $earley_item;
+
         my ( $state, $parent ) = @{$earley_item}[
             Parse::Marpa::Internal::Earley_item::STATE,
             Parse::Marpa::Internal::Earley_item::PARENT
@@ -1047,10 +1055,13 @@ sub complete_set {
     my $lexable_seen = [];
     $#{$lexable_seen} = $#{$symbols};
 
-    # Rewrite this as while loop
-    EARLEY_ITEM: for (my $ix = 0; $ix < @{$earley_set}; $ix++ ) {
+    # Important: more earley sets can be added in the loop
+    my $earley_set_ix = -1;
+    EARLEY_ITEM: while (1) {
 
-        my $earley_item = $earley_set->[$ix];
+        my $earley_item = $earley_set->[++$earley_set_ix];
+        last EARLEY_ITEM unless defined $earley_item;
+
         my ( $state, $parent ) = @{$earley_item}[
             Parse::Marpa::Internal::Earley_item::STATE,
             Parse::Marpa::Internal::Earley_item::PARENT
@@ -1079,12 +1090,12 @@ sub complete_set {
                     ->{$complete_symbol_name};
                 next PARENT_ITEM unless defined $states;
 
-                STATE: for my $state (@{$states}) {
+                TRANSITION_STATE: for my $transition_state (@{$states}) {
                     my $reset =
-                        $state->[Parse::Marpa::Internal::QDFA::RESET_ORIGIN];
+                        $transition_state->[Parse::Marpa::Internal::QDFA::RESET_ORIGIN];
                     my $origin = $reset ? $current_set : $grandparent;
-		    my $state_id = $state->[Parse::Marpa::Internal::QDFA::ID];
-		    my $name = sprintf 'S%d@%d-%d', $state_id, $origin, $current_set;
+		    my $transition_state_id = $transition_state->[Parse::Marpa::Internal::QDFA::ID];
+		    my $name = sprintf 'S%d@%d-%d', $transition_state_id, $origin, $current_set;
                     my $target_item = $earley_hash->{$name};
                     unless ( defined $target_item ) {
                         $target_item = [];
@@ -1096,18 +1107,18 @@ sub complete_set {
                             Parse::Marpa::Internal::Earley_item::TOKENS,
                             Parse::Marpa::Internal::Earley_item::SET
                             ]
-                            = ( $name, $state, $origin, [], [], $current_set );
+                            = ( $name, $transition_state, $origin, [], [], $current_set );
                         $earley_hash->{$name} = $target_item;
                         push @{$earley_set}, $target_item;
                     }    # unless defined $target_item
-                    next STATE if $reset;
+                    next TRANSITION_STATE if $reset;
                     push
                         @{  $target_item
                                 ->[Parse::Marpa::Internal::Earley_item::LINKS]
                             },
                         [ $parent_item, $earley_item ]
                     ;
-                }    # for my $state
+                }    # TRANSITION_STATE
 
             }    # PARENT_ITEM
 
@@ -1120,7 +1131,9 @@ sub complete_set {
             $earley_item->[Parse::Marpa::Internal::Earley_item::LINKS];
         my @sorted_links =
             map  { $_->[0] }
+            ## no critic (BuiltinFunctions::ProhibitReverseSortBlock)
             sort { $b->[1] cmp $a->[1] }
+            ## use critic
             map {
             [   $_,
                 $_->[1]->[Parse::Marpa::Internal::Earley_item::STATE]
@@ -1227,7 +1240,7 @@ in_equation_s_t($_)
 
     my $fail_offset = $recce->text( '2-0*3+1' );
     if ( $fail_offset >= 0 ) {
-        die("Parse failed at offset $fail_offset");
+        croak("Parse failed at offset $fail_offset");
     }
 
 Z<>
@@ -1241,22 +1254,22 @@ in_equation_t($_)
 
     my $recce = new Parse::Marpa::Recognizer({grammar => $grammar});
 
-    my $op = $grammar->get_symbol("Op");
-    my $number = $grammar->get_symbol("Number");
+    my $op = $grammar->get_symbol('Op');
+    my $number = $grammar->get_symbol('Number');
 
     my @tokens = (
 	[$number, 2, 1],
-	[$op, "-", 1],
+	[$op, q{-}, 1],
 	[$number, 0, 1],
-	[$op, "*", 1],
+	[$op, q{*}, 1],
 	[$number, 3, 1],
-	[$op, "+", 1],
+	[$op, q{+}, 1],
 	[$number, 1, 1],
     );
 
     TOKEN: for my $token (@tokens) {
 	next TOKEN if $recce->earleme($token);
-	die("Parsing exhausted at character: ", $token->[1]);
+	croak('Parsing exhausted at character: ', $token->[1]);
     }
 
     $recce->end_input();
@@ -1456,7 +1469,7 @@ in_equation_s_t($_)
 
     my $fail_offset = $recce->text( '2-0*3+1' );
     if ( $fail_offset >= 0 ) {
-        die("Parse failed at offset $fail_offset");
+        croak("Parse failed at offset $fail_offset");
     }
 
 Extends the parse using the one-character-per-earleme model.
@@ -1516,8 +1529,8 @@ in_ah2_t($_)
 
 =end Parse::Marpa::test_document:
 
-    my $a = $grammar->get_symbol("a");
-    $recce->earleme([$a, "a", 1]) or die("Parsing exhausted");
+    my $a = $grammar->get_symbol('a');
+    $recce->earleme([$a, 'a', 1]) or croak('Parsing exhausted');
 
 The C<earleme> method adds zero or more tokens,
 then moves the current earleme forward by one earleme.
