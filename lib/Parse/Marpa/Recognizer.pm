@@ -214,8 +214,8 @@ sub set_lexers {
                             fatal_error => $fatal_error,
                             grammar => $grammar,
                             warnings => \@warnings,
-                            where => 'compiling action',
-                            long_where => "compiling action for $name",
+                            where => 'compiling lexer',
+                            long_where => "compiling lexer for $name",
                             code => \$code,
                         });
                     }
@@ -478,6 +478,8 @@ sub Parse::Marpa::Recognizer::unstringify {
 
     croak('Attempt to unstringify undefined recognizer')
         unless defined $stringified_recce;
+    croak('Arg to unstringify must be ref to SCALAR')
+        if ref $stringified_recce ne 'SCALAR';
 
     my $recce;
     {
