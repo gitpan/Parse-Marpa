@@ -1,6 +1,6 @@
 #!perl
 #
-use 5.010_000;
+use 5.010;
 use strict;
 use warnings;
 use lib 'lib';
@@ -89,7 +89,7 @@ TEST: while (my $test = pop @tests) {
 }
 
 __DATA__
-semantics are perl5.  version is 1.001_002.  the start symbol is perl line.
+semantics are perl5.  version is 1.001_003.  the start symbol is perl line.
 the default lex prefix is qr/\s*/.
 
 perl line: perl statements, optional comment.

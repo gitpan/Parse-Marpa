@@ -1,13 +1,13 @@
 package Parse::Marpa;
 
-use 5.010_000;
+use 5.010;
 
 use warnings;
-no warnings "recursion";
+no warnings 'recursion';
 use strict;
 
 BEGIN {
-    our $VERSION        = '1.001_002';
+    our $VERSION        = '1.001_003';
 }
 
 use integer;
@@ -104,23 +104,24 @@ package Parse::Marpa::Internal;
 
 use Carp;
 
-our $stringified_eval_error;
+our $STRINGIFIED_EVAL_ERROR;
 
 BEGIN {
-    eval "use Parse::Marpa::Source";
-    $stringified_eval_error = $@;
-    if (not $stringified_eval_error)
+    ## no critic (BuiltinFunctions::ProhibitStringyEval)
+    if (not eval ' use Parse::Marpa::Source ')
+    ## use critic 
     {
+        $STRINGIFIED_EVAL_ERROR = $EVAL_ERROR;
         if ($Parse::Marpa::VERSION ne $Parse::Marpa::Source::VERSION)
         {
-           $stringified_eval_error =
-              "Version mismatch:"
+           $STRINGIFIED_EVAL_ERROR =
+              'Version mismatch:'
               . " Parse::Marpa::VERSION=$Parse::Marpa::VERSION "
               . " Parse::Marpa::Source::VERSION=$Parse::Marpa::Source::VERSION"
         }
     }
     undef $Parse::Marpa::Internal::stringified_source_grammar
-        if $stringified_eval_error;
+        if $STRINGIFIED_EVAL_ERROR;
 }
 
 package Parse::Marpa::Read_Only;
@@ -146,16 +147,16 @@ sub Parse::Marpa::mdl {
 
     my $ref = ref $grammar;
     croak(qq{grammar arg to mdl() was ref type "$ref", must be string ref})
-        unless $ref eq "SCALAR";
+        unless $ref eq 'SCALAR';
 
     $ref = ref $text;
     croak(qq{text arg to mdl() was ref type "$ref", must be string ref})
-        unless $ref eq "SCALAR";
+        unless $ref eq 'SCALAR';
 
     $options //= {};
     $ref = ref $options;
     croak(qq{text arg to mdl() was ref type "$ref", must be hash ref})
-        unless $ref eq "HASH";
+        unless $ref eq 'HASH';
 
     my $g =
         new Parse::Marpa::Grammar( { mdl_source => $grammar, %{$options} } );
@@ -176,28 +177,32 @@ sub Parse::Marpa::mdl {
         clone => 0,
     } );
     if ( not defined $evaler ) {
-        die_with_parse_failure( $text, length($text) );
+        die_with_parse_failure( $text, length $text );
     }
     return $evaler->value if not wantarray;
     my @values;
     while ( defined( my $value = $evaler->value() ) ) {
-        push( @values, $value );
+        push @values, $value;
     }
-    @values;
+    return @values;
 }
 
 sub Parse::Marpa::show_value {
     my $value_ref = shift;
     my $ii        = shift;
-    return "none" unless defined $value_ref;
-    my $value = $$value_ref;
-    return "undef" unless defined $value;
+    return 'none' unless defined $value_ref;
+    my $value = ${$value_ref};
+    return 'undef' unless defined $value;
     if ($ii) {
         my $type = ref $value;
         return $type if $type;
     }
     return "$value";
 }
+
+1;    # End of Parse::Marpa
+
+__END__
 
 =head1 NAME
 
@@ -213,7 +218,9 @@ is_synopsis_pl($_)
 
 =end Parse::Marpa::test_document:
 
-    use 5.010_000;
+    #!perl
+    
+    use 5.010;
     use strict;
     use warnings;
     use English qw( -no_match_vars ) ;
@@ -222,12 +229,12 @@ is_synopsis_pl($_)
     # remember to use refs to strings
     my $value = Parse::Marpa::mdl(
         (do { local($RS) = undef; my $source = <DATA>; \$source; }),
-        \("2+2*3")
+        \('2+2*3')
     );
-    say $$value;
+    say ${$value};
 
     __DATA__
-    semantics are perl5.  version is 1.001_002.  start symbol is Expression.
+    semantics are perl5.  version is 1.001_003.  start symbol is Expression.
 
     Expression: Expression, /[*]/, Expression.  priority 200.  q{
         $_[0] * $_[2]
@@ -866,8 +873,6 @@ This program is free software; you can redistribute
 it and/or modify it under the same terms as Perl 5.10.0.
 
 =cut
-
-1;    # End of Parse::Marpa
 
 # Local Variables:
 #   mode: cperl

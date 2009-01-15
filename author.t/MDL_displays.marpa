@@ -1,5 +1,5 @@
 semantics are perl5. perl5 is the semantics. perl5 is semantics. the semantics are perl5. the semantics is perl5.
-version is 1.001_002.
+version is 1.001_003.
 
 start symbol is S.
 
@@ -11,7 +11,7 @@ concatenate lines is the default action.
 
 the default null value is q{'@'}.
 
-a lex preamble is q{ our $regex_data = []; }.
+a lex preamble is q{ our $regex_data = []; 1; }.
 
 note: I may look like a production sentence; but MDL knows the difference.
 

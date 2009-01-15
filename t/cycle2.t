@@ -1,7 +1,7 @@
 #!perl
 
 # A grammars with cycles
-use 5.010_000;
+use 5.010;
 use strict;
 use warnings;
 use lib 'lib';
@@ -35,7 +35,7 @@ A(B(A(B(A(B(A(B(A(B(A(B(A(B(A(B(A(B(A(B(a))))))))))))))))))))
 EOS
 
 my $mdl = <<'EOF';
-semantics are perl5.  version is 1.001_002.
+semantics are perl5.  version is 1.001_003.
 start symbol is S.
 default action is q{join(q{ }, @_)}.
 

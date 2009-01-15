@@ -1,4 +1,6 @@
-use 5.010_000;
+#!perl
+
+use 5.010;
 use strict;
 use warnings;
 use English qw( -no_match_vars ) ;
@@ -7,12 +9,12 @@ use Parse::Marpa;
 # remember to use refs to strings
 my $value = Parse::Marpa::mdl(
     (do { local($RS) = undef; my $source = <DATA>; \$source; }),
-    \("2+2*3")
+    \('2+2*3')
 );
-say $$value;
+say ${$value};
 
 __DATA__
-semantics are perl5.  version is 1.001_002.  start symbol is Expression.
+semantics are perl5.  version is 1.001_003.  start symbol is Expression.
 
 Expression: Expression, /[*]/, Expression.  priority 200.  q{
     $_[0] * $_[2]
