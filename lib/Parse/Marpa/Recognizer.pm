@@ -7,16 +7,6 @@ use strict;
 use integer;
 use English qw( -no_match_vars );
 
-package Parse::Marpa::Read_Only;
-
-# perhaps a Perl critic bug here -- I can't turn off the
-# complaint for Parse::Marpa::Read_Only package
-# variables
-
-## no critic (Variables::ProhibitPackageVars)
-our $rule;
-## use critic
-
 package Parse::Marpa::Internal;
 
 # Elements of the EARLEY ITEM structure
@@ -104,11 +94,9 @@ Parse::Marpa::Internal::Rule
 Parse::Marpa::Internal::Source_Eval
 Parse::Marpa::Internal::Source_Raw
 Parse::Marpa::Internal::Symbol
-Parse::Marpa::Internal::This
 Parse::Marpa::Internal::Tree_Node
 Parse::Marpa::Lex
 Parse::Marpa::MDL
-Parse::Marpa::Read_Only
 Parse::Marpa::Recognizer
 );
 
@@ -395,8 +383,6 @@ sub Parse::Marpa::Recognizer::new {
         delete $args->{trace_file_handle};
     }
 
-    local ($Parse::Marpa::Internal::This::grammar) = $grammar;
-
     # options are not set until *AFTER* the grammar is cloned
     Parse::Marpa::Grammar::set( $grammar, $args );
 
@@ -643,7 +629,6 @@ sub Parse::Marpa::Recognizer::earleme {
     my $parse = shift;
 
     my $grammar = $parse->[Parse::Marpa::Internal::Recognizer::GRAMMAR];
-    local ($Parse::Marpa::Internal::This::grammar) = $grammar;
     my $phase = $grammar->[Parse::Marpa::Internal::Grammar::PHASE];
     if ($phase >= Parse::Marpa::Internal::Phase::RECOGNIZED) {
         croak('New earlemes not allowed after end of input');
@@ -687,7 +672,6 @@ sub Parse::Marpa::Recognizer::text {
         Parse::Marpa::Internal::Recognizer::LEXERS,
     ];
 
-    local ($Parse::Marpa::Internal::This::grammar) = $grammar;
     my $phase = $grammar->[Parse::Marpa::Internal::Grammar::PHASE];
     if ($phase >= Parse::Marpa::Internal::Phase::RECOGNIZED) {
         croak('More text not allowed after end of input');
@@ -861,7 +845,6 @@ sub Parse::Marpa::Recognizer::end_input {
         Parse::Marpa::Internal::Recognizer::LAST_COMPLETED_SET,
         Parse::Marpa::Internal::Recognizer::FURTHEST_EARLEME,
         ];
-    local ($Parse::Marpa::Internal::This::grammar) = $grammar;
 
     my $phase = $grammar->[ Parse::Marpa::Internal::Grammar::PHASE ];
 

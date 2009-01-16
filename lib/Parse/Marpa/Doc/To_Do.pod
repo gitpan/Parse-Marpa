@@ -6,8 +6,6 @@ Parse::Marpa::Doc::To_Do - Marpa's To Do List
 
 =over 4
 
-=item * Make code clean under perlcritic.
-
 =item * Allow cloning of unstripped recognizers
 
 =item * Add a SYNOPSIS to the Plumbing document.
@@ -35,12 +33,6 @@ doesn't entirely replace it.
 
 =item * Add a show_derivation option.
 
-=item * Ensure C<Parse::Marpa::Internal::This::grammar> set wherever appropriate.
-
-=item * Add option for left-to-right evaluation of rules
-
-=item * Test proper and perl5 separation
-
 =item * Add to test set: Basic tests of sequences.
 The matrix is separation (none/perl5/proper)
 and minimium count (0 or 1).
@@ -54,16 +46,12 @@ Eliminate keep vs. no-keep, right vs. left.
 
 =item * Test lexing suffixes?  Remove them?
 
-=item * Are there any Parse::Marpa::Read_Only variables?  Eliminate
-the namespace, and all the references to it in the documentation?
-
-=item * Speed-up for pre-computing lexables.  Grammar::LEXABLES, etc.
+=item * Speed-up for pre-computing lexables?  Predict lexables based
+on user request?
 
 =item * C<show_tree> before first call to C<value>?  Should
 it cause an error message?  How about after unsuccessful
 call to C<value>?
-
-=item * Do I need Parse::Marpa::show_value?  Won't Dumper do fine?
 
 =back
 

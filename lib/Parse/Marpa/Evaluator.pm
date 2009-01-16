@@ -214,7 +214,7 @@ sub set_null_values {
                 print {$trace_fh} 'Setting null value for symbol ',
                     $nulling_symbol->[Parse::Marpa::Internal::Symbol::NAME],
                     " from\n", $code, "\n",
-                    ' to ', Parse::Marpa::show_value( \$null_value ), "\n"
+                    ' to ', Dumper( \$null_value ), "\n"
                     or croak('Could not print to trace file');
             }
 
@@ -428,8 +428,6 @@ sub Parse::Marpa::Evaluator::new {
         # if $phase == Parse::Marpa::Internal::Phase::EVALUATING;
     croak('Attempt to evaluate grammar in wrong phase: ', Parse::Marpa::Internal::Phase::description($phase))
         if $phase < Parse::Marpa::Internal::Phase::RECOGNIZED;
-
-    local ($Parse::Marpa::Internal::This::grammar) = $grammar;
 
     $self->[Parse::Marpa::Internal::Evaluator::RECOGNIZER] = $recce;
 
@@ -938,8 +936,6 @@ sub Parse::Marpa::Evaluator::value {
     ) unless $evaler_class eq $right_class;
 
     my ( $grammar, ) = @{$recognizer}[ Parse::Marpa::Internal::Recognizer::GRAMMAR, ];
-
-    local ($Parse::Marpa::Internal::This::grammar) = $grammar;
 
     my $tracing = $grammar->[Parse::Marpa::Internal::Grammar::TRACING];
     my $trace_fh =
