@@ -19,10 +19,10 @@ my $new_default_null_value;
 my $new_default_lex_prefix;
 my %strings;
 
-# This file was automatically generated using Parse::Marpa 1.001_004
+# This file was automatically generated using Parse::Marpa 1.001_005
 $new_semantics = 'perl5';
 
-$new_version = '1.001_004';
+$new_version = '1.001_005';
 
 $new_start_symbol = 'grammar';
 
