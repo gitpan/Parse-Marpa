@@ -13,9 +13,8 @@ use Carp;
 use Marpa::Test;
 
 BEGIN {
-    use_ok('Parse::Marpa');
+    Test::More::use_ok('Parse::Marpa');
 }
-
 
 my $example_dir = 'example';
 chdir $example_dir;
@@ -35,7 +34,7 @@ A(B(A(B(A(B(A(B(A(B(A(B(A(B(A(B(A(B(A(B(a))))))))))))))))))))
 EOS
 
 my $mdl = <<'EOF';
-semantics are perl5.  version is 1.002000.
+semantics are perl5.  version is 1.003_000.
 start symbol is S.
 default action is q{join(q{ }, @_)}.
 
@@ -50,37 +49,48 @@ EOF
 
 my $trace;
 open my $MEMORY, '>', \$trace;
-my $grammar = new Parse::Marpa::Grammar({
-    mdl_source => \$mdl,
-    trace_file_handle => $MEMORY,
-});
+my $grammar = Parse::Marpa::Grammar->new(
+    {   mdl_source        => \$mdl,
+        trace_file_handle => $MEMORY,
+    }
+);
 $grammar->precompute();
 close $MEMORY;
 
-Marpa::Test::is($trace, <<'EOS', 'cycle detection');
+Marpa::Test::is( $trace, <<'EOS', 'cycle detection' );
 Cycle found involving rule: 3: b -> a
 Cycle found involving rule: 1: a -> b
 EOS
 
-my $recce = new Parse::Marpa::Recognizer({
-   grammar => $grammar,
-   trace_file_handle => *STDERR,
-});
+my $recce = Parse::Marpa::Recognizer->new(
+    {   grammar           => $grammar,
+        trace_file_handle => *STDERR,
+    }
+);
 
-my $text = 'a';
+my $text          = 'a';
 my $fail_location = $recce->text( \$text );
 if ( $fail_location >= 0 ) {
-    croak( Parse::Marpa::show_location( 'Parsing failed',
-        \$text, $fail_location ) );
+    Carp::croak(
+        Parse::Marpa::show_location(
+            'Parsing failed',
+            \$text, $fail_location
+        )
+    );
 }
 $recce->end_input();
 
-for my $depth (1, 2, 5, 10) {
+for my $depth ( 1, 2, 5, 10 ) {
 
-    my $evaler = new Parse::Marpa::Evaluator( { recce => $recce, cycle_depth => $depth } );
+    my $evaler = Parse::Marpa::Evaluator->new(
+        { recce => $recce, cycle_depth => $depth } );
     my $parse_count = 0;
-    while (my $value = $evaler->value()) {
-        Marpa::Test::is(${$value}, $expected_values[$parse_count++], 'cycle depth test');
+    while ( my $value = $evaler->value() ) {
+        Marpa::Test::is(
+            ${$value},
+            $expected_values[ $parse_count++ ],
+            'cycle depth test'
+        );
     }
 
 }

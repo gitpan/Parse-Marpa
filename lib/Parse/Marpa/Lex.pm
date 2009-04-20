@@ -44,7 +44,7 @@ my $punct = qr'[!"#$%&\x{27}(*+,-./:;<=?\x{5b}^_`{|~@]'xms;
 sub lex_q_quote {
     my $string = shift;
     my $start  = shift;
-    my ($left_bracket) = (${$string} =~ m/\Gqq?($punct)/xmsogc);
+    my ($left_bracket) = ( ${$string} =~ m/\Gqq?($punct)/xmsogc );
     return unless defined $left_bracket;
 
     my $regex_data = $regex_data{$left_bracket};
@@ -80,7 +80,7 @@ sub lex_q_quote {
     my $depth = 1;
     MATCH: while ( ${$string} =~ /$regex/gxms ) {
         given ($1) {
-            when (undef)  {return}
+            when (undef)          {return}
             when ($left_bracket)  { $depth++; }
             when ($right_bracket) { $depth--; }
         }
@@ -96,7 +96,7 @@ sub lex_regex {
     my $string       = shift;
     my $lexeme_start = shift;
     my $value_start  = pos ${$string};
-    my ($left_side) = (${$string} =~ m{\G(qr$punct|/)}xmsogc);
+    my ($left_side) = ( ${$string} =~ m{\G(qr$punct|/)}xmsogc );
     return unless defined $left_side;
     my $left_bracket = substr $left_side, -1;
     my $prefix = ( $left_side =~ /^qr/xms ) ? q{} : 'qr';
@@ -129,8 +129,9 @@ sub lex_regex {
                 my $pos = pos ${$string};
                 return (
                     $prefix
-                        . substr( ${$string}, $value_start,
-                        $pos - $value_start ),
+                        . substr(
+                        ${$string}, $value_start, $pos - $value_start
+                        ),
                     $pos - $lexeme_start
                 );
             }
@@ -142,7 +143,7 @@ sub lex_regex {
     my $depth = 1;
     MATCH: while ( ${$string} =~ /$regex/gxms ) {
         given ($1) {
-            when (undef)  {return}
+            when (undef)          {return}
             when ($left_bracket)  { $depth++; }
             when ($right_bracket) { $depth--; }
         }
@@ -180,15 +181,15 @@ Marpa.
 
 =head2 lex_regex
 
-=begin Parse::Marpa::test_document:
+=begin Marpa::Test::Display:
 
 ## next display
-in_misc_pl($_)
+is_file($_, 'author.t/misc.t', 'lex_regex snippet');
 
-=end Parse::Marpa::test_document:
+=end Marpa::Test::Display:
 
-    my ($regex, $token_length)
-        = Parse::Marpa::Lex::lex_regex(\$input_string, $lexeme_start);
+    my ( $regex, $token_length ) =
+        Parse::Marpa::Lex::lex_regex( \$input_string, $lexeme_start );
 
 Takes two required arguments.
 C<$string>
@@ -217,15 +218,15 @@ which will include the length of any discarded prefix.
 
 =head2 lex_q_quote
 
-=begin Parse::Marpa::test_document:
+=begin Marpa::Test::Display:
 
 ## next display
-in_misc_pl($_)
+is_file( $_, 'author.t/misc.t', 'lex_q_quote snippet' );
 
-=end Parse::Marpa::test_document:
+=end Marpa::Test::Display:
 
-    my ($string, $token_length)
-        = Parse::Marpa::Lex::lex_q_quote(\$input_string, $lexeme_start);
+    my ( $string, $token_length ) =
+        Parse::Marpa::Lex::lex_q_quote( \$input_string, $lexeme_start );
 
 Takes two required arguents, a I<string reference> and a I<start earleme>.
 The I<string reference> must be to a string that might contain a C<q-> or C<qq->quoted string.

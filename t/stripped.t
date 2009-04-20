@@ -10,31 +10,28 @@ use Test::More tests => 8;
 use Marpa::Test;
 
 BEGIN {
-    use_ok('Parse::Marpa');
+    Test::More::use_ok('Parse::Marpa');
 }
 
 # The example grammar in Aycock/Horspool "Practical Earley Parsing",
 # _The Computer Journal_, Vol. 45, No. 6, pp. 620-630
 # This time testing the stripped output
 
-my $g = new Parse::Marpa::Grammar({
-    start => q{S'},
-    rules => [
-        [ q{S'}, [qw/S/] ],
-        [ 'S',  [qw/A A A A/] ],
-        [ 'A',  [qw/a/] ],
-        [ 'A',  [qw/E/] ],
-        [ 'E' ],
-    ],
-    academic => 1,
-    precompute => 0
-});
+my $g = Parse::Marpa::Grammar->new(
+    {   start => q{S'},
+        rules => [
+            [ q{S'}, [qw/S/] ],
+            [ 'S',   [qw/A A A A/] ],
+            [ 'A',   [qw/a/] ],
+            [ 'A',   [qw/E/] ],
+            ['E'],
+        ],
+        academic   => 1,
+        precompute => 0
+    }
+);
 
-$g->set({
-    terminals => [
-        [ 'a' => { regex => 'a' } ],
-    ],
-});
+$g->set( { terminals => [ [ 'a' => { regex => 'a' } ], ], } );
 
 Marpa::Test::is( $g->show_rules(), <<'EOS', 'Aycock/Horspool Rules' );
 0: S' -> S /* stripped */

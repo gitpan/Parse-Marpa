@@ -1,4 +1,6 @@
 
+.PHONY: all all_tests critic display
+
 all: \
     equation_show_symbols.out \
     equation_show_rules.out \
@@ -9,8 +11,17 @@ all: \
     equation_trace_values.out \
     self_show_rules.out \
     MDL_displays.errs \
-    misc_pl.errs \
-    test_pod.out
+    test_pod.out \
+    all_tests
+
+all_tests:
+	-(cd ..; prove author.t/*.t)
+
+critic:
+	-(cd ..; prove author.t/critic.t)
+
+display:
+	-(cd ..; prove author.t/display.t)
 
 equation_show_symbols.out:
 	echo 2+2 | perl -I../lib ../bin/mdl parse -grammar \
@@ -54,9 +65,3 @@ MDL_displays.errs:
 	echo a | perl -I../lib ../bin/mdl parse \
 	    -grammar MDL_displays.marpa 2>&1 | tee $@
 
-misc_pl.errs:
-	perl -I../lib misc.pl 2>&1 | tee $@
-
-test_pod.out:
-	perl -I../lib test_pod > $@
-	wc -l $@

@@ -14,14 +14,14 @@ sub gen_symbol_from_regex {
     my ( $regex_hash, $uniq_number ) = @{$data};
     given ($regex) {
         when (/^qr/xms) { $regex = substr $regex, 3, -1; }
-        default      { $regex = substr $regex, 1, -1; };
+        default         { $regex = substr $regex, 1, -1; };
     }
     my $symbol = $regex_hash->{$regex};
     return $symbol if defined $symbol;
     $symbol = substr $regex, 0, 20;
     $symbol =~ s/%/%%/gxms;
     $symbol =~ s/([^[:alnum:]_-])/sprintf("%%%.2x", ord($1))/gexms;
-    $symbol .= sprintf ':k%x', (${$uniq_number})++;
+    $symbol .= sprintf ':k%x', ( ${$uniq_number} )++;
     $regex_hash->{$regex} = $symbol;
     return ( $symbol, 1 );
 }
@@ -78,12 +78,12 @@ MDL symbol name to its canonical form.
 
 =head2 canonical_name
 
-=begin Parse::Marpa::test_document:
+=begin Marpa::Test::Display:
 
 ## next display
-in_misc_pl($_)
+in_file($_, 'author.t/misc.t');
 
-=end Parse::Marpa::test_document:
+=end Marpa::Test::Display:
 
     $g->set( {
         start => Parse::Marpa::MDL::canonical_symbol_name('Document')
@@ -96,14 +96,14 @@ the symbol's plumbing name.
 
 =head2 get_symbol
 
-=begin Parse::Marpa::test_document:
+=begin Marpa::Test::Display:
 
 ## next display
-in_misc_pl($_)
+is_file($_, 'author.t/misc.t', 'get_symbol snippet');
 
-=end Parse::Marpa::test_document:
+=end Marpa::Test::Display:
 
-    my $op = Parse::Marpa::MDL::get_symbol($grammar, 'Op');
+    my $op = Parse::Marpa::MDL::get_symbol( $grammar, 'Op' );
 
 This static method takes a Marpa grammar object as its first argument and an MDL symbol name as its second.
 It returns the symbol's "cookie".

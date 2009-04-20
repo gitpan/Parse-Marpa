@@ -9,8 +9,8 @@ bootstrap/bootstrap.pl
 bootstrap/bootstrap_header.pl
 bootstrap/bootstrap_trailer.pl
 bootstrap/self.marpa
-etc/perlcriticrc
-etc/do_critic.pl
+author.t/perlcriticrc
+author.t/perltidyrc
 example/null_value.marpa
 example/equation.marpa
 example/synopsis.pl
@@ -34,6 +34,7 @@ lib/Parse/Marpa/Raw_Source.pm
 lib/Parse/Marpa/Source.pm.PL
 lib/Parse/Marpa/header_Raw_Source.pm
 lib/Parse/Marpa/trailer_Raw_Source.pm
+t/Makefile
 t/00-load.t
 t/ah.t
 t/ah2.t
@@ -61,4 +62,10 @@ author.t/MDL_displays.marpa
 author.t/Makefile
 author.t/test_pod
 author.t/minimal.marpa
-author.t/misc.pl
+author.t/critic.t
+author.t/critic1
+author.t/display.t
+author.t/misc.t
+author.t/perlcriticrc
+author.t/perltidyrc
+author.t/tidy1

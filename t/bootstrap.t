@@ -7,16 +7,17 @@ use lib 't/lib';
 use Test::More;
 use Fatal qw(close open waitpid);
 use Carp;
-use English qw( -no_match_vars ) ;
+use English qw( -no_match_vars );
 use Config;
 use IPC::Open3;
 
 use Marpa::Test;
 
-if ($Config{'d_fork'}) {
-    plan tests => 2;
-} else {
-    plan skip_all => 'Fork required to test examples';
+if ( $Config{'d_fork'} ) {
+    Test::More::plan tests => 2;
+}
+else {
+    Test::More::plan skip_all => 'Fork required to test examples';
     exit 0;
 }
 
@@ -35,22 +36,19 @@ rm -f t_bootcopy0.pl t_bootcopy1.pl
 exit 0
 END_OF_SCRIPT
 
-my ($wtr, $rdr, $err);
-my $pid = open3($wtr, $rdr, $err, 'sh');
-print {$wtr} $script or croak("write to open3 failed: $ERRNO");
+my ( $wtr, $rdr, $err );
+my $pid = IPC::Open3::open3( $wtr, $rdr, $err, 'sh' );
+print {$wtr} $script or Carp::croak("write to open3 failed: $ERRNO");
 close $wtr;
 waitpid $pid, 0;
 
-my $script_err = do { local($RS) = undef; defined $err ? <$err> : q{} };
-Marpa::Test::is($script_err, q{},
-    'script stderr empty');
+my $script_err = do { local ($RS) = undef; defined $err ? <$err> : q{} };
+Marpa::Test::is( $script_err, q{}, 'script stderr empty' );
 
-my $script_output = do { local($RS) = undef; <$rdr> };
-Marpa::Test::is($script_output,
-    "Bootstrap 1\n"
-    . "Bootstrap 2\n"
-    . "Diff\n"
-    . "Test OK\n"
-    . "Cleanup\n",
-    'bootstrapped copies identical');
+my $script_output = do { local ($RS) = undef; <$rdr> };
+Marpa::Test::is(
+    $script_output,
+    "Bootstrap 1\n" . "Bootstrap 2\n" . "Diff\n" . "Test OK\n" . "Cleanup\n",
+    'bootstrapped copies identical'
+);
 

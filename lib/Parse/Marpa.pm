@@ -7,7 +7,7 @@ no warnings 'recursion';
 use strict;
 
 BEGIN {
-    our $VERSION        = '1.002000';
+    our $VERSION = '1.003_000';
 }
 
 use integer;
@@ -19,32 +19,32 @@ use Parse::Marpa::Lex;
 
 use Carp;
 our @CARP_NOT = qw(
-Parse::Marpa
-Parse::Marpa::Evaluator
-Parse::Marpa::Grammar
-Parse::Marpa::Internal
-Parse::Marpa::Internal::And_Node
-Parse::Marpa::Internal::Earley_item
-Parse::Marpa::Internal::Evaluator
-Parse::Marpa::Internal::Evaluator::Rule
-Parse::Marpa::Internal::Grammar
-Parse::Marpa::Internal::Interface
-Parse::Marpa::Internal::LR0_item
-Parse::Marpa::Internal::Lex
-Parse::Marpa::Internal::NFA
-Parse::Marpa::Internal::Or_Node
-Parse::Marpa::Internal::Or_Sapling
-Parse::Marpa::Internal::Phase
-Parse::Marpa::Internal::QDFA
-Parse::Marpa::Internal::Recognizer
-Parse::Marpa::Internal::Rule
-Parse::Marpa::Internal::Source_Eval
-Parse::Marpa::Internal::Source_Raw
-Parse::Marpa::Internal::Symbol
-Parse::Marpa::Internal::Tree_Node
-Parse::Marpa::Lex
-Parse::Marpa::MDL
-Parse::Marpa::Recognizer
+    Parse::Marpa
+    Parse::Marpa::Evaluator
+    Parse::Marpa::Grammar
+    Parse::Marpa::Internal
+    Parse::Marpa::Internal::And_Node
+    Parse::Marpa::Internal::Earley_item
+    Parse::Marpa::Internal::Evaluator
+    Parse::Marpa::Internal::Evaluator::Rule
+    Parse::Marpa::Internal::Grammar
+    Parse::Marpa::Internal::Interface
+    Parse::Marpa::Internal::LR0_item
+    Parse::Marpa::Internal::Lex
+    Parse::Marpa::Internal::NFA
+    Parse::Marpa::Internal::Or_Node
+    Parse::Marpa::Internal::Or_Sapling
+    Parse::Marpa::Internal::Phase
+    Parse::Marpa::Internal::QDFA
+    Parse::Marpa::Internal::Recognizer
+    Parse::Marpa::Internal::Rule
+    Parse::Marpa::Internal::Source_Eval
+    Parse::Marpa::Internal::Source_Raw
+    Parse::Marpa::Internal::Symbol
+    Parse::Marpa::Internal::Tree_Node
+    Parse::Marpa::Lex
+    Parse::Marpa::MDL
+    Parse::Marpa::Recognizer
 );
 
 # Maybe MDL will be optional someday, but not today
@@ -106,18 +106,17 @@ our $STRINGIFIED_EVAL_ERROR;
 
 BEGIN {
     ## no critic (BuiltinFunctions::ProhibitStringyEval)
-    if (not eval ' use Parse::Marpa::Source ')
-    ## use critic 
+    if ( not eval ' use Parse::Marpa::Source ' )
+        ## use critic
     {
         $STRINGIFIED_EVAL_ERROR = $EVAL_ERROR;
-        my $marpa_version = $Parse::Marpa::VERSION // 'undef';
+        my $marpa_version  = $Parse::Marpa::VERSION         // 'undef';
         my $source_version = $Parse::Marpa::Source::VERSION // 'undef';
-        if ($marpa_version ne $source_version)
-        {
-           $STRINGIFIED_EVAL_ERROR =
-              'MDL/Marpa version mismatch:'
-              . " Marpa is version '$marpa_version'; "
-              . " MDL source is for version '$source_version'"
+        if ( $marpa_version ne $source_version ) {
+            $STRINGIFIED_EVAL_ERROR =
+                  'MDL/Marpa version mismatch:'
+                . " Marpa is version '$marpa_version'; "
+                . " MDL source is for version '$source_version'";
         }
     }
     undef $Parse::Marpa::Internal::stringified_source_grammar
@@ -135,38 +134,42 @@ sub Parse::Marpa::mdl {
     my $options = shift;
 
     my $ref = ref $grammar;
-    croak(qq{grammar arg to mdl() was ref type "$ref", must be string ref})
+    Carp::croak(
+        qq{grammar arg to mdl() was ref type "$ref", must be string ref})
         unless $ref eq 'SCALAR';
 
     $ref = ref $text;
-    croak(qq{text arg to mdl() was ref type "$ref", must be string ref})
+    Carp::croak(qq{text arg to mdl() was ref type "$ref", must be string ref})
         unless $ref eq 'SCALAR';
 
     $options //= {};
     $ref = ref $options;
-    croak(qq{text arg to mdl() was ref type "$ref", must be hash ref})
+    Carp::croak(qq{text arg to mdl() was ref type "$ref", must be hash ref})
         unless $ref eq 'HASH';
 
     my $g =
-        new Parse::Marpa::Grammar( { mdl_source => $grammar, %{$options} } );
-    my $recce = new Parse::Marpa::Recognizer( {
-        grammar => $g,
-        clone => 0
-    } );
+        Parse::Marpa::Grammar->new( { mdl_source => $grammar, %{$options} } );
+    my $recce = Parse::Marpa::Recognizer->new(
+        {   grammar => $g,
+            clone   => 0
+        }
+    );
 
     my $failed_at_earleme = $recce->text($text);
     if ( $failed_at_earleme >= 0 ) {
-        die_with_parse_failure( $text, $failed_at_earleme );
+        Parse::Marpa::Grammar::die_with_parse_failure( $text,
+            $failed_at_earleme );
     }
 
     $recce->end_input();
 
-    my $evaler = new Parse::Marpa::Evaluator( {
-        recce => $recce,
-        clone => 0,
-    } );
+    my $evaler = Parse::Marpa::Evaluator->new(
+        {   recce => $recce,
+            clone => 0,
+        }
+    );
     if ( not defined $evaler ) {
-        die_with_parse_failure( $text, length $text );
+        Parse::Marpa::Grammar::die_with_parse_failure( $text, length $text );
     }
     return $evaler->value if not wantarray;
     my @values;
@@ -186,31 +189,32 @@ Parse::Marpa - Generate Parsers from any BNF grammar
 
 =head1 SYNOPSIS
 
-=begin Parse::Marpa::test_document:
+=begin Marpa::Test::Display:
 
 ## start display
 ## next display
-is_synopsis_pl($_)
+is_file($_, 'example/synopsis.pl');
 
-=end Parse::Marpa::test_document:
+=end Marpa::Test::Display:
 
     #!perl
     
     use 5.010;
     use strict;
     use warnings;
-    use English qw( -no_match_vars ) ;
+    use English qw( -no_match_vars );
     use Parse::Marpa;
 
     # remember to use refs to strings
     my $value = Parse::Marpa::mdl(
-        (do { local($RS) = undef; my $source = <DATA>; \$source; }),
+        (   do { local ($RS) = undef; my $source = <DATA>; \$source; }
+        ),
         \('2+2*3')
     );
     say ${$value};
 
     __DATA__
-    semantics are perl5.  version is 1.002000.  start symbol is Expression.
+    semantics are perl5.  version is 1.003_000.  start symbol is Expression.
 
     Expression: Expression, /[*]/, Expression.  priority 200.  q{
         $_[0] * $_[2]
@@ -222,11 +226,11 @@ is_synopsis_pl($_)
 
     Expression: /\d+/.  q{ $_[0] }.
 
-=begin Parse::Marpa::test_document:
+=begin Marpa::Test::Display:
 
 ## end display
 
-=end Parse::Marpa::test_document:
+=end Marpa::Test::Display:
 
 =head1 DESCRIPTION
 
@@ -353,12 +357,12 @@ can be used to initialize that namespace.
 The result of an action is the result of running its Perl 5 code string.
 From L<the synopsis|"SYNOPSIS">, here's a rule for an expression that does addition:
 
-=begin Parse::Marpa::test_document:
+=begin Marpa::Test::Display:
 
 ## next 2 displays
-in_synopsis_pl($_)
+in_file($_, 'example/synopsis.pl');
 
-=end Parse::Marpa::test_document:
+=end Marpa::Test::Display:
 
     Expression: Expression, /[+]/, Expression.
 
@@ -519,11 +523,11 @@ These special namespaces belong entirely to the user.
 In the following namespaces,
 users should use only documented methods:
 
-=begin Parse::Marpa::test_document:
+=begin Marpa::Test::Display:
 
 ## skip display
 
-=end Parse::Marpa::test_document:
+=end Marpa::Test::Display:
 
     Parse::Marpa
     Parse::Marpa::Grammar
@@ -542,7 +546,7 @@ should not be relied on or modified.
 =head2 Returns and Exceptions
 
 Most Marpa methods return only if successful.
-On failure they throw an exception using C<croak()>.
+On failure they throw an exception using C<Carp::croak()>.
 If you don't want the exception to be fatal, catch it using C<eval>.
 A few failures are considered "non-exceptional" and returned.
 Non-exceptional failures are described in the documentation for the method which returns them.
@@ -551,22 +555,32 @@ Non-exceptional failures are described in the documentation for the method which
 
 =head2 mdl
 
-=begin Parse::Marpa::test_document:
+=begin Marpa::Test::Display:
 
-## next 3 displays
-in_misc_pl($_)
+## next display
+is_file($_, 'author.t/misc.t', 'mdl scalar snippet');
 
-=end Parse::Marpa::test_document:
+=end Marpa::Test::Display:
 
     $first_result =
         Parse::Marpa::mdl( \$grammar_description, \$string_to_parse );
 
-Z<>
+=begin Marpa::Test::Display:
+
+## next display
+is_file($_, 'author.t/misc.t', 'mdl array snippet');
+
+=end Marpa::Test::Display:
 
      @all_results
-         = Parse::Marpa::mdl(\$grammar_description, \$string_to_parse);
+         = Parse::Marpa::mdl( \$grammar_description, \$string_to_parse );
 
-Z<>
+=begin Marpa::Test::Display:
+
+## next display
+is_file($_, 'author.t/misc.t', 'mdl scalar hash args snippet');
+
+=end Marpa::Test::Display:
 
      $first_result = Parse::Marpa::mdl(
          \$grammar_description,
@@ -758,11 +772,11 @@ your bug as I make changes.
 
 You can find documentation for this module with the perldoc command.
 
-=begin Parse::Marpa::test_document:
+=begin Marpa::Test::Display:
 
 ## skip display
 
-=end Parse::Marpa::test_document:
+=end Marpa::Test::Display:
 
     perldoc Parse::Marpa
     

@@ -262,21 +262,21 @@ May usefully be set at any point.
 
 =head3 show_location
 
-=begin Parse::Marpa::test_document:
+=begin Marpa::Test::Display:
 
 ## next display
-in_equation_s_t($_);
+in_file($_, 't/equation_s.t');
 
-=end Parse::Marpa::test_document:
+=end Marpa::Test::Display:
 
-    my $recce = new Parse::Marpa::Recognizer( { grammar => $grammar } );
+    my $recce = Parse::Marpa::Recognizer->new( { grammar => $grammar } );
 
-=begin Parse::Marpa::test_document:
+=begin Marpa::Test::Display:
 
 ## next 2 display
-in_bin_mdl($_);
+in_file($_, 'bin/mdl');
 
-=end Parse::Marpa::test_document:
+=end Marpa::Test::Display:
 
     my $fail_location = $recce->text( \$text_to_parse );
 
@@ -286,7 +286,7 @@ in_bin_mdl($_);
             \$text_to_parse,
             $fail_location,
         )
-        or croak "print to STDERR failed: $OS_ERROR";
+        or Carp::croak "print to STDERR failed: $OS_ERROR";
         exit 1;
     }
 
@@ -311,12 +311,12 @@ the second line.
 
 =head3 inaccessible_symbols
 
-=begin Parse::Marpa::test_document:
+=begin Marpa::Test::Display:
 
 ## next 2 display
-in_bin_mdl($_);
+in_file($_, 'bin/mdl');
 
-=end Parse::Marpa::test_document:
+=end Marpa::Test::Display:
 
     $grammar->precompute();
 
@@ -335,17 +335,17 @@ way to obtain the same information.
 
 =head3 show_NFA
 
-=begin Parse::Marpa::test_document:
+=begin Marpa::Test::Display:
 
 ## next 2 display
-in_bin_mdl($_);
+in_file($_, 'bin/mdl');
 
-=end Parse::Marpa::test_document:
+=end Marpa::Test::Display:
 
     $grammar->precompute();
 
     print $grammar->show_NFA()
-        or croak "print failed: $OS_ERROR";
+        or Carp::croak "print failed: $OS_ERROR";
 
 Returns a multi-line string listing the states of the NFA
 with the LR(0) items and transitions for each.
@@ -355,17 +355,17 @@ and requires very deep knowledge of Marpa internals.
 
 =head3 show_QDFA
 
-=begin Parse::Marpa::test_document:
+=begin Marpa::Test::Display:
 
 ## next 2 display
-in_bin_mdl($_);
+in_file($_, 'bin/mdl');
 
-=end Parse::Marpa::test_document:
+=end Marpa::Test::Display:
 
     $grammar->precompute();
 
     print $grammar->show_QDFA()
-        or croak "print failed: $OS_ERROR";
+        or Carp::croak "print failed: $OS_ERROR";
 
 Returns a multi-line string listing the states of the QDFA
 with the LR(0) items, NFA states, and transitions for each.
@@ -374,12 +374,12 @@ Very useful in debugging, but requires knowledge of Marpa internals.
 
 =head3 show_accessible_symbols
 
-=begin Parse::Marpa::test_document:
+=begin Marpa::Test::Display:
 
 ## next 2 display
-in_bin_mdl($_);
+in_file($_, 'bin/mdl');
 
-=end Parse::Marpa::test_document:
+=end Marpa::Test::Display:
 
     $grammar->precompute();
 
@@ -395,12 +395,12 @@ Not very useful for debugging.
 
 =head3 show_nullable_symbols
 
-=begin Parse::Marpa::test_document:
+=begin Marpa::Test::Display:
 
 ## next 2 display
-in_bin_mdl($_);
+in_file($_, 'bin/mdl');
 
-=end Parse::Marpa::test_document:
+=end Marpa::Test::Display:
 
     $grammar->precompute();
 
@@ -416,12 +416,12 @@ Not very useful for debugging.
 
 =head3 show_nulling_symbols
 
-=begin Parse::Marpa::test_document:
+=begin Marpa::Test::Display:
 
 ## next 2 display
-in_bin_mdl($_);
+in_file($_, 'bin/mdl');
 
-=end Parse::Marpa::test_document:
+=end Marpa::Test::Display:
 
     $grammar->precompute();
 
@@ -437,17 +437,17 @@ Not very useful for debugging.
 
 =head3 show_problems
 
-=begin Parse::Marpa::test_document:
+=begin Marpa::Test::Display:
 
 ## next 2 display
-in_bin_mdl($_);
+in_file($_, 'bin/mdl');
 
-=end Parse::Marpa::test_document:
+=end Marpa::Test::Display:
 
     $grammar->precompute();
 
     print $grammar->show_problems()
-        or croak "print failed: $OS_ERROR";
+        or Carp::croak "print failed: $OS_ERROR";
 
 Returns a string describing the problems a grammar had in the precomputation phase.
 For many precomputation problems, Marpa
@@ -467,12 +467,12 @@ error message.
 
 =head3 show_productive_symbols
 
-=begin Parse::Marpa::test_document:
+=begin Marpa::Test::Display:
 
 ## next 2 display
-in_bin_mdl($_);
+in_file($_, 'bin/mdl');
 
-=end Parse::Marpa::test_document:
+=end Marpa::Test::Display:
 
     $grammar->precompute();
 
@@ -488,17 +488,17 @@ Not very useful for debugging.
 
 =head3 show_rules
 
-=begin Parse::Marpa::test_document:
+=begin Marpa::Test::Display:
 
 ## next 2 display
-in_bin_mdl($_);
+in_file($_, 'bin/mdl');
 
-=end Parse::Marpa::test_document:
+=end Marpa::Test::Display:
 
     $grammar->precompute();
 
     print $grammar->show_rules()
-        or croak "print failed: $OS_ERROR";
+        or Carp::croak "print failed: $OS_ERROR";
 
 Returns a string listing the rules, each commented as to whether it
 was nullable, nulling, unproductive, inaccessible, empty or not useful.
@@ -515,17 +515,17 @@ but also any rule which is replaced by one of Marpa's grammar rewrites.
 
 =head3 show_symbols
 
-=begin Parse::Marpa::test_document:
+=begin Marpa::Test::Display:
 
 ## next 2 display
-in_bin_mdl($_);
+in_file($_, 'bin/mdl');
 
-=end Parse::Marpa::test_document:
+=end Marpa::Test::Display:
 
     $grammar->precompute();
 
     print $grammar->show_symbols()
-        or croak "print failed: $OS_ERROR";
+        or Carp::croak "print failed: $OS_ERROR";
 
 Returns a string listing the symbols, along with whether they were
 nulling, nullable, unproductive or inaccessible.
@@ -536,12 +536,12 @@ the Marpa internals to interpret.
 
 =head3 unproductive_symbols
 
-=begin Parse::Marpa::test_document:
+=begin Marpa::Test::Display:
 
 ## next 2 display
-in_bin_mdl($_);
+in_file($_, 'bin/mdl');
 
-=end Parse::Marpa::test_document:
+=end Marpa::Test::Display:
 
     $grammar->precompute();
 
@@ -562,26 +562,26 @@ way to obtain the same information.
 
 =head3 show_earley_sets
 
-=begin Parse::Marpa::test_document:
+=begin Marpa::Test::Display:
 
 ## next display
-in_equation_s_t($_);
+in_file($_, 't/equation_s.t');
 
-=end Parse::Marpa::test_document:
+=end Marpa::Test::Display:
 
-    my $recce = new Parse::Marpa::Recognizer( { grammar => $grammar } );
+    my $recce = Parse::Marpa::Recognizer->new( { grammar => $grammar } );
 
-=begin Parse::Marpa::test_document:
+=begin Marpa::Test::Display:
 
 ## next 2 display
-in_bin_mdl($_);
+in_file($_, 'bin/mdl');
 
-=end Parse::Marpa::test_document:
+=end Marpa::Test::Display:
 
     my $fail_location = $recce->text( \$text_to_parse );
 
     print $recce->show_earley_sets
-        or croak "print failed: $OS_ERROR";
+        or Carp::croak "print failed: $OS_ERROR";
 
 Returns a multi-line string
 listing every Earley item in every Earley set.
@@ -590,15 +590,15 @@ listing every Earley item in every Earley set.
 
 =head3 show_bocage
 
-=begin Parse::Marpa::test_document:
+=begin Marpa::Test::Display:
 
 ## next display
-in_bin_mdl($_);
+in_file($_, 'bin/mdl');
 
-=end Parse::Marpa::test_document:
+=end Marpa::Test::Display:
 
     print $evaler->show_bocage($show_bocage_verbosity)
-        or croak "print failed: $OS_ERROR";
+        or Carp::croak "print failed: $OS_ERROR";
 
 Returns a multi-line string describing the bocage
 for an evaluator.
@@ -632,15 +632,15 @@ Or-productions are shown only if I<verbosity> is set at 2 or more.
 
 =head3 show_tree
 
-=begin Parse::Marpa::test_document:
+=begin Marpa::Test::Display:
 
 ## next display
-in_bin_mdl($_);
+in_file($_, 'bin/mdl');
 
-=end Parse::Marpa::test_document:
+=end Marpa::Test::Display:
 
     print $evaler->show_tree($show_tree_flag)
-        or croak "print failed: $OS_ERROR";
+        or Carp::croak "print failed: $OS_ERROR";
 
 When called after a successful call to the C<value> method,
 C<show_tree>

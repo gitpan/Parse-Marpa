@@ -82,6 +82,7 @@ severity=5
 
 [CodeLayout::RequireTidyCode]
 severity=5
+perltidyrc=author.t/perltidyrc
 
 [ControlStructures::ProhibitCStyleForLoops]
 severity=5
@@ -182,7 +183,7 @@ severity=5
 severity=5
 
 [Modules::ProhibitExcessMainComplexity]
-severity=5
+severity=1
 
 [Modules::ProhibitMultiplePackages]
 severity=1
@@ -283,7 +284,7 @@ severity=5
 
 [TestingAndDebugging::ProhibitNoWarnings]
 severity=5
-allow=recursion
+allow_with_category_restriction = 1
 
 [TestingAndDebugging::ProhibitProlongedStrictureOverride]
 severity=5
@@ -382,3 +383,11 @@ severity=5
 [Variables::RequireNegativeIndices]
 severity=5
 
+[Subroutines::ProhibitCallsToUnexportedSubs]
+severity=1
+
+[Subroutines::ProhibitQualifiedSubDeclarations]
+severity=1
+
+[Modules::RequireExplicitInclusion]
+severity=1
