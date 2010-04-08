@@ -1,9 +1,11 @@
 Parse::Marpa
 
-Marpa generates parses from any BNF grammar.  That includes recursive
-grammars, ambiguous grammars, infinitely ambiguous grammars and
-grammars with useless or empty productions.  If you can write it in
-BNF, Marpa parses it.
+Parse::Marpa is now OBSOLETE.  PLEASE USE THE Marpa DISTRIBUTION INSTEAD.
+
+Parse::Marpa generates parses from any BNF grammar.  That includes
+recursive grammars, ambiguous grammars, infinitely ambiguous grammars and
+grammars with useless or empty productions.  If you can write it in BNF,
+Marpa parses it.
 
 INSTALLATION
 

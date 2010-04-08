@@ -1,5 +1,9 @@
 Revision history for Parse::Marpa
 
+1.008000 Wed Apr  7 16:26:27 PDT 2010
+    Parse::Marpa is now OBSOLETE.
+    Please use Marpa instead.
+
 1.006000 Sun Dec 27 17:56:23 PST 2009
     RT#52724:
     Fixed problem with reporting parse errors.

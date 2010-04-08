@@ -1,0 +1,12 @@
+^bootstrap/bootcopy0.pl
+^bootstrap/bootcopy1.pl
+^bootstrap/source_raw.pl
+^lib/Parse/Marpa/Source.pm
+^Makefile
+^pm_to_blib$
+^Parse-Marpa-[01].\d{3}_\d{3}.tar.gz
+^Parse-Marpa-[01].\d{6}.tar.gz
+^Parse-Marpa-[01].\d{3}_\d{3}\/
+^Parse-Marpa-[01].\d{6}\/
+^\.git\/
+^blib/

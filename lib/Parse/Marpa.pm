@@ -7,7 +7,7 @@ no warnings 'recursion';
 use strict;
 
 BEGIN {
-    our $VERSION = '1.006000';
+    our $VERSION = '1.008000';
 }
 
 use integer;
@@ -186,7 +186,7 @@ __END__
 
 =head1 NAME
 
-Parse::Marpa - Generate Parsers from any BNF grammar
+Parse::Marpa - Obsolete Predecessor of the Marpa Distribution
 
 =head1 SYNOPSIS
 
@@ -215,7 +215,7 @@ is_file($_, 'example/synopsis.pl');
     say ${$value};
 
     __DATA__
-    semantics are perl5.  version is 1.006000.  start symbol is Expression.
+    semantics are perl5.  version is 1.008000.  start symbol is Expression.
 
     Expression: Expression, /[*]/, Expression.  priority 200.  q{
         $_[0] * $_[2]
@@ -232,6 +232,11 @@ is_file($_, 'example/synopsis.pl');
 ## end display
 
 =end Marpa::Test::Display:
+
+=head1 Parse::Marpa IS NOW OBSOLETE
+
+Parse::Marpa is now obsolete.
+Please use the Marpa distribution instead.
 
 =head1 DESCRIPTION
 
